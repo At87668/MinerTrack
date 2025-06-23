@@ -65,33 +65,9 @@ public class ViolationManager {
                 processVLDecayTasks();
             }, interval, interval);
         } else {
-            // Use reflection to call the Spigot scheduling logic
-            try {
-                Class<?> schedulerClass = Bukkit.getScheduler().getClass();
-                java.lang.reflect.Method runTaskTimer = schedulerClass.getMethod(
-                    "runTaskTimer",
-                    Runnable.class,
-                    long.class,
-                    long.class
-                );
-
-                Object[] params = {
-                    plugin,
-                    (Runnable) () -> {
-                    	processVLDecayTasks();
-                    },
-                    (long) interval,
-                    (long) interval
-                };
-
-                runTaskTimer.invoke(
-                    Bukkit.getScheduler(),
-                    params
-                );
-            } catch (Exception e) {
-                plugin.getLogger().warning("Failed to schedule task on Spigot: " + e.getMessage());
-                e.printStackTrace();
-            }
+        	Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                processVLDecayTasks();
+            }, interval, interval);
         }
     }
     
