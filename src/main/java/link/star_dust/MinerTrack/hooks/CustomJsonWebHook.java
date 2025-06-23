@@ -1,3 +1,14 @@
+/**
+ * DON'T REMOVE THIS
+ * 
+ * /MinerTrack/src/main/java/link/star_dust/MinerTrack/hooks/CustomJsonWebHook.java
+ * 
+ * MinerTrack Source Code - Public under GPLv3 license
+ * Original Author: Author87668
+ * Contributors: Zhang12334
+ * 
+ * DON'T REMOVE THIS
+**/
 package link.star_dust.MinerTrack.hooks;
 
 import link.star_dust.MinerTrack.MinerTrack;

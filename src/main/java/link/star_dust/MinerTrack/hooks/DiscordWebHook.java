@@ -5,7 +5,7 @@
  * 
  * MinerTrack Source Code - Public under GPLv3 license
  * Original Author: Author87668
- * Contributors: Author87668
+ * Contributors: Author87668, Zhang12334
  * 
  * DON'T REMOVE THIS
 **/

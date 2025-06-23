@@ -91,7 +91,7 @@ public class MinerTrack extends JavaPlugin implements Listener {
         getServer().getConsoleSender().sendMessage(applyColors(""));
         getServer().getConsoleSender().sendMessage(applyColors("&7Authors: Author87668"));
         getServer().getConsoleSender().sendMessage(applyColors("&7Original Author: Author87668"));
-        getServer().getConsoleSender().sendMessage(applyColors("&7Contributors: Author87668"));
+        getServer().getConsoleSender().sendMessage(applyColors("&7Contributors: Author87668, Zhang12334"));
         getServer().getConsoleSender().sendMessage(applyColors(""));
         getServer().getConsoleSender().sendMessage(applyColors("&a&oThanks for your use!"));
         getServer().getConsoleSender().sendMessage(applyColors("&8-----------------------------------------"));
