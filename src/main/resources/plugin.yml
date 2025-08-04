@@ -48,3 +48,6 @@ commands:
       minertrack.checkupdate:
         description: Allow player to receive update information and use /mtrack update
         default: op
+      minertrack.logs:
+        description: Allow player to use /mtrack logs
+        default: op
