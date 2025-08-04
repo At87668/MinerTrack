@@ -36,18 +36,18 @@ public class Notifier {
 
 
     public void sendNotifyMessage(String messageContent) {
-        // 定义前缀并添加颜色代码
+        // Define prefixes and add color codes
         String prefix = ChatColor.translateAlternateColorCodes('&', "&8[&9&lMiner&c&lTrack&8]&r ");
         String formattedMessage = prefix + ChatColor.translateAlternateColorCodes('&', messageContent);
         
-        // 向拥有权限的玩家发送消息
+        // Send message to players with permissions
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.hasPermission("minertrack.notify")) {
                 player.sendMessage(formattedMessage);
             }
         }
         
-        // 向控制台发送消息
+        // Send message to console
         Bukkit.getConsoleSender().sendMessage(formattedMessage);
     }
 }

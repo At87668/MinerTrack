@@ -104,6 +104,14 @@ public class LanguageManager {
     public boolean isKickBroadcastEnabled() {
         return languageConfig.getBoolean("kick-broadcast", true);
     }
+    
+    public String logNotFound(String log_name) {
+        return applyColors(getMessage("log-not-found").replace("{log_file}", log_name));
+    }
+
+    public int getLogViewerLinesPerPage() {
+        return languageConfig.getInt("log-viewer-lines-per-page", 20);
+    }
 
     // Save only custom values
     private void saveCustomLanguageFile() {

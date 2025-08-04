@@ -42,10 +42,10 @@ public class CustomJsonWebHook {
                 HttpPost post = new HttpPost(webHookUrl);
                 post.setHeader("Content-Type", "application/json; charset=UTF-8");
 
-                // 添加时间戳
+                // Add timestamp
                 placeholders.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
 
-                // 替换变量
+                // Replace holders
                 String jsonPayload = jsonFormat;
                 for (Map.Entry<String, String> entry : placeholders.entrySet()) {
                     jsonPayload = jsonPayload.replace("%" + entry.getKey() + "%", entry.getValue());

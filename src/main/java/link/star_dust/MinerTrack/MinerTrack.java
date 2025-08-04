@@ -43,7 +43,8 @@ import link.star_dust.MinerTrack.managers.UpdateManager;
 import link.star_dust.MinerTrack.managers.ViolationManager;
 import link.star_dust.MinerTrack.listeners.MiningDetectionExtension;
 import link.star_dust.MinerTrack.listeners.MiningListener;
-import link.star_dust.MinerTrack.commands.*;
+import link.star_dust.MinerTrack.listeners.LogCacheListener;
+import link.star_dust.MinerTrack.commands.MinerTrackCommand;
 
 public class MinerTrack extends JavaPlugin implements Listener {
     private ConfigManager configManager;
@@ -55,6 +56,7 @@ public class MinerTrack extends JavaPlugin implements Listener {
     private UpdateManager updateManager;
     private String ColoredVersion;
     public MiningDetectionExtension miningDetectionExtension;
+    private MinerTrackCommand minerTrackCommand;
 
     @Override
     public void onEnable() {
@@ -118,14 +120,15 @@ public class MinerTrack extends JavaPlugin implements Listener {
     }
 
     private void registerCommands() {
-        MinerTrackCommand commandExecutor = new MinerTrackCommand(this);
-        getCommand("mtrack").setExecutor(commandExecutor);
-        getCommand("mtrack").setTabCompleter(commandExecutor);
+        minerTrackCommand = new MinerTrackCommand(this);
+        getCommand("mtrack").setExecutor(minerTrackCommand);
+        getCommand("mtrack").setTabCompleter(minerTrackCommand);
     }
 
     private void registerListeners() {
-		Bukkit.getPluginManager().registerEvents(this, this);
+        Bukkit.getPluginManager().registerEvents(this, this);
         Bukkit.getPluginManager().registerEvents(new MiningListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new LogCacheListener(minerTrackCommand), this);
     }
 
     public ConfigManager getConfigManager() {

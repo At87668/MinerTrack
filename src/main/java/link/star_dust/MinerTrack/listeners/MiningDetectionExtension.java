@@ -1,3 +1,15 @@
+/**
+ * DON'T REMOVE THIS
+ * 
+ * /MinerTrack/src/main/java/link/star_dust/MinerTrack/listeners/MiningDetectionExtension.java
+ * 
+ * MinerTrack Source Code - Public under GPLv3 license
+ * Original Author: Author87668
+ * Contributors: Author87668
+ * 
+ * DON'T REMOVE THIS
+**/
+
 package link.star_dust.MinerTrack.listeners;
 
 import org.bukkit.Bukkit;
@@ -54,11 +66,11 @@ public class MiningDetectionExtension implements Listener {
         Location location = block.getLocation();
         int airBlocks = 0, solidBlocks = 0;
 
-        // 分析周围方块
+        // Analyze surrounding blocks
         for (int x = -1; x <= 1; x++) {
             for (int y = -1; y <= 1; y++) {
                 for (int z = -1; z <= 1; z++) {
-                    if (x == 0 && y == 0 && z == 0) continue; // 忽略中心方块
+                    if (x == 0 && y == 0 && z == 0) continue; // Ignore center block
                     Block nearby = world.getBlockAt(location.clone().add(x, y, z));
                     if (nearby.getType() == Material.AIR && nearby.getType() == Material.CAVE_AIR) {
                         airBlocks++;
@@ -69,18 +81,18 @@ public class MiningDetectionExtension implements Listener {
             }
         }
 
-        // 保存挖掘特征
+        // Preserve mine features
         UUID playerId = player.getUniqueId();
         MiningFeature currentFeature = new MiningFeature(airBlocks, solidBlocks);
         miningHistory.computeIfAbsent(playerId, k -> new ArrayList<>()).add(currentFeature);
 
-        // 保持历史记录的窗口大小为 5
+        // keep window size of history to 5
         List<MiningFeature> history = miningHistory.get(playerId);
         if (history.size() > 5) {
             history.remove(0);
         }
 
-        // 计算历史特征平均值
+        // Calculate historical feature averages
         int totalAir = 0, totalSolid = 0;
         for (MiningFeature feature : history) {
             totalAir += feature.airBlocks;
@@ -89,27 +101,27 @@ public class MiningDetectionExtension implements Listener {
         int averageAir = totalAir / history.size();
         int averageSolid = totalSolid / history.size();
 
-        // 根据特征趋势调整可疑值
+        // Adjust suspicious values based on feature trends
         int suspicionLevel = playerSuspicionMap.getOrDefault(playerId, 0);
         if (averageSolid >= 7 && averageAir <= 1) {
-            // 矿道模式（持续挖掘密集区域）
+            // road
             suspicionLevel += 5;
         } else if (averageAir >= 6) {
-            // 洞穴模式（空气比例较高）
+            // cave
             suspicionLevel -= 5;
         } else {
-            // 常规挖掘模式（不确定）
+            // normal
             suspicionLevel += 1;
         }
 
-        // 更新可疑值
+        // update suspicious values
         playerSuspicionMap.put(playerId, suspicionLevel);
 
-        // 输出调试信息
+        // Output debug info
         plugin.getLogger().info(player.getName() + " -> Air: " + averageAir + ", Solid: " + averageSolid + ", Suspicion: " + suspicionLevel);
     }
 
-    // 提供可疑值获取接口
+    // Interface to obtain suspicious values
     public int getSuspicionLevel(UUID playerId) {
         return playerSuspicionMap.getOrDefault(playerId, 0);
     }

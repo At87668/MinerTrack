@@ -128,10 +128,10 @@ public class MiningListener implements Listener {
     private boolean isPlayerPlacedBlock(Location blockLocation) {
         for (Set<Location> playerPlacedBlocks : placedOres.values()) {
             if (playerPlacedBlocks.contains(blockLocation)) {
-                return true; // 方块是由玩家放置的
+                return true; // Block is placed by player
             }
         }
-        return false; // 方块不是由玩家放置的
+        return false; // not placed by player
     }
     
     @EventHandler
@@ -139,7 +139,7 @@ public class MiningListener implements Listener {
         Entity entity = event.getEntity();
         Player sourcePlayer = null;
 
-        // 检查是否由玩家触发的 TNT 爆炸
+        // Check if the TNT explosion is triggered by player
         if (entity instanceof TNTPrimed tnt) {
             if (tnt.getSource() instanceof Player player) {
                 sourcePlayer = player;
@@ -149,18 +149,18 @@ public class MiningListener implements Listener {
                 sourcePlayer = player;
             }
         } else if (entity instanceof EnderCrystal || entity instanceof WitherSkull || entity instanceof Creeper) {
-            return; // 忽略非玩家控制的特殊爆炸
+            return; // Ignore special explosions that are not controlled by player
         }
 
         if (sourcePlayer != null) {
             UUID playerId = sourcePlayer.getUniqueId();
             List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
             long currentTime = System.currentTimeMillis();
-            int retentionTime = plugin.getConfig().getInt("xray.explosion.explosion_retention_time", 600) * 1000; // 默认10分钟
+            int retentionTime = plugin.getConfig().getInt("xray.explosion.explosion_retention_time", 600) * 1000; // Default 10 minutes
             int totalBlocks = 0;
             int rareOresCount = 0;
 
-            // 统计爆炸影响的方块数量和稀有矿物数量
+            // Count the number of blocks and rare ores affected by the explosion
             for (Block block : event.blockList()) {
             	Location blockLocation = block.getLocation();
             	if (isPlayerPlacedBlock(blockLocation)) {
@@ -174,14 +174,14 @@ public class MiningListener implements Listener {
                 }
             }
 
-            // 如果爆炸范围内没有方块，直接返回
+            // If there are no blocks within the blast range
             if (totalBlocks == 0) return;
 
-            // 计算稀有矿物命中率
+            // Calculate rare ore hit rates
             double hitRate = (double) rareOresCount / totalBlocks;
 
-            // 判断命中率是否异常
-            double suspiciousThreshold = plugin.getConfig().getDouble("xray.explosion.suspicious_hit_rate", 0.1); // 默认10%
+            // Determine whether the hit rate is abnormal
+            double suspiciousThreshold = plugin.getConfig().getDouble("xray.explosion.suspicious_hit_rate", 0.1); // Default 10%
             if (hitRate > suspiciousThreshold) {
                 handleSuspiciousExplosion(sourcePlayer, rareOresCount, hitRate);
             }
@@ -192,16 +192,16 @@ public class MiningListener implements Listener {
         UUID playerId = player.getUniqueId();
         int currentVL = violationLevel.getOrDefault(playerId, 0);
 
-        // 动态增加 VL，基于稀有矿物数量和命中率
+        // Dynamically increases VL, based on rare ore count and hit rate.
         int increaseAmount = calculateExplosionVLIncrease(rareOresCount, hitRate);
         violationLevel.put(playerId, currentVL + increaseAmount);
 
-        // 记录日志或发送警告
-        //plugin.getLogger().warning(player.getName() + " 的爆炸行为异常！稀有矿物数量: " + rareOresCount + "，命中率: " + String.format("%.2f%%", hitRate * 100) + " (VL 增加 " + increaseAmount + ")");
+        // send log
+        //plugin.getLogger().warning(player.getName() + " 's explosive behavior is abnormal! Ores: " + rareOresCount + ", Hit rate: " + String.format("%.2f%%", hitRate * 100) + " (VL added " + increaseAmount + ")");
     }
 
     private int calculateExplosionVLIncrease(int rareOresCount, double hitRate) {
-        // 基于矿物数量和命中率计算 VL 增长
+        // Calculate VL growth
         double baseRate = plugin.getConfig().getDouble("xray.explosion.base_vl_rate", 2.0);
         return (int) Math.ceil(rareOresCount * hitRate * baseRate);
     }
@@ -210,10 +210,10 @@ public class MiningListener implements Listener {
         long currentTime = System.currentTimeMillis();
         explosionExposedOres.entrySet().removeIf(entry -> currentTime > entry.getValue());
 
-        // plugin.getLogger().info("清理了过期的爆破记录。当前记录总数: " + explosionExposedOres.size());
+        // plugin.getLogger().info("Cleared expired blasting records. Total number of current records: " + explosionExposedOres.size());
     }
     
-    /* 过时的逻辑
+    /* Deprecated
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
         // Record all ore locations exposed by the explosion
@@ -285,7 +285,7 @@ public class MiningListener implements Listener {
         long currentTime = System.currentTimeMillis();
         int maxPathLength = plugin.getConfig().getInt("xray.max_path_length", 500);
 
-        // 初始化玩家挖矿路径信息
+        // Initialize player's mining path information
         miningPath.putIfAbsent(playerId, new HashMap<>());
         Map<String, List<Location>> worldPaths = miningPath.get(playerId);
         String worldName = blockLocation.getWorld().getName();
@@ -293,7 +293,7 @@ public class MiningListener implements Listener {
         worldPaths.putIfAbsent(worldName, new ArrayList<>());
         List<Location> path = worldPaths.get(worldName);
 
-        // 更新挖矿路径和时间
+        // Update mining path and time
         path.add(blockLocation);
         lastMiningTime.put(playerId, currentTime);
 
@@ -301,7 +301,7 @@ public class MiningListener implements Listener {
             path.remove(0);
         }
 
-        // 检测新矿脉
+        // Check new veins
         checkForArtificialAir(player, path);
         if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(path)) {
         	if (isNewVein(playerId, worldName, blockLocation, blockType)) {
@@ -319,7 +319,7 @@ public class MiningListener implements Listener {
 
     private void cleanupExpiredPaths() {
         long now = System.currentTimeMillis();
-        long traceBackLength = plugin.getConfigManager().traceBackLength(); // 获取回溯时间长度
+        long traceBackLength = plugin.getConfigManager().traceBackLength(); // Get the length of time to look back
 
         miningPath.forEach((playerId, paths) -> {
             paths.values().forEach(path -> path.removeIf(loc -> now - loc.getWorld().getTime() > traceBackLength));
@@ -327,26 +327,26 @@ public class MiningListener implements Listener {
     }
 
     private boolean isNewVein(UUID playerId, String worldName, Location location, Material oreType) {
-        // 获取玩家在当前世界的最后矿脉位置记录
+        // Gets a record of the player's last vein location in the current world
         Map<String, Location> lastLocations = lastVeinLocation.getOrDefault(playerId, new HashMap<>());
         Location lastLocation = lastLocations.get(worldName);
 
-        // 使用 isSameVein 判断是否为同一矿脉
+        // Determine whether it is the same vein
         if (lastLocation == null || !isSameVein(lastLocation, location, oreType)) {
-            // 更新该玩家在该世界的最后矿脉位置
+            // Update the player's last vein location in that world.
             lastLocations.put(worldName, location);
             lastVeinLocation.put(playerId, lastLocations);
-            return true; // 是新矿脉
+            return true; // is new
         }
 
-        return false; // 属于同一矿脉
+        return false; // is the same
     }
     
     private boolean isSameVein(Location loc1, Location loc2, Material type) {
         if (!loc1.getWorld().equals(loc2.getWorld())) return false;
         if (!loc2.getBlock().getType().equals(type)) return false;
 
-        double maxDistance = plugin.getConfigManager().getMaxVeinDistance(); // 增加可配置的矿脉距离
+        double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
         Set<Location> visited = new HashSet<>();
         Queue<Location> toVisit = new LinkedList<>();
         toVisit.add(loc1);
@@ -356,12 +356,12 @@ public class MiningListener implements Listener {
             if (visited.contains(current)) continue;
             visited.add(current);
 
-            // 检测是否与目标位置接近
+            // Detects proximity to the target location
             if (current.distance(loc2) <= maxDistance) {
                 return true;
             }
 
-            // 遍历邻接方块，包括直接邻接和角点
+            // Traverse adjacent blocks
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
@@ -383,7 +383,7 @@ public class MiningListener implements Listener {
             return 0; // 起始位置无效或矿物类型不匹配
         }
 
-        double maxDistance = plugin.getConfigManager().getMaxVeinDistance(); // 可配置的矿脉连通距离
+        double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
         Set<Location> visited = new HashSet<>();
         Queue<Location> toVisit = new LinkedList<>();
         toVisit.add(startLocation);

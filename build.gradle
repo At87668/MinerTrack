@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'link.star_dust'
-version '1.7.4'
+version '1.7.5'
 
 sourceCompatibility = 17
 
