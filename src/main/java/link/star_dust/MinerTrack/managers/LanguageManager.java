@@ -114,7 +114,7 @@ public class LanguageManager {
     }
 
     public int getLogViewerLinesPerPage() {
-        return languageConfig.getInt("log-viewer-lines-per-page", 20);
+        return languageConfig.getInt("log-viewer-lines-per-page", 10);
     }
 
     // Save only custom values

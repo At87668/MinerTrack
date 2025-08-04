@@ -55,10 +55,8 @@ public class LogViewerUtils {
     }
 
     public static int[] getPageRange(int totalLines, int page, int perPage) {
-        int start = totalLines - (page * perPage);
-        int end = totalLines - ((page - 1) * perPage);
-        start = Math.max(0, start);
-        end = Math.min(totalLines, end);
+        int start = (page - 1) * perPage;
+        int end = Math.min(start + perPage, totalLines);
         return new int[]{start, end};
     }
 }
