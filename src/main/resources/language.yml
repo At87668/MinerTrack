@@ -65,13 +65,14 @@ verbose-enable: '&7Verbose Mode &aEnabled&7!'
 verbose-disable: '&7Verbose Mode &cDisabled&7!'
 
 log-viewer-lines-per-page: 20
+log-viewer-header: "&7---- &9&lMiner&c&lTrack &bLogs &7({current_page}/{max_page}) ----"
+log-viewer-logs-color: "&7"
 log-viewer-not-found: "&cLog file {log_file} not found."
 log-viewer-not-log-file: "&cOnly can view log file."
 log-viewer-cant-read: "&cFailed to read logs."
 log-viewer-page-invalid: "&cPage number out of range (1 - {max_page})"
 log-viewer-page-nan: "&cPage number must be a number"
-log-viewer-next-page: "&6Use &a/mtrack logs page {page} &6to view next page."
-log-viewer-header: "---- MinerTrack Logs ({current_page}) ----"
+log-viewer-next-page: "&6Use &a/mtrack logs page {next_page} &6to view next page."
 log-viewer-empty: "&7No log entries to display."
 
 update:

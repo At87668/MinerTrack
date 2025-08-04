@@ -89,7 +89,7 @@ public class LanguageManager {
         return getPrefix() + " " + applyColors(getMessage(key));
     }
 
-    private String getMessage(String path) {
+    public String getMessage(String path) {
         return languageConfig.getString(path);
     }
 
