@@ -267,7 +267,7 @@ public class MinerTrackCommand implements CommandExecutor, TabCompleter {
         int[] range = LogViewerUtils.getPageRange(totalLines, page, perPage);
         int start = range[0];
         int end = range[1];
-        String header = plugin.getLanguageManager().getPrefixedMessage("log-viewer-header")
+        String header = plugin.getLanguageManager().getMessage("log-viewer-header")
             .replace("{current_page}", page + "/" + totalPages)
             .replace("{log_file}", cache.logName);
         sender.sendMessage(header);
@@ -276,16 +276,12 @@ public class MinerTrackCommand implements CommandExecutor, TabCompleter {
             return;
         }
         for (int i = start; i < end; i++) {
-            sender.sendMessage(cache.lines.get(i));
+            sender.sendMessage("" + cache.lines.get(i));
         }
 
-        if (page > 1 && page != totalPages) {
-            sender.sendMessage("");
-            sender.sendMessage(plugin.getLanguageManager().getPrefixedMessage("log-viewer-next-page").replace("{page}", String.valueOf(page - 1)));
-        }
         if (page < totalPages) {
             sender.sendMessage("");
-            sender.sendMessage(plugin.getLanguageManager().getPrefixedMessage("log-viewer-next-page").replace("{page}", String.valueOf(page + 1)));
+            sender.sendMessage(plugin.getLanguageManager().getMessage("log-viewer-next-page").replace("{page}", String.valueOf(page + 1)));
         }
     }
 
