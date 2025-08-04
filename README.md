@@ -44,7 +44,7 @@ Look what users have to say:
 
 <details>
 <summary>Assessments</summary>
-  
+
 ![Assessment 1](https://cdn.modrinth.com/data/O3VQnhG2/images/732fb5912dc2ae4049631d1acd2e71acb5a58227.png)
 
 ![Assessment 2](https://cdn.modrinth.com/data/O3VQnhG2/images/8c9ccc951e5baf6a4181154f499a0fab30749a74.png)
@@ -71,6 +71,7 @@ Look what users have to say:
 - `/mtrack kick <player> <reason>` - Kick a player with a specific reason
 - `/mtrack reload` - Reload the plugin’s configuration
 - `/mtrack update` - Check for plugin updates
+- `/mtrack logs <log name.log>` - View a MinerTrack log file
 
 ![Image](./Images/Permissions.png)
 
@@ -80,6 +81,7 @@ Look what users have to say:
 - `minertrack.use` - Access the root command `/mtrack`
 - `minertrack.check` - Use `/mtrack check`
 - `minertrack.kick` - Use `/mtrack kick`
+- `minertrack.logs` - Use `/mtrack logs`
 - `minertrack.help` - Use `/mtrack help`
 - `minertrack.reset` - Use `/mtrack reset`
 - `minertrack.sendnotify` - Use `/mtrack notify`

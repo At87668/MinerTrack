@@ -42,7 +42,7 @@
 
 <details>
 <summary>评价</summary>
-  
+
 ![Assessment 1](https://cdn.modrinth.com/data/O3VQnhG2/images/732fb5912dc2ae4049631d1acd2e71acb5a58227.png)
 
 ![Assessment 2](https://cdn.modrinth.com/data/O3VQnhG2/images/8c9ccc951e5baf6a4181154f499a0fab30749a74.png)
@@ -71,6 +71,7 @@
 * `/mtrack kick <玩家> <理由>` - 踢出玩家并说明原因
 * `/mtrack reload` - 重新加载插件配置
 * `/mtrack update` - 检查插件更新
+* `/mtrack logs <日志名.log>` - 查看 MinerTrack 生成的日志文件
 
 ---
 
@@ -82,6 +83,7 @@
 * `minertrack.use` - 使用 `/mtrack` 根命令
 * `minertrack.check` - 使用 `/mtrack check`
 * `minertrack.kick` - 使用 `/mtrack kick`
+* `minertrack.logs` - 使用 `/mtrack logs`
 * `minertrack.help` - 使用 `/mtrack help`
 * `minertrack.reset` - 使用 `/mtrack reset`
 * `minertrack.sendnotify` - 使用 `/mtrack notify`
