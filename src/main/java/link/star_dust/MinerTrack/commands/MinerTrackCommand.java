@@ -268,8 +268,8 @@ public class MinerTrackCommand implements CommandExecutor, TabCompleter {
         int start = range[0];
         int end = range[1];
         String header = plugin.getLanguageManager().getMessage("log-viewer-header")
-            .replace("{current_page}", getString(page))
-            .replace("{max_page}", totalPages)
+            .replace("{current_page}", String.valueOf(page))
+            .replace("{max_page}", String.valueOf(totalPages))
             .replace("{log_file}", cache.logName);
         sender.sendMessage(header);
         if (start >= end) {
