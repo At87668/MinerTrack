@@ -93,6 +93,10 @@ public class LanguageManager {
         return languageConfig.getString(path);
     }
 
+    public String getColoredMessage(String path) {
+        return applyColors(languageConfig.getString(path));
+    }
+
     public String applyColors(String message) {
         return ChatColor.translateAlternateColorCodes('&', message);
     }
