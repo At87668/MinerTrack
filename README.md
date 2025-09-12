@@ -101,7 +101,7 @@ Look what users have to say:
 
 ![Image](./Images/Support.png)
 
-If you encounter any issues or have suggestions for new features, feel free to reach out via SpigotMC or open an issue on the plugin’s GitHub repository.
+If you encounter any issues or have suggestions for new features, feel free to reach out via Discord or open an issue on the plugin’s GitHub repository.
 
 
 
