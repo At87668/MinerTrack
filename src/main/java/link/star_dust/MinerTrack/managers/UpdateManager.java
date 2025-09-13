@@ -12,9 +12,14 @@
 package link.star_dust.MinerTrack.managers;
 
 import link.star_dust.MinerTrack.MinerTrack;
+import net.md_5.bungee.api.chat.BaseComponent;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -25,29 +30,30 @@ import java.net.URL;
 
 public class UpdateManager {
     private final MinerTrack plugin;
-	private boolean isHasNewerVersion;
-	private String latestVersion;
-	private String currentVersion;
+    private boolean isHasNewerVersion;
+    private String latestVersion;
+    private String currentVersion;
+    private String downloadUrl;
 
     public UpdateManager(MinerTrack plugin) {
         this.plugin = plugin;
+        this.currentVersion = plugin.getDescription().getVersion();
+
         if (plugin.getConfigManager().updateCheck()) {
-        	latestVersion = getLatestVersionFromSpigot();
-      	} else {
-      		latestVersion = "0.0.0";
-      	}
-        
-        currentVersion = plugin.getDescription().getVersion();
-        
-        if(isNewerVersion(latestVersion, currentVersion)) {
-        	isHasNewerVersion = true;
+            fetchLatestVersionFromModrinth();
         } else {
-        	isHasNewerVersion = false;
+            latestVersion = "0.0.0";
+        }
+
+        if (isNewerVersion(latestVersion, currentVersion)) {
+            isHasNewerVersion = true;
+        } else {
+            isHasNewerVersion = false;
         }
     }
 
     public void checkForUpdates(CommandSender sender) {
-        latestVersion = getLatestVersionFromSpigot();
+        fetchLatestVersionFromModrinth();
 
         if (latestVersion == null) {
             String errorMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(
@@ -69,40 +75,73 @@ public class UpdateManager {
         }
     }
 
-    private boolean isNewerVersion(String latestVersion, String currentVersion) {
-    	if (latestVersion == null) {
-    		String errorMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(
-                    "update.check-failed",
-                    "&cFailed to check for updates."
-                );
-    		sendMessage(null, errorMessage);
-    		return false;
-    	} else {
-    		String latest = latestVersion.split("-")[0];
-    		String current = currentVersion.split("-")[0];
+    private void fetchLatestVersionFromModrinth() {
+        try {
+            URL url = new URL("https://api.modrinth.com/v2/project/minertrack/version");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "MinerTrack Update Checker");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
 
-    		String[] latestParts = latest.split("\\.");
-    		String[] currentParts = current.split("\\.");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
 
-    		for (int i = 0; i < Math.max(latestParts.length, currentParts.length); i++) {
-    			int latestPart = i < latestParts.length ? Integer.parseInt(latestParts[i]) : 0;
-    			int currentPart = i < currentParts.length ? Integer.parseInt(currentParts[i]) : 0;
-    			if (latestPart > currentPart) {
-    				return true;
-    			} else if (latestPart < currentPart) {
-    				return false;
-    			}
-    		}
-    	}
+            while ((line = reader.readLine()) != null) {
+                response.append(line);
+            }
+            reader.close();
 
-    	return false;
+            JSONArray versions = new JSONArray(response.toString());
+            if (versions.length() > 0) {
+                JSONObject latest = versions.getJSONObject(0);
+                this.latestVersion = latest.getString("version_number");
+                JSONArray files = latest.getJSONArray("files");
+                if (files.length() > 0) {
+                    this.downloadUrl = files.getJSONObject(0).getString("url");
+                } else {
+                    this.downloadUrl = "https://modrinth.com/plugin/minertrack";
+                }
+            } else {
+                plugin.getLogger().warning("No versions found on Modrinth.");
+                this.latestVersion = null;
+            }
+
+        } catch (IOException | org.json.JSONException e) {
+            plugin.getLogger().warning("Failed to check for updates from Modrinth: " + e.getMessage());
+            this.latestVersion = null;
+            this.downloadUrl = null;
+        }
     }
-    
+
+    private boolean isNewerVersion(String latestVersion, String currentVersion) {
+        if (latestVersion == null) {
+            return false;
+        }
+
+        String latest = latestVersion.split("-")[0];
+        String current = currentVersion.split("-")[0];
+
+        String[] latestParts = latest.split("\\.");
+        String[] currentParts = current.split("\\.");
+
+        for (int i = 0; i < Math.max(latestParts.length, currentParts.length); i++) {
+            int latestPart = i < latestParts.length ? Integer.parseInt(latestParts[i]) : 0;
+            int currentPart = i < currentParts.length ? Integer.parseInt(currentParts[i]) : 0;
+            if (latestPart > currentPart) {
+                return true;
+            } else if (latestPart < currentPart) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     public boolean isHasNewerVersion() {
         return isHasNewerVersion;
     }
-    
-    private String updateMessage;
 
     private void sendUpdateMessage(CommandSender sender, String latestVersion) {
         String messageKey;
@@ -123,14 +162,65 @@ public class UpdateManager {
             defaultMessage = "&aNew stable version %latest_version% now available!";
         }
 
-        String updateMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(messageKey, defaultMessage)
+        String baseMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(messageKey, defaultMessage)
                 .replace("%latest_version%", latestVersion);
 
-        sendMessage(sender, updateMessage);
+        TextComponent component = new TextComponent(plugin.getLanguageManager().applyColors(baseMessage));
+        if (downloadUrl != null) {
+            component.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, downloadUrl));
+            component.setHoverEvent(new HoverEvent(
+                HoverEvent.Action.SHOW_TEXT,
+                new TextComponent[] {
+                    new TextComponent(plugin.getLanguageManager().applyColors("&f" + latestVersion + ": " + downloadUrl))
+                }
+            ));
+        }
+
+        if (sender instanceof Player) {
+            ((Player) sender).spigot().sendMessage(component);
+        } else {
+            Bukkit.getConsoleSender().sendMessage(plugin.getLanguageManager().applyColors(baseMessage));
+        }
     }
-    
-    public String updateMessageOnPlayerJoin() {
-    	return updateMessage;
+
+    public BaseComponent[] getUpdateMessageComponent() {
+        if (!isHasNewerVersion || latestVersion == null) {
+            return null;
+        }
+
+        String messageKey;
+        if (latestVersion.contains("-beta")) {
+            messageKey = "update.beta-available";
+        } else if (latestVersion.contains("-alpha")) {
+            messageKey = "update.alpha-available";
+        } else {
+            messageKey = "update.stable-available";
+        }
+
+        String defaultMessage;
+        if (latestVersion.contains("-beta")) {
+            defaultMessage = "&eNew beta version %latest_version% now available!";
+        } else if (latestVersion.contains("-alpha")) {
+            defaultMessage = "&cNew alpha version %latest_version% now available!";
+        } else {
+            defaultMessage = "&aNew stable version %latest_version% now available!";
+        }
+
+        String baseMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(messageKey, defaultMessage)
+                .replace("%latest_version%", latestVersion);
+
+        TextComponent component = new TextComponent(plugin.getLanguageManager().applyColors(baseMessage));
+        if (downloadUrl != null) {
+            component.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, downloadUrl));
+            component.setHoverEvent(new HoverEvent(
+                HoverEvent.Action.SHOW_TEXT,
+                new TextComponent[] {
+                    new TextComponent(plugin.getLanguageManager().applyColors("&f" + latestVersion + ": " + downloadUrl))
+                }
+            ));
+        }
+
+        return new BaseComponent[]{component};
     }
 
     private void sendMessage(CommandSender sender, String message) {
@@ -138,37 +228,7 @@ public class UpdateManager {
         if (sender != null) {
             sender.sendMessage(coloredMessage);
         } else {
-            // Send to console if sender is null
             Bukkit.getConsoleSender().sendMessage(coloredMessage);
         }
     }
-
-    private String getLatestVersionFromSpigot() {
-        try {
-            URL url = new URL("https://api.spigotmc.org/simple/0.2/index.php?action=getResource&id=120562");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            StringBuilder response = new StringBuilder();
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-            reader.close();
-
-            JSONObject jsonResponse = new JSONObject(response.toString());
-            return jsonResponse.getString("current_version");
-
-        } catch (IOException | org.json.JSONException e) {
-            plugin.getLogger().warning("Failed to check for updates: " + e.getMessage());
-            return null;
-        }
-    }
 }
-
-
-

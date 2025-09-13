@@ -41,6 +41,7 @@ import link.star_dust.MinerTrack.managers.ConfigManager;
 import link.star_dust.MinerTrack.managers.LanguageManager;
 import link.star_dust.MinerTrack.managers.UpdateManager;
 import link.star_dust.MinerTrack.managers.ViolationManager;
+import net.md_5.bungee.api.chat.BaseComponent;
 import link.star_dust.MinerTrack.listeners.MiningDetectionExtension;
 import link.star_dust.MinerTrack.listeners.MiningListener;
 import link.star_dust.MinerTrack.listeners.LogCacheListener;
@@ -191,7 +192,10 @@ public class MinerTrack extends JavaPlugin implements Listener {
         Player player = event.getPlayer();
 
         if (player.hasPermission("minertrack.checkupdate") && updateManager.isHasNewerVersion()) {
-        	player.sendMessage(updateManager.updateMessageOnPlayerJoin());  // Call UpdateManager for player-specific check
+        	BaseComponent[] updateComponent = updateManager.getUpdateMessageComponent();
+            if (updateComponent != null) {
+                player.spigot().sendMessage(updateComponent);
+            }  // Call UpdateManager for player-specific check
             //updateManager.checkForUpdates(player);
         }
     }

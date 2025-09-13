@@ -20,12 +20,15 @@
 prefix: '&8[&9&lMiner&c&lTrack&8]&r '
 
 # Define the announcement message after the player is kicked out by anti-xraying
+# Placeholders: %player% %reason%
 kick-format: '&b%player% &7kicked out of the server for allegedly using X-Ray! &8(%reason%)'
 
 # Define the verbose message format
+# Placeholders: %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
 verbose-format: '&7%player% failed &fX-Ray &7check &7VL:%vl%&b(+%add_vl%) &7Block:&6%block_type%&ex%count%&7(Vein&ax%vein_count%&7) &7World: %world% Pos: X%pos_x% Y%pos_y% Z%pos_z%'
 
 # Define the log format
+# Placeholders: %year% %month% %day% %hour% %minute% %second% %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
 log-format: '%year%-%month%-%day% %hour%:%minute%:%second% | %player% failed X-Ray check VL:%vl%(+%add_vl%) Block:%block_type%x%count%(Veinx%vein_count%) World: %world% Pos: X%pos_x% Y%pos_y% Z%pos_z%'
 
 # Should MinerTrack broadcast a message when a player is kicked?
@@ -41,7 +44,7 @@ help:
   - "&f/mtrack help &7- Get plugin's help"
   - "&f/mtrack update &7- Check update"
   - "&f/mtrack kick <player> <reason> &7- Kick the player with a specified reason"
-  - '&f/mtrack logs <log name.log> &7- View a MinerTrack log file'
+  - "&f/mtrack logs <log name.log> &7- View a MinerTrack log file"
   
 no-permission: "&cYou do not have permission to use this command."
 
@@ -51,19 +54,23 @@ usage-reset: "&cUsage: /mtrack reset <player>"
 usage-kick: "&cUsage: /mtrack kick <player> <reason>"
 usage-logs: "&cUsage: /mtrack logs <log name.log>"
 
+# Placeholders: {player}
 reset-success: "&aSuccessfully reset {player}'s violation record."
 
+# Placeholders: {player} {level}
 violation-level: "&e{player}'s violation level is {level}."
 
+# Placeholders: {player}
 player-not-found: "&cPlayer {player} not found."
 
 config-reloaded: "&aConfiguration and Language reloaded successfully."
 
 unknown-command: "&cUnknown subcommand. Use /mtrack help for a list of commands."
 
-verbose-enable: '&7Verbose Mode &aEnabled&7!'
-verbose-disable: '&7Verbose Mode &cDisabled&7!'
+verbose-enable: "&7Verbose Mode &aEnabled&7!"
+verbose-disable: "&7Verbose Mode &cDisabled&7!"
 
+# Placeholders: {current_page} {max_page} {log_file} {next_page}
 log-viewer-lines-per-page: 10
 log-viewer-header: "&7---- &9&lMiner&c&lTrack &bLogs &7({current_page}/{max_page}) ----"
 log-viewer-logs-color: "&7"
@@ -75,6 +82,7 @@ log-viewer-page-nan: "&cPage number must be a number"
 log-viewer-next-page: "&6Use &a/mtrack logs page {next_page} &6to view next page."
 log-viewer-empty: "&7No log entries to display."
 
+# Placeholders: %latest_version%
 update:
   alpha-available: '&cNew alpha version %latest_version% now available!'
   beta-available: '&eNew beta version %latest_version% now available!'

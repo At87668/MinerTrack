@@ -30,6 +30,7 @@ delete_time: 30
 disable_bypass_permission: false
 
 # Discord WebHook
+# Placeholders: %player% %player_uuid% %player_vl% %ore_type% %ore_count% %mined_veins% %pos_x% %pos_y% %pos_z% %timestamp%
 DiscordWebHook:
   enable: false
   WebHookURL: ''
