@@ -120,3 +120,7 @@
 * **加入 Discord**: [https://discord.gg/MzTea2W9cb](https://discord.gg/MzTea2W9cb)
 
 [![bStats](https://bstats.org/signatures/bukkit/MinerTrack.svg)](https://bstats.org/plugin/bukkit/MinerTrack/23790)
+
+---
+
+[![Try EthernetServers](./Images/Try EthernetServers.png)](https://www.ethernetservers.com/aff.php?aff=2696)
