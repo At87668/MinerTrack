@@ -123,4 +123,4 @@
 
 ---
 
-[![Try EthernetServers](./Images/Try EthernetServers.png)](https://www.ethernetservers.com/aff.php?aff=2696)
+[![Try EthernetServers](./Images/TryEthernetServers.png)](https://www.ethernetservers.com/aff.php?aff=2696)

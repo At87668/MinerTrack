@@ -121,6 +121,6 @@ If you encounter any issues or have suggestions for new features, feel free to r
 
 ---
 
-[![Try EthernetServers](./Images/Try EthernetServers.png)](https://www.ethernetservers.com/aff.php?aff=2696)
+[![Try EthernetServers](./Images/TryEthernetServers.png)](https://www.ethernetservers.com/aff.php?aff=2696)
 
 ### *If you like this plugin, don’t forget to give a 5-star rating!*
