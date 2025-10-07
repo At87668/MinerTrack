@@ -56,6 +56,7 @@ public class ConfigManager {
     private void mergeConfigurations(ConfigurationSection currentConfig, ConfigurationSection defaultConfig, String currentPath) {
     	Set<String> whitelistKeys = Set.of(
     		    "check_update",
+    		    "check_update_channel",
     		    "kick_strike_lightning",
     		    "log_file",
     		    "delete_time",
@@ -284,6 +285,10 @@ public class ConfigManager {
     
     public boolean updateCheck() {
         return config.getBoolean("check_update", true);
+    }
+    
+    public String updateCheckChannel() {
+    	return config.getString("check_update_channel", "stable");
     }
 
 	public int getSuspicionThreshold() {

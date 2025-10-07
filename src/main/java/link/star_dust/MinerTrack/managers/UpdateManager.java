@@ -30,9 +30,8 @@ import java.net.URL;
 
 public class UpdateManager {
     private final MinerTrack plugin;
-    private boolean isHasNewerVersion;
     private String latestVersion;
-    private String currentVersion;
+    private final String currentVersion;
     private String downloadUrl;
 
     public UpdateManager(MinerTrack plugin) {
@@ -42,13 +41,7 @@ public class UpdateManager {
         if (plugin.getConfigManager().updateCheck()) {
             fetchLatestVersionFromModrinth();
         } else {
-            latestVersion = "0.0.0";
-        }
-
-        if (isNewerVersion(latestVersion, currentVersion)) {
-            isHasNewerVersion = true;
-        } else {
-            isHasNewerVersion = false;
+            this.latestVersion = null;
         }
     }
 
@@ -64,7 +57,7 @@ public class UpdateManager {
             return;
         }
 
-        if (isHasNewerVersion()) {
+        if (shouldConsiderAsUpdate(latestVersion, currentVersion)) {
             sendUpdateMessage(sender, latestVersion);
         } else {
             String upToDateMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(
@@ -97,15 +90,11 @@ public class UpdateManager {
             if (versions.length() > 0) {
                 JSONObject latest = versions.getJSONObject(0);
                 this.latestVersion = latest.getString("version_number");
-                JSONArray files = latest.getJSONArray("files");
-                if (files.length() > 0) {
-                    this.downloadUrl = files.getJSONObject(0).getString("url");
-                } else {
-                    this.downloadUrl = "https://modrinth.com/plugin/minertrack";
-                }
+                this.downloadUrl = "https://modrinth.com/plugin/minertrack/version/" + this.latestVersion;
             } else {
                 plugin.getLogger().warning("No versions found on Modrinth.");
                 this.latestVersion = null;
+                this.downloadUrl = null;
             }
 
         } catch (IOException | org.json.JSONException e) {
@@ -115,34 +104,204 @@ public class UpdateManager {
         }
     }
 
-    private boolean isNewerVersion(String latestVersion, String currentVersion) {
-        if (latestVersion == null) {
+    private boolean shouldConsiderAsUpdate(String latestVersion, String currentVersion) {
+        if (latestVersion == null || currentVersion == null) {
             return false;
         }
 
-        String latest = latestVersion.split("-")[0];
-        String current = currentVersion.split("-")[0];
+        String channel = plugin.getConfigManager().updateCheckChannel().toLowerCase();
+        Version latest = parseVersion(latestVersion);
+        Version current = parseVersion(currentVersion);
 
-        String[] latestParts = latest.split("\\.");
-        String[] currentParts = current.split("\\.");
+        int mainCompare = compareVersionNumbers(latest.mainParts, current.mainParts);
+        if (mainCompare < 0) {
+            return false;
+        }
+        if (mainCompare > 0) {
+            return isVersionAllowedByChannel(latest, channel);
+        }
 
-        for (int i = 0; i < Math.max(latestParts.length, currentParts.length); i++) {
-            int latestPart = i < latestParts.length ? Integer.parseInt(latestParts[i]) : 0;
-            int currentPart = i < currentParts.length ? Integer.parseInt(currentParts[i]) : 0;
-            if (latestPart > currentPart) {
-                return true;
-            } else if (latestPart < currentPart) {
-                return false;
+        if (latest.preReleaseTag == null && current.preReleaseTag == null) {
+            return false;
+        }
+
+        if (latest.preReleaseTag == null && current.preReleaseTag != null) {
+            return isVersionAllowedByChannel(latest, channel);
+        }
+
+        if (latest.preReleaseTag != null) {
+            if (latest.isNewerPreReleaseThan(current)) {
+                return isVersionAllowedByChannel(latest, channel);
             }
         }
 
         return false;
     }
 
-    public boolean isHasNewerVersion() {
-        return isHasNewerVersion;
+    private boolean isVersionAllowedByChannel(Version version, String channel) {
+        if (version.preReleaseTag == null) {
+            return true;
+        }
+
+        String tag = version.preReleaseTag.toLowerCase();
+        if ("alpha".equals(channel)) {
+            return true;
+        } else if ("beta".equals(channel)) {
+            return tag.startsWith("beta");
+        } else { // stable or unknown
+            return false;
+        }
     }
 
+    private static class Version {
+        final int[] mainParts;
+        final String preReleaseTag;
+
+        Version(int[] mainParts, String preReleaseTag) {
+            this.mainParts = mainParts;
+            this.preReleaseTag = preReleaseTag;
+        }
+
+        boolean isNewerPreReleaseThan(Version other) {
+            boolean thisStable = this.preReleaseTag == null;
+            boolean otherStable = other.preReleaseTag == null;
+
+            if (thisStable && !otherStable) return true;
+            if (!thisStable && otherStable) return false;
+            if (thisStable && otherStable) return false;
+
+            return comparePreRelease(this.preReleaseTag, other.preReleaseTag) > 0;
+        }
+    }
+
+    private Version parseVersion(String versionStr) {
+        versionStr = versionStr.replaceFirst("^v", "");
+        String[] parts = versionStr.split("-", 2);
+        String main = parts[0];
+        String pre = parts.length > 1 ? parts[1] : null;
+
+        String[] mainSplit = main.split("\\.");
+        int[] mainParts = new int[mainSplit.length];
+        for (int i = 0; i < mainSplit.length; i++) {
+            mainParts[i] = parsePositiveInt(mainSplit[i], 0);
+        }
+
+        return new Version(mainParts, pre);
+    }
+
+    private int compareVersionNumbers(int[] a, int[] b) {
+        int len = Math.max(a.length, b.length);
+        for (int i = 0; i < len; i++) {
+            int va = i < a.length ? a[i] : 0;
+            int vb = i < b.length ? b[i] : 0;
+            if (va != vb) {
+                return Integer.compare(va, vb);
+            }
+        }
+        return 0;
+    }
+
+    private static int comparePreRelease(String a, String b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+
+        String aLower = a.toLowerCase();
+        String bLower = b.toLowerCase();
+
+        boolean aIsAlpha = aLower.startsWith("alpha");
+        boolean aIsBeta = aLower.startsWith("beta");
+        boolean bIsAlpha = bLower.startsWith("alpha");
+        boolean bIsBeta = bLower.startsWith("beta");
+
+        if (aIsBeta && bIsAlpha) return 1;
+        if (aIsAlpha && bIsBeta) return -1;
+        if ((aIsBeta || aIsAlpha) != (bIsBeta || bIsAlpha)) {
+            return a.compareTo(b); // fallback
+        }
+
+        int numA = extractNumericSuffix(a);
+        int numB = extractNumericSuffix(b);
+        if (numA != numB) {
+            return Integer.compare(numA, numB);
+        }
+        return a.compareTo(b); // fallback
+    }
+
+    private static int extractNumericSuffix(String tag) {
+        String[] parts = tag.split("[^0-9]+");
+        for (int i = parts.length - 1; i >= 0; i--) {
+            if (!parts[i].isEmpty()) {
+                try {
+                    return Integer.parseInt(parts[i]);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        return 0;
+    }
+
+    private static int parsePositiveInt(String str, int defaultValue) {
+        try {
+            int val = Integer.parseInt(str.trim());
+            return val >= 0 ? val : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    public boolean isHasNewerVersion() {
+        return latestVersion != null && shouldConsiderAsUpdate(latestVersion, currentVersion);
+    }
+
+    public BaseComponent[] getUpdateMessageComponent() {
+        if (latestVersion == null || !shouldConsiderAsUpdate(latestVersion, currentVersion)) {
+            return null;
+        }
+
+        String messageKey;
+        if (latestVersion.contains("-beta")) {
+            messageKey = "update.beta-available";
+        } else if (latestVersion.contains("-alpha")) {
+            messageKey = "update.alpha-available";
+        } else {
+            messageKey = "update.stable-available";
+        }
+
+        String defaultMessage;
+        if (latestVersion.contains("-beta")) {
+            defaultMessage = "&eNew beta version %latest_version% now available!";
+        } else if (latestVersion.contains("-alpha")) {
+            defaultMessage = "&cNew alpha version %latest_version% now available!";
+        } else {
+            defaultMessage = "&aNew stable version %latest_version% now available!";
+        }
+
+        String baseMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(messageKey, defaultMessage)
+                .replace("%latest_version%", latestVersion);
+
+        TextComponent component = new TextComponent(plugin.getLanguageManager().applyColors(baseMessage));
+        if (downloadUrl != null) {
+            component.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, downloadUrl));
+            component.setHoverEvent(new HoverEvent(
+                HoverEvent.Action.SHOW_TEXT,
+                new BaseComponent[] {
+                    new TextComponent(plugin.getLanguageManager().applyColors("&f" + latestVersion + ": " + downloadUrl))
+                }
+            ));
+        }
+
+        return new BaseComponent[]{component};
+    }
+
+    private void sendMessage(CommandSender sender, String message) {
+        String coloredMessage = plugin.getLanguageManager().applyColors(message);
+        if (sender != null) {
+            sender.sendMessage(coloredMessage);
+        } else {
+            Bukkit.getConsoleSender().sendMessage(coloredMessage);
+        }
+    }
+    
     private void sendUpdateMessage(CommandSender sender, String latestVersion) {
         String messageKey;
         if (latestVersion.contains("-beta")) {
@@ -180,55 +339,6 @@ public class UpdateManager {
             ((Player) sender).spigot().sendMessage(component);
         } else {
             Bukkit.getConsoleSender().sendMessage(plugin.getLanguageManager().applyColors(baseMessage));
-        }
-    }
-
-    public BaseComponent[] getUpdateMessageComponent() {
-        if (!isHasNewerVersion || latestVersion == null) {
-            return null;
-        }
-
-        String messageKey;
-        if (latestVersion.contains("-beta")) {
-            messageKey = "update.beta-available";
-        } else if (latestVersion.contains("-alpha")) {
-            messageKey = "update.alpha-available";
-        } else {
-            messageKey = "update.stable-available";
-        }
-
-        String defaultMessage;
-        if (latestVersion.contains("-beta")) {
-            defaultMessage = "&eNew beta version %latest_version% now available!";
-        } else if (latestVersion.contains("-alpha")) {
-            defaultMessage = "&cNew alpha version %latest_version% now available!";
-        } else {
-            defaultMessage = "&aNew stable version %latest_version% now available!";
-        }
-
-        String baseMessage = plugin.getLanguageManager().getPrefixedMessageWithDefault(messageKey, defaultMessage)
-                .replace("%latest_version%", latestVersion);
-
-        TextComponent component = new TextComponent(plugin.getLanguageManager().applyColors(baseMessage));
-        if (downloadUrl != null) {
-            component.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, downloadUrl));
-            component.setHoverEvent(new HoverEvent(
-                HoverEvent.Action.SHOW_TEXT,
-                new TextComponent[] {
-                    new TextComponent(plugin.getLanguageManager().applyColors("&f" + latestVersion + ": " + downloadUrl))
-                }
-            ));
-        }
-
-        return new BaseComponent[]{component};
-    }
-
-    private void sendMessage(CommandSender sender, String message) {
-        String coloredMessage = plugin.getLanguageManager().applyColors(message);
-        if (sender != null) {
-            sender.sendMessage(coloredMessage);
-        } else {
-            Bukkit.getConsoleSender().sendMessage(coloredMessage);
         }
     }
 }
