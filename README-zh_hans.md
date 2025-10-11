@@ -123,4 +123,4 @@
 
 ---
 
-### *如果您想要支持我的工作, 可以订阅我的 [Patreon](https://www.patreon.com/Author87668) 会员资格.*
+### *如果您想要支持我的工作, 可以订阅我的 [Patreon](https://www.patreon.com/Author87668/join) 会员资格.*

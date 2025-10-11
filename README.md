@@ -121,4 +121,4 @@ If you encounter any issues or have suggestions for new features, feel free to r
 
 ---
 
-### *If you want to support my work, you can subscribe my [Patreon](https://www.patreon.com/Author87668) membership.*
+### *If you want to support my work, you can subscribe my [Patreon](https://www.patreon.com/Author87668/join) membership.*
