@@ -50,7 +50,8 @@ public class MiningListener implements Listener {
     private final Map<UUID, Map<String, Location>> lastVeinLocation = new HashMap<>();
     // Keep the last detected vein cluster (set of locations) per player per world
     private final Map<UUID, Map<String, Set<Location>>> lastVeinClusters = new HashMap<>();
-    private final Map<UUID, Set<Location>> placedOres = new HashMap<>();
+    // store placed ore locations along with the timestamp (epoch ms) when they were placed
+    private final Map<UUID, Map<Location, Long>> placedOres = new HashMap<>();
     private final Map<Location, Long> explosionExposedOres = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
     private final Map<UUID, Integer> airViolationLevel = new HashMap<>();
@@ -122,18 +123,37 @@ public class MiningListener implements Listener {
         List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
 
         if (rareOres.contains(blockType.name())) {
-            placedOres.putIfAbsent(playerId, new HashSet<>());
-            placedOres.get(playerId).add(event.getBlock().getLocation());
+            placedOres.putIfAbsent(playerId, new HashMap<>());
+            // store the placement time as current epoch ms
+            placedOres.get(playerId).put(event.getBlock().getLocation(), System.currentTimeMillis());
         }
     }
     
     private boolean isPlayerPlacedBlock(Location blockLocation) {
-        for (Set<Location> playerPlacedBlocks : placedOres.values()) {
-            if (playerPlacedBlocks.contains(blockLocation)) {
-                return true; // Block is placed by player
+        long now = System.currentTimeMillis();
+        long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L; // minutes -> ms
+
+        // Iterate each player's placed map and check timestamp; remove expired entries on the fly
+        List<UUID> emptyOwners = new ArrayList<>();
+        for (Map.Entry<UUID, Map<Location, Long>> entry : placedOres.entrySet()) {
+            UUID owner = entry.getKey();
+            Map<Location, Long> map = entry.getValue();
+            Long placedAt = map.get(blockLocation);
+            if (placedAt != null) {
+                if (now - placedAt <= expirationTime) {
+                    return true; // still within retention window
+                } else {
+                    // expired, remove this location record
+                    map.remove(blockLocation);
+                }
             }
+            if (map.isEmpty()) emptyOwners.add(owner);
         }
-        return false; // not placed by player
+
+        // Clean up empty owner maps
+        for (UUID id : emptyOwners) placedOres.remove(id);
+
+        return false; // not placed by player (or entry expired)
     }
     
     @EventHandler
@@ -322,10 +342,51 @@ public class MiningListener implements Listener {
     private void cleanupExpiredPaths() {
         long now = System.currentTimeMillis();
         long traceBackLength = plugin.getConfigManager().traceBackLength(); // Get the length of time to look back
+        // Prefer to use lastMiningTime (epoch ms) when available to decide expiry.
+        // If a player's last mining time is older than the traceBackLength, clear their stored paths.
+        Set<UUID> playersToClear = new HashSet<>();
+        for (Map.Entry<UUID, Map<String, List<Location>>> entry : miningPath.entrySet()) {
+            UUID playerId = entry.getKey();
+            Map<String, List<Location>> paths = entry.getValue();
+            long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
 
-        miningPath.forEach((playerId, paths) -> {
-            paths.values().forEach(path -> path.removeIf(loc -> now - loc.getWorld().getTime() > traceBackLength));
-        });
+            if (lastTime > 0 && now - lastTime > traceBackLength) {
+                // Player hasn't mined within the retention window: clear stored paths for them.
+                playersToClear.add(playerId);
+            } else {
+                // No reliable per-location timestamp available, fall back to pruning by lastMiningTime if present.
+                paths.values().forEach(path -> {
+                    if (lastTime > 0) {
+                        path.removeIf(loc -> now - lastTime > traceBackLength);
+                    }
+                    // If we don't have a lastMiningTime, keep the path to be conservative.
+                });
+            }
+        }
+
+        // Remove cleared players from the miningPath map
+        for (UUID uuid : playersToClear) {
+            miningPath.remove(uuid);
+            lastMiningTime.remove(uuid);
+        }
+
+        // ALSO: cleanup cached vein clusters and lastVeinLocation for players who haven't mined recently
+        // This prevents lastVeinClusters from growing indefinitely.
+        Set<UUID> clustersToRemove = new HashSet<>();
+        for (Map.Entry<UUID, Map<String, Set<Location>>> e : lastVeinClusters.entrySet()) {
+            UUID playerId = e.getKey();
+            long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
+            // If we don't have a lastMiningTime, be conservative and keep the cluster.
+            if (lastTime > 0 && now - lastTime > traceBackLength) {
+                clustersToRemove.add(playerId);
+            }
+        }
+
+        for (UUID uuid : clustersToRemove) {
+            lastVeinClusters.remove(uuid);
+            lastVeinLocation.remove(uuid);
+            minedVeinCount.remove(uuid);
+        }
     }
 
     private boolean isNewVein(UUID playerId, String worldName, Location location, Material oreType) {
@@ -343,6 +404,49 @@ public class MiningListener implements Listener {
         lastVeinClusters.putIfAbsent(playerId, new HashMap<>());
         Map<String, Set<Location>> playerClusters = lastVeinClusters.get(playerId);
         Set<Location> lastCluster = playerClusters.get(worldName);
+
+        // Special-case: if current cluster only contains the single broken block, treat it
+        // conservatively as a possible new single-block vein when it is not adjacent to the
+        // previously-recorded cluster.
+        if (currentCluster.size() == 1) {
+            Location singleLoc = currentCluster.iterator().next();
+            // If we have no previous cluster, record and treat as new
+            if (lastCluster == null || lastCluster.isEmpty()) {
+                playerClusters.put(worldName, new HashSet<>(currentCluster));
+                lastLocations.put(worldName, location);
+                lastVeinLocation.put(playerId, lastLocations);
+                return true;
+            }
+
+            // If exact same block already recorded as last location, not a new vein
+            if (lastLocation != null
+                    && lastLocation.getBlockX() == singleLoc.getBlockX()
+                    && lastLocation.getBlockY() == singleLoc.getBlockY()
+                    && lastLocation.getBlockZ() == singleLoc.getBlockZ()
+                    && lastLocation.getWorld().equals(singleLoc.getWorld())) {
+                return false;
+            }
+
+            // Compute minimum distance from this single block to the stored cluster
+            double minDistSingle = Double.MAX_VALUE;
+            for (Location b : lastCluster) {
+                double d = singleLoc.distance(b);
+                if (d < minDistSingle) minDistSingle = d;
+            }
+
+            // If the single block is far from the last cluster, treat it as a new vein of size 1
+            if (minDistSingle > maxDistance) {
+                playerClusters.put(worldName, new HashSet<>(currentCluster));
+                lastLocations.put(worldName, location);
+                lastVeinLocation.put(playerId, lastLocations);
+                return true;
+            } else {
+                // Otherwise consider it part of the same vein (merge)
+                lastCluster.addAll(currentCluster);
+                playerClusters.put(worldName, lastCluster);
+                return false;
+            }
+        }
 
         // If we have no previous cluster recorded, store and treat as new
         if (lastCluster == null || lastCluster.isEmpty()) {
@@ -734,10 +838,16 @@ public class MiningListener implements Listener {
         long currentTime = System.currentTimeMillis();
         long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L;
 
-        placedOres.forEach((playerId, blockSet) -> blockSet.removeIf(blockLocation -> {
-            long placedTime = blockLocation.getWorld().getTime();
-            return (currentTime - placedTime) > expirationTime;
-        }));
+        // Remove entries older than expirationTime
+        List<UUID> ownersToRemove = new ArrayList<>();
+        for (Map.Entry<UUID, Map<Location, Long>> entry : placedOres.entrySet()) {
+            UUID owner = entry.getKey();
+            Map<Location, Long> map = entry.getValue();
+            map.entrySet().removeIf(e -> currentTime - e.getValue() > expirationTime);
+            if (map.isEmpty()) ownersToRemove.add(owner);
+        }
+
+        for (UUID id : ownersToRemove) placedOres.remove(id);
 
         //plugin.getLogger().info("清理了过期的放置方块记录。当前记录总数: " + placedOres.size());
     }
