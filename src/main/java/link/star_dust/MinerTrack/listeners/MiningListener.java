@@ -347,7 +347,7 @@ public class MiningListener implements Listener {
             }
 
             // Run cluster building & comparison asynchronously using only coordinate data and starting from new seeds
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            runAsync(() -> {
                 // Build cluster reachable from new seeds using only the seed coordinate pool
                 Set<Location> currentCluster = buildClusterFromSeeds(seeds, newSeeds, maxDistance);
 
@@ -589,6 +589,19 @@ public class MiningListener implements Listener {
         }
 
         return visited;
+    }
+
+    // Helper to run async tasks in a way compatible with Folia: try Bukkit scheduler, fall back to raw thread
+    private void runAsync(Runnable task) {
+        try {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, task);
+        } catch (UnsupportedOperationException ex) {
+            // Folia may throw UnsupportedOperationException for this call from certain threads
+            new Thread(task, "MinerTrack-Async").start();
+        } catch (Throwable t) {
+            plugin.getLogger().warning("Async scheduling failed, falling back to raw thread: " + t.getMessage());
+            new Thread(task, "MinerTrack-Async").start();
+        }
     }
     
     public int countVeinBlocks(Location startLocation, Material type) {
