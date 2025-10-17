@@ -333,10 +333,23 @@ public class MiningListener implements Listener {
             Map<String, Set<Location>> playerClusters = lastVeinClusters.get(playerId);
             Set<Location> snapshotLastCluster = playerClusters.containsKey(worldName) ? new HashSet<>(playerClusters.get(worldName)) : Collections.emptySet();
 
-            // Run cluster building & comparison asynchronously using only coordinate data
+            // Determine new seeds that are not already part of the stored cluster (incremental)
+            List<Location> newSeeds = new ArrayList<>();
+            for (Location s : seeds) {
+                if (!snapshotLastCluster.contains(s)) newSeeds.add(s);
+            }
+
+            // If there are no new seeds, just refresh timestamp and merge nothing
+            if (newSeeds.isEmpty()) {
+                lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
+                lastVeinTimestamp.get(playerId).put(worldName, System.currentTimeMillis());
+                return;
+            }
+
+            // Run cluster building & comparison asynchronously using only coordinate data and starting from new seeds
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                // Build current cluster using seeds (pure coordinate math)
-                Set<Location> currentCluster = buildClusterFromSeeds(seeds, blockType, maxDistance);
+                // Build cluster reachable from new seeds using only the seed coordinate pool
+                Set<Location> currentCluster = buildClusterFromSeeds(seeds, newSeeds, maxDistance);
 
                 // Compare with snapshotLastCluster
                 boolean isSame = false;
@@ -355,12 +368,13 @@ public class MiningListener implements Listener {
 
                 // Post result back to main thread to update caches and possibly trigger analysis
                 boolean finalIsSame = isSame;
+                Set<Location> finalCluster = currentCluster; // effectively final for lambda
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!finalIsSame) {
                         // new vein detected
                         minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
                         lastVeinClusters.putIfAbsent(playerId, new HashMap<>());
-                        lastVeinClusters.get(playerId).put(worldName, new HashSet<>(currentCluster));
+                        lastVeinClusters.get(playerId).put(worldName, new HashSet<>(finalCluster));
                         lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
                         lastVeinLocation.get(playerId).put(worldName, blockLocation);
                         lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
@@ -368,15 +382,15 @@ public class MiningListener implements Listener {
 
                         int veinCount = minedVeinCount.getOrDefault(playerId, 0);
                         if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
-                            analyzeMiningPath(player, path, blockType, currentCluster.size(), blockLocation);
+                            analyzeMiningPath(player, path, blockType, finalCluster.size(), blockLocation);
                             minedVeinCount.put(playerId, 0);
                         }
                     } else {
-                        // same vein: merge discovered cluster into stored cluster
+                        // same vein: merge discovered blocks into stored cluster
                         lastVeinClusters.putIfAbsent(playerId, new HashMap<>());
                         Set<Location> stored = lastVeinClusters.get(playerId).get(worldName);
                         if (stored == null) stored = new HashSet<>();
-                        stored.addAll(currentCluster);
+                        stored.addAll(finalCluster);
                         lastVeinClusters.get(playerId).put(worldName, stored);
                         lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
                         lastVeinTimestamp.get(playerId).put(worldName, System.currentTimeMillis());
@@ -540,18 +554,23 @@ public class MiningListener implements Listener {
         return visited;
     }
 
-    // Asynchronous-safe cluster builder using only pre-collected seed locations.
-    // Seeds must be collected on the main thread.
-    private Set<Location> buildClusterFromSeeds(List<Location> seeds, Material type, int maxDistance) {
+    // Asynchronous-safe incremental cluster builder using only pre-collected seed locations.
+    // 'seeds' is the full pool collected on main thread; 'newSeeds' are the newly discovered seed positions to expand from.
+    private Set<Location> buildClusterFromSeeds(List<Location> seeds, List<Location> newSeeds, int maxDistance) {
         Set<Location> visited = new HashSet<>();
-        if (seeds == null || seeds.isEmpty()) return visited;
+        if (seeds == null || seeds.isEmpty() || newSeeds == null || newSeeds.isEmpty()) return visited;
 
-        // Convert seeds to a modifiable list
+        // Convert seeds to a modifiable pool (we'll remove visited ones)
         List<Location> pool = new ArrayList<>(seeds);
 
-        // BFS-like clustering using distance threshold
         Queue<Location> q = new LinkedList<>();
-        q.add(pool.get(0));
+        // Initialize queue with new seeds only
+        for (Location s : newSeeds) {
+            if (pool.contains(s)) {
+                q.add(s);
+                pool.remove(s);
+            }
+        }
 
         while (!q.isEmpty()) {
             Location cur = q.poll();
