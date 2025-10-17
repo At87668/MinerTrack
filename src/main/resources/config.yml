@@ -124,6 +124,12 @@ xray:
   
   # VL is increased as the player digs the number of veins
   veinCountThreshold: 3
+
+  # Small vein detection size
+  # If a vein contains <= this number of blocks, the plugin uses a more sensitive
+  # comparison strategy (cluster overlap/min distance) to decide whether it's a new vein.
+  # Default: 4
+  small_vein_detection_size: 4
   
   path-detection:
     turn-count-threshold: 10           # Maximum number of turns threshold

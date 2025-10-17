@@ -230,6 +230,10 @@ public class ConfigManager {
     public int getMaxVeinDistance() {
         return config.getInt("xray.max_vein_distance", 5);
     }
+
+    public int getSmallVeinSize() {
+        return config.getInt("xray.small_vein_detection_size", 4);
+    }
     
     public boolean getNaturalEnable() {
         return config.getBoolean("xray.natural-detection.enable", true);

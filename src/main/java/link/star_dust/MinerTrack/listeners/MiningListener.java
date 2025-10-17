@@ -304,16 +304,16 @@ public class MiningListener implements Listener {
         // Check new veins
         checkForArtificialAir(player, path);
         if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(path)) {
-        	if (isNewVein(playerId, worldName, blockLocation, blockType)) {
-        		minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
-        		lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
-        		lastVeinLocation.get(playerId).put(worldName, blockLocation);
-        		
-        		int veinCount = minedVeinCount.getOrDefault(playerId, 0);
-        		if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
-        		    analyzeMiningPath(player, path, blockType, countVeinBlocks(blockLocation, blockType), blockLocation);
-        		}
-        	}
+            if (isNewVein(playerId, worldName, blockLocation, blockType)) {
+                minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
+                lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
+                lastVeinLocation.get(playerId).put(worldName, blockLocation);
+
+                int veinCount = minedVeinCount.getOrDefault(playerId, 0);
+                if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
+                    analyzeMiningPath(player, path, blockType, countVeinBlocks(blockLocation, blockType), blockLocation);
+                }
+            }
         }
     }
 
@@ -331,51 +331,104 @@ public class MiningListener implements Listener {
         Map<String, Location> lastLocations = lastVeinLocation.getOrDefault(playerId, new HashMap<>());
         Location lastLocation = lastLocations.get(worldName);
 
-        // Determine whether it is the same vein
-        if (lastLocation == null || !isSameVein(lastLocation, location, oreType)) {
-            // Update the player's last vein location in that world.
+        int maxDistance = plugin.getConfigManager().getMaxVeinDistance();
+        int smallVeinThreshold = plugin.getConfigManager().getSmallVeinSize();
+
+        // If no previous record, it's a new vein
+        if (lastLocation == null) {
+            lastLocations.put(worldName, location);
+            lastVeinLocation.put(playerId, lastLocations);
+            return true;
+        }
+
+        // If the same exact block position, treat as not a new vein
+        if (lastLocation.getBlockX() == location.getBlockX()
+                && lastLocation.getBlockY() == location.getBlockY()
+                && lastLocation.getBlockZ() == location.getBlockZ()
+                && lastLocation.getWorld().equals(location.getWorld())) {
+            return false;
+        }
+
+        // Build clusters (sets of connected ore locations) around both the current location and last recorded location
+        Set<Location> currentCluster = getVeinLocations(location, oreType, maxDistance);
+        Set<Location> lastCluster = getVeinLocations(lastLocation, oreType, maxDistance);
+
+        // If clusters intersect (share any block), consider same vein
+        for (Location l : currentCluster) {
+            if (lastCluster.contains(l)) {
+                return false; // same vein
+            }
+        }
+
+        // Compute minimum distance between clusters
+        double minDist = Double.MAX_VALUE;
+        for (Location a : currentCluster) {
+            for (Location b : lastCluster) {
+                double d = a.distance(b);
+                if (d < minDist) minDist = d;
+            }
+        }
+
+        // If clusters are adjacent within maxDistance, treat as same vein
+        if (minDist <= maxDistance) {
+            return false;
+        }
+
+        // Special handling for very small veins: be conservative and avoid treating tiny nearby clusters as the same
+        int currentSize = currentCluster.size();
+        int lastSize = lastCluster.size();
+
+        if (currentSize > 0 && currentSize <= smallVeinThreshold && lastSize > 0 && lastSize <= smallVeinThreshold) {
+            // If both are small but not overlapping and not within maxDistance, consider new
+            lastLocations.put(worldName, location);
+            lastVeinLocation.put(playerId, lastLocations);
+            return true;
+        }
+
+        // For general case, if clusters are far apart, it's a new vein
+        if (minDist > maxDistance) {
             lastLocations.put(worldName, location);
             lastVeinLocation.put(playerId, lastLocations);
             return true; // is new
         }
 
-        return false; // is the same
+        return false; // fallback: treat as same
     }
-    
-    private boolean isSameVein(Location loc1, Location loc2, Material type) {
-        if (!loc1.getWorld().equals(loc2.getWorld())) return false;
-        if (!loc2.getBlock().getType().equals(type)) return false;
 
-        double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
+    // Helper: find all connected ore locations starting from startLocation within a search limit
+    private Set<Location> getVeinLocations(Location startLocation, Material type, int maxDistance) {
         Set<Location> visited = new HashSet<>();
         Queue<Location> toVisit = new LinkedList<>();
-        toVisit.add(loc1);
+        if (startLocation == null || !startLocation.getBlock().getType().equals(type)) return visited;
+        toVisit.add(startLocation);
 
-        while (!toVisit.isEmpty()) {
+        // Safety cap to prevent excessive work
+        int safetyCap = 2000;
+
+        while (!toVisit.isEmpty() && visited.size() < safetyCap) {
             Location current = toVisit.poll();
             if (visited.contains(current)) continue;
+            if (!current.getBlock().getType().equals(type)) continue;
+
             visited.add(current);
 
-            // Detects proximity to the target location
-            if (current.distance(loc2) <= maxDistance) {
-                return true;
-            }
-
-            // Traverse adjacent blocks
+            // traverse neighbors (including diagonals) but only enqueue neighbors within a bounding cube
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
                         if (dx == 0 && dy == 0 && dz == 0) continue;
-
                         Location neighbor = current.clone().add(dx, dy, dz);
-                        if (!visited.contains(neighbor) && neighbor.getBlock().getType().equals(type)) {
+                        if (visited.contains(neighbor)) continue;
+                        if (!neighbor.getBlock().getType().equals(type)) continue;
+                        if (neighbor.distance(startLocation) <= maxDistance * 2) { // allow a slightly larger search radius for clustering
                             toVisit.add(neighbor);
                         }
                     }
                 }
             }
         }
-        return false;
+
+        return visited;
     }
     
     public int countVeinBlocks(Location startLocation, Material type) {
