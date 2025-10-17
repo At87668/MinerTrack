@@ -593,10 +593,35 @@ public class MiningListener implements Listener {
 
     // Helper to run async tasks in a way compatible with Folia: try Bukkit scheduler, fall back to raw thread
     private void runAsync(Runnable task) {
+        // If running on Folia, prefer the global region scheduler via reflection
+        if (FoliaCheck.isFolia()) {
+            try {
+                Class<?> schedulerClass = Class.forName("org.bukkit.Bukkit");
+                Object scheduler = schedulerClass.getMethod("getGlobalRegionScheduler").invoke(null);
+                // run the task using scheduler.run(...) signature (Plugin, Consumer, long, long) isn't suitable here
+                // Instead try to invoke a simple execute method if available, otherwise fall back
+                try {
+                    // Many Folia builds expose run(Plugin, Runnable) or submit
+                    scheduler.getClass().getMethod("run", Plugin.class, Runnable.class).invoke(scheduler, plugin, task);
+                    return;
+                } catch (NoSuchMethodException ignore) {
+                    // try submit or execute
+                    try {
+                        scheduler.getClass().getMethod("submit", Runnable.class).invoke(scheduler, task);
+                        return;
+                    } catch (NoSuchMethodException | IllegalAccessException ignored) {
+                        // fallback to Bukkit scheduler below
+                    }
+                }
+            } catch (Throwable ignored) {
+                // fall back
+            }
+        }
+
         try {
             Bukkit.getScheduler().runTaskAsynchronously(plugin, task);
         } catch (UnsupportedOperationException ex) {
-            // Folia may throw UnsupportedOperationException for this call from certain threads
+            // Folia or environment may throw; fall back to raw thread
             new Thread(task, "MinerTrack-Async").start();
         } catch (Throwable t) {
             plugin.getLogger().warning("Async scheduling failed, falling back to raw thread: " + t.getMessage());
