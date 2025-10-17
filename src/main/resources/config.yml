@@ -131,9 +131,6 @@ xray:
   # Default: 4
   small_vein_detection_size: 4
   
-  # Cluster retention time in minutes: how long to keep a recorded vein cluster before expiring it
-  cluster_retention_minutes: 15
-  
   path-detection:
     turn-count-threshold: 10           # Maximum number of turns threshold
     branch-count-threshold: 6          # Maximum number of branches

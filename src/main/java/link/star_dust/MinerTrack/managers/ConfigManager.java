@@ -109,7 +109,6 @@ public class ConfigManager {
     		    "xray.natural-detection.lava-sea.detection-range",
     		    "xray.natural-detection.lava-sea.check_skip_vl",
                 "xray.small_vein_detection_size",
-                "xray.cluster_retention_minutes",
     		    "xray.decay",
     		    "xray.decay.interval",
     		    "xray.decay.amount",
@@ -235,10 +234,6 @@ public class ConfigManager {
 
     public int getSmallVeinSize() {
         return config.getInt("xray.small_vein_detection_size", 4);
-    }
-
-    public int getClusterRetentionMinutes() {
-        return config.getInt("xray.cluster_retention_minutes", 15);
     }
     
     public boolean getNaturalEnable() {

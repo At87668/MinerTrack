@@ -50,10 +50,7 @@ public class MiningListener implements Listener {
     private final Map<UUID, Map<String, Location>> lastVeinLocation = new HashMap<>();
     // Keep the last detected vein cluster (set of locations) per player per world
     private final Map<UUID, Map<String, Set<Location>>> lastVeinClusters = new HashMap<>();
-    // Track when a cluster was recorded to allow expiration
-    private final Map<UUID, Map<String, Long>> lastVeinTimestamp = new HashMap<>();
-    // Store placed ores with timestamp to allow proper expiration
-    private final Map<UUID, Map<Location, Long>> placedOres = new HashMap<>();
+    private final Map<UUID, Set<Location>> placedOres = new HashMap<>();
     private final Map<Location, Long> explosionExposedOres = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
     private final Map<UUID, Integer> airViolationLevel = new HashMap<>();
@@ -85,7 +82,6 @@ public class MiningListener implements Listener {
                         cleanupExpiredPaths();
                         cleanupExpiredExplosions();
                         cleanupExpiredPlacedBlocks();
-                        cleanupExpiredClusters();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -102,7 +98,6 @@ public class MiningListener implements Listener {
                     cleanupExpiredPaths();
                     cleanupExpiredExplosions();
                     cleanupExpiredPlacedBlocks();
-                    cleanupExpiredClusters();
                 }
             }.runTaskTimer(plugin, interval, interval);
         }
@@ -127,14 +122,14 @@ public class MiningListener implements Listener {
         List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
 
         if (rareOres.contains(blockType.name())) {
-            placedOres.putIfAbsent(playerId, new HashMap<>());
-            placedOres.get(playerId).put(event.getBlock().getLocation(), System.currentTimeMillis());
+            placedOres.putIfAbsent(playerId, new HashSet<>());
+            placedOres.get(playerId).add(event.getBlock().getLocation());
         }
     }
     
     private boolean isPlayerPlacedBlock(Location blockLocation) {
-        for (Map<Location, Long> playerPlacedBlocks : placedOres.values()) {
-            if (playerPlacedBlocks.containsKey(blockLocation)) {
+        for (Set<Location> playerPlacedBlocks : placedOres.values()) {
+            if (playerPlacedBlocks.contains(blockLocation)) {
                 return true; // Block is placed by player
             }
         }
@@ -311,92 +306,16 @@ public class MiningListener implements Listener {
         // Check new veins
         checkForArtificialAir(player, path);
         if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(path)) {
-            // Collect nearby seed coordinates on main thread to avoid async world access
-            int maxDistance = plugin.getConfigManager().getMaxVeinDistance();
-            int seedRadius = Math.max(1, maxDistance * 2);
-            List<Location> seeds = new ArrayList<>();
-            int bx = blockLocation.getBlockX();
-            int by = blockLocation.getBlockY();
-            int bz = blockLocation.getBlockZ();
-            World world = blockLocation.getWorld();
-            for (int dx = -seedRadius; dx <= seedRadius; dx++) {
-                for (int dy = -seedRadius; dy <= seedRadius; dy++) {
-                    for (int dz = -seedRadius; dz <= seedRadius; dz++) {
-                        Location loc = new Location(world, bx + dx, by + dy, bz + dz);
-                        if (loc.getBlock().getType().equals(blockType)) seeds.add(loc);
-                    }
+            if (isNewVein(playerId, worldName, blockLocation, blockType)) {
+                minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
+                lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
+                lastVeinLocation.get(playerId).put(worldName, blockLocation);
+
+                int veinCount = minedVeinCount.getOrDefault(playerId, 0);
+                if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
+                    analyzeMiningPath(player, path, blockType, countVeinBlocks(blockLocation, blockType), blockLocation);
                 }
             }
-
-            // Snapshot existing cluster coordinates (to avoid concurrent modification)
-            lastVeinClusters.putIfAbsent(playerId, new HashMap<>());
-            Map<String, Set<Location>> playerClusters = lastVeinClusters.get(playerId);
-            Set<Location> snapshotLastCluster = playerClusters.containsKey(worldName) ? new HashSet<>(playerClusters.get(worldName)) : Collections.emptySet();
-
-            // Determine new seeds that are not already part of the stored cluster (incremental)
-            List<Location> newSeeds = new ArrayList<>();
-            for (Location s : seeds) {
-                if (!snapshotLastCluster.contains(s)) newSeeds.add(s);
-            }
-
-            // If there are no new seeds, just refresh timestamp and merge nothing
-            if (newSeeds.isEmpty()) {
-                lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
-                lastVeinTimestamp.get(playerId).put(worldName, System.currentTimeMillis());
-                return;
-            }
-
-            // Run cluster building & comparison asynchronously using only coordinate data and starting from new seeds
-            runAsync(() -> {
-                // Build cluster reachable from new seeds using only the seed coordinate pool
-                Set<Location> currentCluster = buildClusterFromSeeds(seeds, newSeeds, maxDistance);
-
-                // Compare with snapshotLastCluster
-                boolean isSame = false;
-                for (Location l : currentCluster) {
-                    if (snapshotLastCluster.contains(l)) { isSame = true; break; }
-                }
-                double minDist = Double.MAX_VALUE;
-                for (Location a : currentCluster) {
-                    for (Location b : snapshotLastCluster) {
-                        double d = a.distance(b);
-                        if (d < minDist) minDist = d;
-                    }
-                }
-
-                if (!isSame && minDist <= maxDistance) isSame = true;
-
-                // Post result back to main thread to update caches and possibly trigger analysis
-                boolean finalIsSame = isSame;
-                Set<Location> finalCluster = currentCluster; // effectively final for lambda
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!finalIsSame) {
-                        // new vein detected
-                        minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
-                        lastVeinClusters.putIfAbsent(playerId, new HashMap<>());
-                        lastVeinClusters.get(playerId).put(worldName, new HashSet<>(finalCluster));
-                        lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
-                        lastVeinLocation.get(playerId).put(worldName, blockLocation);
-                        lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
-                        lastVeinTimestamp.get(playerId).put(worldName, System.currentTimeMillis());
-
-                        int veinCount = minedVeinCount.getOrDefault(playerId, 0);
-                        if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
-                            analyzeMiningPath(player, path, blockType, finalCluster.size(), blockLocation);
-                            minedVeinCount.put(playerId, 0);
-                        }
-                    } else {
-                        // same vein: merge discovered blocks into stored cluster
-                        lastVeinClusters.putIfAbsent(playerId, new HashMap<>());
-                        Set<Location> stored = lastVeinClusters.get(playerId).get(worldName);
-                        if (stored == null) stored = new HashSet<>();
-                        stored.addAll(finalCluster);
-                        lastVeinClusters.get(playerId).put(worldName, stored);
-                        lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
-                        lastVeinTimestamp.get(playerId).put(worldName, System.currentTimeMillis());
-                    }
-                });
-            });
         }
     }
 
@@ -486,9 +405,6 @@ public class MiningListener implements Listener {
             playerClusters.put(worldName, new HashSet<>(currentCluster));
             lastLocations.put(worldName, location);
             lastVeinLocation.put(playerId, lastLocations);
-            // record timestamp for cluster
-            lastVeinTimestamp.putIfAbsent(playerId, new HashMap<>());
-            lastVeinTimestamp.get(playerId).put(worldName, System.currentTimeMillis());
             return true; // is new
         }
 
@@ -552,81 +468,6 @@ public class MiningListener implements Listener {
         }
 
         return visited;
-    }
-
-    // Asynchronous-safe incremental cluster builder using only pre-collected seed locations.
-    // 'seeds' is the full pool collected on main thread; 'newSeeds' are the newly discovered seed positions to expand from.
-    private Set<Location> buildClusterFromSeeds(List<Location> seeds, List<Location> newSeeds, int maxDistance) {
-        Set<Location> visited = new HashSet<>();
-        if (seeds == null || seeds.isEmpty() || newSeeds == null || newSeeds.isEmpty()) return visited;
-
-        // Convert seeds to a modifiable pool (we'll remove visited ones)
-        List<Location> pool = new ArrayList<>(seeds);
-
-        Queue<Location> q = new LinkedList<>();
-        // Initialize queue with new seeds only
-        for (Location s : newSeeds) {
-            if (pool.contains(s)) {
-                q.add(s);
-                pool.remove(s);
-            }
-        }
-
-        while (!q.isEmpty()) {
-            Location cur = q.poll();
-            if (visited.contains(cur)) continue;
-            visited.add(cur);
-
-            Iterator<Location> it = pool.iterator();
-            while (it.hasNext()) {
-                Location candidate = it.next();
-                if (visited.contains(candidate)) { it.remove(); continue; }
-                if (candidate.distance(cur) <= maxDistance) {
-                    q.add(candidate);
-                    it.remove();
-                }
-            }
-        }
-
-        return visited;
-    }
-
-    // Helper to run async tasks in a way compatible with Folia: try Bukkit scheduler, fall back to raw thread
-    private void runAsync(Runnable task) {
-        // If running on Folia, prefer the global region scheduler via reflection
-        if (FoliaCheck.isFolia()) {
-            try {
-                Class<?> schedulerClass = Class.forName("org.bukkit.Bukkit");
-                Object scheduler = schedulerClass.getMethod("getGlobalRegionScheduler").invoke(null);
-                // run the task using scheduler.run(...) signature (Plugin, Consumer, long, long) isn't suitable here
-                // Instead try to invoke a simple execute method if available, otherwise fall back
-                try {
-                    // Many Folia builds expose run(Plugin, Runnable) or submit
-                    scheduler.getClass().getMethod("run", Plugin.class, Runnable.class).invoke(scheduler, plugin, task);
-                    return;
-                } catch (NoSuchMethodException ignore) {
-                    // try submit or execute
-                    try {
-                        scheduler.getClass().getMethod("submit", Runnable.class).invoke(scheduler, task);
-                        return;
-                    } catch (NoSuchMethodException | IllegalAccessException ignored) {
-                        // fallback to Bukkit scheduler below
-                    }
-                }
-            } catch (Throwable ignored) {
-                // fall back
-            }
-        }
-
-        try {
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, task);
-        } catch (UnsupportedOperationException ex) {
-            // Folia or environment may throw; fall back to raw thread
-            new Thread(task, "MinerTrack-Async").start();
-        } catch (Throwable t) {
-            plugin.getLogger().warning("Async scheduling failed, falling back to raw thread: " + t.getMessage());
-            new Thread(task, "MinerTrack-Async").start();
-        }
     }
     
     public int countVeinBlocks(Location startLocation, Material type) {
@@ -893,32 +734,12 @@ public class MiningListener implements Listener {
         long currentTime = System.currentTimeMillis();
         long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L;
 
-        for (UUID playerId : new ArrayList<>(placedOres.keySet())) {
-            Map<Location, Long> map = placedOres.get(playerId);
-            map.entrySet().removeIf(entry -> currentTime - entry.getValue() > expirationTime);
-            if (map.isEmpty()) placedOres.remove(playerId);
-        }
+        placedOres.forEach((playerId, blockSet) -> blockSet.removeIf(blockLocation -> {
+            long placedTime = blockLocation.getWorld().getTime();
+            return (currentTime - placedTime) > expirationTime;
+        }));
+
         //plugin.getLogger().info("清理了过期的放置方块记录。当前记录总数: " + placedOres.size());
-    }
-
-    private void cleanupExpiredClusters() {
-        long now = System.currentTimeMillis();
-    long expirationMillis = (long) plugin.getConfigManager().getClusterRetentionMinutes() * 60 * 1000L;
-
-        for (UUID playerId : new ArrayList<>(lastVeinTimestamp.keySet())) {
-            Map<String, Long> timestamps = lastVeinTimestamp.get(playerId);
-            for (String world : new ArrayList<>(timestamps.keySet())) {
-                Long ts = timestamps.get(world);
-                if (ts == null) continue;
-                if (now - ts > expirationMillis) {
-                    // remove cluster and timestamp
-                    Map<String, Set<Location>> clusters = lastVeinClusters.get(playerId);
-                    if (clusters != null) clusters.remove(world);
-                    timestamps.remove(world);
-                }
-            }
-            if (timestamps.isEmpty()) lastVeinTimestamp.remove(playerId);
-        }
     }
     
     private void cleanUpAirViolations() {
