@@ -405,49 +405,6 @@ public class MiningListener implements Listener {
         Map<String, Set<Location>> playerClusters = lastVeinClusters.get(playerId);
         Set<Location> lastCluster = playerClusters.get(worldName);
 
-        // Special-case: if current cluster only contains the single broken block, treat it
-        // conservatively as a possible new single-block vein when it is not adjacent to the
-        // previously-recorded cluster.
-        if (currentCluster.size() == 1) {
-            Location singleLoc = currentCluster.iterator().next();
-            // If we have no previous cluster, record and treat as new
-            if (lastCluster == null || lastCluster.isEmpty()) {
-                playerClusters.put(worldName, new HashSet<>(currentCluster));
-                lastLocations.put(worldName, location);
-                lastVeinLocation.put(playerId, lastLocations);
-                return true;
-            }
-
-            // If exact same block already recorded as last location, not a new vein
-            if (lastLocation != null
-                    && lastLocation.getBlockX() == singleLoc.getBlockX()
-                    && lastLocation.getBlockY() == singleLoc.getBlockY()
-                    && lastLocation.getBlockZ() == singleLoc.getBlockZ()
-                    && lastLocation.getWorld().equals(singleLoc.getWorld())) {
-                return false;
-            }
-
-            // Compute minimum distance from this single block to the stored cluster
-            double minDistSingle = Double.MAX_VALUE;
-            for (Location b : lastCluster) {
-                double d = singleLoc.distance(b);
-                if (d < minDistSingle) minDistSingle = d;
-            }
-
-            // If the single block is far from the last cluster, treat it as a new vein of size 1
-            if (minDistSingle > maxDistance) {
-                playerClusters.put(worldName, new HashSet<>(currentCluster));
-                lastLocations.put(worldName, location);
-                lastVeinLocation.put(playerId, lastLocations);
-                return true;
-            } else {
-                // Otherwise consider it part of the same vein (merge)
-                lastCluster.addAll(currentCluster);
-                playerClusters.put(worldName, lastCluster);
-                return false;
-            }
-        }
-
         // If we have no previous cluster recorded, store and treat as new
         if (lastCluster == null || lastCluster.isEmpty()) {
             playerClusters.put(worldName, new HashSet<>(currentCluster));
@@ -543,6 +500,10 @@ public class MiningListener implements Listener {
             }
             // If no seeds found, return empty set
             if (toVisit.isEmpty()) return visited;
+            // If the start block was the triggering block but is now air, include its location
+            // in the result so callers treat the broken block as part of the vein.
+            // We don't enqueue it for searching since it's not the ore type.
+            visited.add(startLocation);
         }
 
         // Safety cap to prevent excessive work
@@ -575,44 +536,10 @@ public class MiningListener implements Listener {
     }
     
     public int countVeinBlocks(Location startLocation, Material type) {
-        if (startLocation == null || !startLocation.getBlock().getType().equals(type)) {
-            return 0; // 起始位置无效或矿物类型不匹配
-        }
-
+        // Reuse getVeinLocations which now includes the triggering location when appropriate
         double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
-        Set<Location> visited = new HashSet<>();
-        Queue<Location> toVisit = new LinkedList<>();
-        toVisit.add(startLocation);
-
-        int blockCount = 0;
-
-        while (!toVisit.isEmpty()) {
-            Location current = toVisit.poll();
-            if (visited.contains(current)) continue;
-            visited.add(current);
-
-            // 如果当前方块类型匹配，计入矿脉总数
-            if (current.getBlock().getType().equals(type)) {
-                blockCount++;
-
-                // 遍历邻接方块，包括直接邻接和角点
-                for (int dx = -1; dx <= 1; dx++) {
-                    for (int dy = -1; dy <= 1; dy++) {
-                        for (int dz = -1; dz <= 1; dz++) {
-                            if (dx == 0 && dy == 0 && dz == 0) continue; // 跳过当前方块
-
-                            Location neighbor = current.clone().add(dx, dy, dz);
-                            if (!visited.contains(neighbor) 
-                                    && neighbor.distance(current) <= maxDistance 
-                                    && neighbor.getBlock().getType().equals(type)) {
-                                toVisit.add(neighbor);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return blockCount;
+        Set<Location> vein = getVeinLocations(startLocation, type, (int) Math.max(1, Math.round(maxDistance)));
+        return vein.size();
     }
     
     
