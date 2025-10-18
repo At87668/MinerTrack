@@ -177,4 +177,6 @@ xray:
   commands:
     2: 'minertrack notify &f%player% &7triggered &fX-Ray &7detection [&cVL: 2&7]'
     4: 'minertrack notify &f%player% &7triggered &fX-Ray &7detection [&cVL: 4&7]'
-    5: 'minertrack kick %player% X-Ray'
+    5:
+      - 'minertrack kick %player% X-Ray'
+      - 'minertrack notify &f%player% &7was kicked for &fX-Ray'
