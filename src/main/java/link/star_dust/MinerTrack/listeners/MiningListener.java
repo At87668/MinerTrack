@@ -479,6 +479,9 @@ public class MiningListener implements Listener {
         if (startLocation == null) return visited;
 
         // If the start block itself matches, use it as seed. Otherwise, search nearby for seeds
+        // Use squared distance to avoid repeated sqrt. maxDistance is inclusive.
+        double maxDistanceSq = Math.max(1, maxDistance) * (double) Math.max(1, maxDistance);
+
         if (startLocation.getBlock().getType().equals(type)) {
             toVisit.add(startLocation);
         } else {
@@ -492,7 +495,10 @@ public class MiningListener implements Listener {
                 for (int dy = -seedRadius; dy <= seedRadius; dy++) {
                     for (int dz = -seedRadius; dz <= seedRadius; dz++) {
                         Location loc = new Location(world, baseX + dx, baseY + dy, baseZ + dz);
-                        if (loc.getBlock().getType().equals(type)) {
+                        if (!loc.getWorld().equals(startLocation.getWorld())) continue;
+                        // only accept seeds within the configured maxDistance from the start
+                        double distSq = loc.distanceSquared(startLocation);
+                        if (distSq <= maxDistanceSq && loc.getBlock().getType().equals(type)) {
                             toVisit.add(loc);
                         }
                     }
@@ -524,7 +530,8 @@ public class MiningListener implements Listener {
                         Location neighbor = current.clone().add(dx, dy, dz);
                         if (visited.contains(neighbor)) continue;
                         if (!neighbor.getBlock().getType().equals(type)) continue;
-                        if (neighbor.distance(startLocation) <= maxDistance * 2) { // allow a slightly larger search radius for clustering
+                        // accept neighbor if it's within maxDistance from the start (use squared distance)
+                        if (neighbor.getWorld().equals(startLocation.getWorld()) && neighbor.distanceSquared(startLocation) <= maxDistanceSq) {
                             toVisit.add(neighbor);
                         }
                     }
