@@ -216,24 +216,41 @@ public class ViolationManager {
         violationLevels.put(playerId, newLevel);
 
         // 处理 VL 增加后的其他逻辑，覆盖所有从 oldLevel+1 到 newLevel 的阈值
-        for (String key : plugin.getConfig().getConfigurationSection("xray.commands").getKeys(false)) {
-            int threshold = Integer.parseInt(key);
-            if (threshold > oldLevel && threshold <= newLevel) {
-            	String command = plugin.getConfig().getString("xray.commands." + key)
-            			.replace("%player%", player.getName());
-            	
-            	if (FoliaCheck.isFolia()) {
-            		RegionScheduler regionScheduler = Bukkit.getRegionScheduler();
-            		regionScheduler.run(plugin, location, scheduledTask -> {
-            			Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
-            	            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-            	            logCommand(command);
-            	        });
-            		});
-            	} else {
-            		Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-            		logCommand(command);
-            	}
+        if (plugin.getConfig().isConfigurationSection("xray.commands")) {
+            for (String key : plugin.getConfig().getConfigurationSection("xray.commands").getKeys(false)) {
+                int threshold = Integer.parseInt(key);
+                if (threshold > oldLevel && threshold <= newLevel) {
+                    Object raw = plugin.getConfig().get("xray.commands." + key);
+
+                    List<String> commandsToRun = new ArrayList<>();
+
+                    if (raw instanceof List) {
+                        //noinspection unchecked
+                        for (Object o : (List<Object>) raw) {
+                            if (o != null) commandsToRun.add(o.toString());
+                        }
+                    } else if (raw != null) {
+                        commandsToRun.add(raw.toString());
+                    }
+
+                    for (String commandTemplate : commandsToRun) {
+                        if (commandTemplate == null || commandTemplate.trim().isEmpty()) continue;
+                        String command = commandTemplate.replace("%player%", player.getName());
+
+                        if (FoliaCheck.isFolia()) {
+                            RegionScheduler regionScheduler = Bukkit.getRegionScheduler();
+                            regionScheduler.run(plugin, location, scheduledTask -> {
+                                Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
+                                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                                    logCommand(command);
+                                });
+                            });
+                        } else {
+                            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                            logCommand(command);
+                        }
+                    }
+                }
             }
         }
 
