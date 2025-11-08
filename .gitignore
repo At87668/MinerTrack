@@ -1,19 +1,27 @@
 # Gradle
 .gradle/
-
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
-
 build/
 bin/
 
+# Wiki
 wiki/
 
+# VS Code
 .vscode/
 *.code-workspace
 
+# Cache
 *.class
+
+# Script
 *.py
 
+# Changes Log
 Updates.md
+
+# Eclipse
+.classpath
+.project
