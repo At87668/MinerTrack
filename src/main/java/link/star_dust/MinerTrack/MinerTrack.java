@@ -58,6 +58,8 @@ public class MinerTrack extends JavaPlugin implements Listener {
     private String ColoredVersion;
     public MiningDetectionExtension miningDetectionExtension;
     private MinerTrackCommand minerTrackCommand;
+    // Keep a reference to the listener so other managers can request per-player cleanup
+    private MiningListener miningListener;
 
     @Override
     public void onEnable() {
@@ -128,8 +130,13 @@ public class MinerTrack extends JavaPlugin implements Listener {
 
     private void registerListeners() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        Bukkit.getPluginManager().registerEvents(new MiningListener(this), this);
+        miningListener = new MiningListener(this);
+        Bukkit.getPluginManager().registerEvents(miningListener, this);
         Bukkit.getPluginManager().registerEvents(new LogCacheListener(minerTrackCommand), this);
+    }
+
+    public MiningListener getMiningListener() {
+        return miningListener;
     }
 
     public ConfigManager getConfigManager() {

@@ -13,6 +13,7 @@ package link.star_dust.MinerTrack.managers;
 
 import link.star_dust.MinerTrack.FoliaCheck;
 import link.star_dust.MinerTrack.MinerTrack;
+import link.star_dust.MinerTrack.listeners.MiningListener;
 import link.star_dust.MinerTrack.hooks.DiscordWebHook;
 import link.star_dust.MinerTrack.hooks.CustomJsonWebHook;
 
@@ -410,6 +411,18 @@ public class ViolationManager {
 
 
     public void resetViolationLevel(Player player) {
-        violationLevels.remove(player.getUniqueId());
+        UUID playerId = player.getUniqueId();
+        violationLevels.remove(playerId);
+
+        // Also clear tracking data related to this player if the listener is available
+        try {
+            MiningListener listener = plugin.getMiningListener();
+            if (listener != null) {
+                listener.cleanUpTrack(playerId);
+            }
+        } catch (Exception ignored) {
+            // If mining listener isn't available or something goes wrong, we still
+            // removed the VL; ignore here to avoid crashing.
+        }
     }
 }

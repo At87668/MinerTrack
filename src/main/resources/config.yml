@@ -16,7 +16,7 @@
 # Check for updates on startup (recommended for latest optimizations).
 check_update: true
 # Available options: stable/beta/alpha. Using the pre-release version will receive updates from more stable versions.
-check_update_channel: "beta"
+check_update_channel: "stable"
 
 # Visual effect when a player is kicked using /minertrack kick (default: true)
 kick_strike_lightning: true
