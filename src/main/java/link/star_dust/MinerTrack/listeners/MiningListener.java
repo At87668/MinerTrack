@@ -330,9 +330,9 @@ public class MiningListener implements Listener {
             path.remove(0);
         }
 
-        // Check new veins
-        checkForArtificialAir(player, path);
-        if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(path)) {
+    // Check new veins
+    checkForArtificialAir(player, path);
+    if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(playerId, path)) {
             if (isNewVein(playerId, worldName, blockLocation, blockType)) {
                 minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
                 lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
@@ -379,6 +379,10 @@ public class MiningListener implements Listener {
             lastVeinClusters.remove(playerId);
             lastVeinLocation.remove(playerId);
             minedVeinCount.remove(playerId);
+            // remove per-player path analysis counters
+            totalTurnsMap.remove(playerId);
+            branchCountMap.remove(playerId);
+            yChangesMap.remove(playerId);
             return;
         }
 
@@ -569,11 +573,12 @@ public class MiningListener implements Listener {
         return vein.size();
     }
 
-    private int totalTurns = 0;
-    private int branchCount = 0;
-    private int yChanges = 0;
+    // Per-player counters to avoid shared state across players
+    private final Map<UUID, Integer> totalTurnsMap = new HashMap<>();
+    private final Map<UUID, Integer> branchCountMap = new HashMap<>();
+    private final Map<UUID, Integer> yChangesMap = new HashMap<>();
 
-    private boolean isSmoothPath(List<Location> path) {
+    private boolean isSmoothPath(UUID playerId, List<Location> path) {
         if (path.size() < 2)
             return true;
 
@@ -583,6 +588,11 @@ public class MiningListener implements Listener {
 
         Location lastLocation = null;
         Vector lastDirection = null;
+
+        // compute path-specific counts first
+        int pathTurns = 0;
+        int pathBranches = 0;
+        int pathYChanges = 0;
 
         for (int i = 0; i < path.size(); i++) {
             Location currentLocation = path.get(i);
@@ -594,14 +604,14 @@ public class MiningListener implements Listener {
                     // 计算方向变化的角度（转向幅度）
                     double dotProduct = lastDirection.dot(currentDirection);
                     if (dotProduct < Math.cos(Math.toRadians(30))) { // 夹角大于30度，记为一次转向
-                        totalTurns++;
+                        pathTurns++;
                     }
                 }
 
                 // 检查Y轴的变化
                 if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager()
                         .getYPosChangeThresholdAddRequired()) {
-                    yChanges++;
+                    pathYChanges++;
                 }
 
                 // 检查分支（检测是否突然偏离主方向）
@@ -609,7 +619,7 @@ public class MiningListener implements Listener {
                     Location prevLocation = path.get(i - 1);
                     Vector prevDirection = prevLocation.toVector().subtract(lastLocation.toVector()).normalize();
                     if (currentDirection.angle(prevDirection) > Math.toRadians(60)) { // 分支角度大于60°
-                        branchCount++;
+                        pathBranches++;
                     }
                 }
 
@@ -617,6 +627,15 @@ public class MiningListener implements Listener {
             }
             lastLocation = currentLocation;
         }
+
+        // accumulate into per-player totals
+        int totalTurns = totalTurnsMap.getOrDefault(playerId, 0) + pathTurns;
+        int branchCount = branchCountMap.getOrDefault(playerId, 0) + pathBranches;
+        int yChanges = yChangesMap.getOrDefault(playerId, 0) + pathYChanges;
+
+        totalTurnsMap.put(playerId, totalTurns);
+        branchCountMap.put(playerId, branchCount);
+        yChangesMap.put(playerId, yChanges);
 
         // 检查总转向次数、分支次数和Y轴变化是否超过阈值
         return totalTurns < turnThreshold && branchCount < branchThreshold && yChanges < yChangeThreshold;
@@ -856,6 +875,13 @@ public class MiningListener implements Listener {
             miningPath.remove(playerId); // 清除路径
             minedVeinCount.remove(playerId); // 清除矿脉计数
             vlZeroTimestamp.remove(playerId); // 清除时间戳
+
+            // remove per-player counters
+            totalTurnsMap.remove(playerId);
+            branchCountMap.remove(playerId);
+            yChangesMap.remove(playerId);
+
+            // plugin.getLogger().info("Path reset for player: " + playerId + " due to VL=0 and timeout.");
         }
     }
 
