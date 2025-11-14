@@ -856,10 +856,6 @@ public class MiningListener implements Listener {
             miningPath.remove(playerId); // 清除路径
             minedVeinCount.remove(playerId); // 清除矿脉计数
             vlZeroTimestamp.remove(playerId); // 清除时间戳
-
-            // Note: totalTurns/branchCount/yChanges are global counters in this class.
-            // Resetting them for one player would affect others; keep as-is but do not
-            // modify shared counters here.
         }
     }
 
