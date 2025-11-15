@@ -50,18 +50,17 @@ public class MiningListener implements Listener {
     private final Map<UUID, Map<String, Location>> lastVeinLocation = new HashMap<>();
     // Keep the last detected vein cluster (set of locations) per player per world
     private final Map<UUID, Map<String, Set<Location>>> lastVeinClusters = new HashMap<>();
-    // store placed ore locations along with the timestamp (epoch ms) when they were
-    // placed
+    // store placed ore locations along with the timestamp (epoch ms) when they were placed
     private final Map<UUID, Map<Location, Long>> placedOres = new HashMap<>();
     private final Map<Location, Long> explosionExposedOres = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
     private final Map<UUID, Integer> airViolationLevel = new HashMap<>();
     private final Map<UUID, Long> lastAirViolationTime = new HashMap<>();
-    // private final MiningDetectionExtension ex;
-
+    //private final MiningDetectionExtension ex;
+    
     public MiningListener(MinerTrack plugin) {
         this.plugin = plugin;
-        // this.ex = plugin.miningDetectionExtension;
+		//this.ex = plugin.miningDetectionExtension;
         int interval = 20 * 60; // Scheduling interval (unit: tick)
 
         if (FoliaCheck.isFolia()) {
@@ -69,20 +68,25 @@ public class MiningListener implements Listener {
                 Class<?> schedulerClass = Class.forName("org.bukkit.Bukkit");
                 Object scheduler = schedulerClass.getMethod("getGlobalRegionScheduler").invoke(null);
                 scheduler.getClass().getMethod("runAtFixedRate",
-                        Plugin.class,
-                        Class.forName("java.util.function.Consumer"),
-                        long.class,
-                        long.class).invoke(scheduler, plugin, (Consumer<Object>) task -> {
-                            try {
-                                if (!plugin.isEnabled()) {
-                                    task.getClass().getMethod("cancel").invoke(task);
-                                    return;
-                                }
-                                cleanUpTrack();
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }, interval, interval);
+                    Plugin.class,
+                    Class.forName("java.util.function.Consumer"),
+                    long.class,
+                    long.class
+                ).invoke(scheduler, plugin, (Consumer<Object>) task -> {
+                    try {
+                        if (!plugin.isEnabled()) {
+                            task.getClass().getMethod("cancel").invoke(task);
+                            return;
+                        }
+                        checkAndResetPaths();
+                        cleanUpAirViolations();
+                        cleanupExpiredPaths();
+                        cleanupExpiredExplosions();
+                        cleanupExpiredPlacedBlocks();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }, interval, interval);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -90,7 +94,11 @@ public class MiningListener implements Listener {
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    cleanUpTrack();
+                    checkAndResetPaths();
+                    cleanUpAirViolations();
+                    cleanupExpiredPaths();
+                    cleanupExpiredExplosions();
+                    cleanupExpiredPlacedBlocks();
                 }
             }.runTaskTimer(plugin, interval, interval);
         }
@@ -105,10 +113,10 @@ public class MiningListener implements Listener {
 
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (!plugin.getConfig().getBoolean("xray.enable", true)) {
+    	if (!plugin.getConfig().getBoolean("xray.enable", true)) {
             return;
         }
-
+    	
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
         Material blockType = event.getBlock().getType();
@@ -120,13 +128,12 @@ public class MiningListener implements Listener {
             placedOres.get(playerId).put(event.getBlock().getLocation(), System.currentTimeMillis());
         }
     }
-
+    
     private boolean isPlayerPlacedBlock(Location blockLocation) {
         long now = System.currentTimeMillis();
         long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L; // minutes -> ms
 
-        // Iterate each player's placed map and check timestamp; remove expired entries
-        // on the fly
+        // Iterate each player's placed map and check timestamp; remove expired entries on the fly
         List<UUID> emptyOwners = new ArrayList<>();
         for (Map.Entry<UUID, Map<Location, Long>> entry : placedOres.entrySet()) {
             UUID owner = entry.getKey();
@@ -140,17 +147,15 @@ public class MiningListener implements Listener {
                     map.remove(blockLocation);
                 }
             }
-            if (map.isEmpty())
-                emptyOwners.add(owner);
+            if (map.isEmpty()) emptyOwners.add(owner);
         }
 
         // Clean up empty owner maps
-        for (UUID id : emptyOwners)
-            placedOres.remove(id);
+        for (UUID id : emptyOwners) placedOres.remove(id);
 
         return false; // not placed by player (or entry expired)
     }
-
+    
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
         Entity entity = event.getEntity();
@@ -173,19 +178,17 @@ public class MiningListener implements Listener {
             UUID playerId = sourcePlayer.getUniqueId();
             List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
             long currentTime = System.currentTimeMillis();
-            int retentionTime = plugin.getConfig().getInt("xray.explosion.explosion_retention_time", 600) * 1000; // Default
-                                                                                                                  // 10
-                                                                                                                  // minutes
+            int retentionTime = plugin.getConfig().getInt("xray.explosion.explosion_retention_time", 600) * 1000; // Default 10 minutes
             int totalBlocks = 0;
             int rareOresCount = 0;
 
             // Count the number of blocks and rare ores affected by the explosion
             for (Block block : event.blockList()) {
-                Location blockLocation = block.getLocation();
-                if (isPlayerPlacedBlock(blockLocation)) {
+            	Location blockLocation = block.getLocation();
+            	if (isPlayerPlacedBlock(blockLocation)) {
                     continue;
                 }
-
+            	
                 totalBlocks++;
                 if (rareOres.contains(block.getType().name())) {
                     rareOresCount++;
@@ -194,21 +197,19 @@ public class MiningListener implements Listener {
             }
 
             // If there are no blocks within the blast range
-            if (totalBlocks == 0)
-                return;
+            if (totalBlocks == 0) return;
 
             // Calculate rare ore hit rates
             double hitRate = (double) rareOresCount / totalBlocks;
 
             // Determine whether the hit rate is abnormal
-            double suspiciousThreshold = plugin.getConfig().getDouble("xray.explosion.suspicious_hit_rate", 0.1); // Default
-                                                                                                                  // 10%
+            double suspiciousThreshold = plugin.getConfig().getDouble("xray.explosion.suspicious_hit_rate", 0.1); // Default 10%
             if (hitRate > suspiciousThreshold) {
                 handleSuspiciousExplosion(sourcePlayer, rareOresCount, hitRate);
             }
         }
     }
-
+    
     private void handleSuspiciousExplosion(Player player, int rareOresCount, double hitRate) {
         UUID playerId = player.getUniqueId();
         int currentVL = violationLevel.getOrDefault(playerId, 0);
@@ -218,9 +219,7 @@ public class MiningListener implements Listener {
         violationLevel.put(playerId, currentVL + increaseAmount);
 
         // send log
-        // plugin.getLogger().warning(player.getName() + " 's explosive behavior is
-        // abnormal! Ores: " + rareOresCount + ", Hit rate: " + String.format("%.2f%%",
-        // hitRate * 100) + " (VL added " + increaseAmount + ")");
+        //plugin.getLogger().warning(player.getName() + " 's explosive behavior is abnormal! Ores: " + rareOresCount + ", Hit rate: " + String.format("%.2f%%", hitRate * 100) + " (VL added " + increaseAmount + ")");
     }
 
     private int calculateExplosionVLIncrease(int rareOresCount, double hitRate) {
@@ -233,29 +232,24 @@ public class MiningListener implements Listener {
         long currentTime = System.currentTimeMillis();
         explosionExposedOres.entrySet().removeIf(entry -> currentTime > entry.getValue());
 
-        // plugin.getLogger().info("Cleared expired blasting records. Total number of
-        // current records: " + explosionExposedOres.size());
+        // plugin.getLogger().info("Cleared expired blasting records. Total number of current records: " + explosionExposedOres.size());
     }
+    
+    /* Deprecated
+    @EventHandler
+    public void onEntityExplode(EntityExplodeEvent event) {
+        // Record all ore locations exposed by the explosion
+        List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
+        long currentTime = System.currentTimeMillis();
+        int retentionTime = plugin.getConfig().getInt("xray.explosion_retention_time", 600) * 1000; // Default 10 minutes
 
-    /*
-     * Deprecated
-     * 
-     * @EventHandler
-     * public void onEntityExplode(EntityExplodeEvent event) {
-     * // Record all ore locations exposed by the explosion
-     * List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
-     * long currentTime = System.currentTimeMillis();
-     * int retentionTime =
-     * plugin.getConfig().getInt("xray.explosion_retention_time", 600) * 1000; //
-     * Default 10 minutes
-     * 
-     * for (var block : event.blockList()) {
-     * if (rareOres.contains(block.getType().name())) {
-     * explosionExposedOres.put(block.getLocation(), currentTime + retentionTime);
-     * }
-     * }
-     * }
-     */
+        for (var block : event.blockList()) {
+            if (rareOres.contains(block.getType().name())) {
+                explosionExposedOres.put(block.getLocation(), currentTime + retentionTime);
+            }
+        }
+    }
+    */
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
@@ -267,45 +261,44 @@ public class MiningListener implements Listener {
         UUID playerId = player.getUniqueId();
         Material blockType = event.getBlock().getType();
         Location blockLocation = event.getBlock().getLocation();
-
+        
         if (isPlayerPlacedBlock(blockLocation)) {
             return;
         }
-
+        
         List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
 
-        if (!player.hasPermission("minertrack.bypass")
-                || player.hasPermission("minertrack.bypass") && plugin.getConfigManager().DisableBypass()) {
-            if (violationLevel.getOrDefault(playerId, 0) == 0) {
-                vlZeroTimestamp.put(playerId, System.currentTimeMillis());
-            }
+        if (!player.hasPermission("minertrack.bypass") || player.hasPermission("minertrack.bypass") && plugin.getConfigManager().DisableBypass()) {
+        	if (violationLevel.getOrDefault(playerId, 0) == 0) {
+        		vlZeroTimestamp.put(playerId, System.currentTimeMillis());
+        	}
 
-            // Check if detection is enabled for the player's world
-            String worldName = player.getWorld().getName();
-            if (!plugin.getConfigManager().isWorldDetectionEnabled(worldName)) {
-                return; // Detection is disabled for this world
-            }
+        	// Check if detection is enabled for the player's world
+        	String worldName = player.getWorld().getName();
+        	if (!plugin.getConfigManager().isWorldDetectionEnabled(worldName)) {
+        		return; // Detection is disabled for this world
+        	}
 
-            // Check if the block height exceeds max height for detection
-            int maxHeight = plugin.getConfigManager().getWorldMaxHeight(worldName);
-            if (maxHeight != -1 && blockLocation.getY() > maxHeight) {
-                return;
-            }
+        	// Check if the block height exceeds max height for detection
+        	int maxHeight = plugin.getConfigManager().getWorldMaxHeight(worldName);
+        	if (maxHeight != -1 && blockLocation.getY() > maxHeight) {
+        		return;
+        	}
 
-            // Ignore ores exposed by explosions within the retention time
-            if (explosionExposedOres.containsKey(blockLocation)) {
-                long expirationTime = explosionExposedOres.get(blockLocation);
-                if (System.currentTimeMillis() < expirationTime) {
-                    return;
-                } else {
-                    explosionExposedOres.remove(blockLocation); // Remove expired entry
-                }
-            }
+        	// Ignore ores exposed by explosions within the retention time
+        	if (explosionExposedOres.containsKey(blockLocation)) {
+        		long expirationTime = explosionExposedOres.get(blockLocation);
+        		if (System.currentTimeMillis() < expirationTime) {
+        			return;
+        		} else {
+        			explosionExposedOres.remove(blockLocation); // Remove expired entry
+        		}
+        	}
 
-            // Proceed with X-Ray detection if the broken block is a rare ore
-            if (rareOres.contains(blockType.name())) {
-                handleXRayDetection(player, blockType, blockLocation);
-            }
+        	// Proceed with X-Ray detection if the broken block is a rare ore
+        	if (rareOres.contains(blockType.name())) {
+        		handleXRayDetection(player, blockType, blockLocation);
+        	}
         }
     }
 
@@ -332,7 +325,7 @@ public class MiningListener implements Listener {
 
     // Check new veins
     checkForArtificialAir(player, path);
-    if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(playerId, path)) {
+    if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(player.getUniqueId(), path)) {
             if (isNewVein(playerId, worldName, blockLocation, blockType)) {
                 minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
                 lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
@@ -340,57 +333,59 @@ public class MiningListener implements Listener {
 
                 int veinCount = minedVeinCount.getOrDefault(playerId, 0);
                 if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
-                    analyzeMiningPath(player, path, blockType, countVeinBlocks(blockLocation, blockType),
-                            blockLocation);
+                    analyzeMiningPath(player, path, blockType, countVeinBlocks(blockLocation, blockType), blockLocation);
                 }
             }
         }
     }
 
     private void cleanupExpiredPaths() {
-        // Backwards-compatible: call per-player cleanup for all players
-        Set<UUID> players = new HashSet<>(miningPath.keySet());
-        for (UUID playerId : players) {
-            cleanupExpiredPaths(playerId);
-        }
-    }
-
-    private void cleanupExpiredPaths(UUID playerId) {
         long now = System.currentTimeMillis();
         long traceBackLength = plugin.getConfigManager().traceBackLength(); // Get the length of time to look back
-
-        Map<String, List<Location>> paths = miningPath.get(playerId);
-        if (paths == null || paths.isEmpty()) {
-            // also check for clusters removal based on lastMiningTime
+        // Prefer to use lastMiningTime (epoch ms) when available to decide expiry.
+        // If a player's last mining time is older than the traceBackLength, clear their stored paths.
+        Set<UUID> playersToClear = new HashSet<>();
+        for (Map.Entry<UUID, Map<String, List<Location>>> entry : miningPath.entrySet()) {
+            UUID playerId = entry.getKey();
+            Map<String, List<Location>> paths = entry.getValue();
             long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
+
             if (lastTime > 0 && now - lastTime > traceBackLength) {
-                lastVeinClusters.remove(playerId);
-                lastVeinLocation.remove(playerId);
-                minedVeinCount.remove(playerId);
+                // Player hasn't mined within the retention window: clear stored paths for them.
+                playersToClear.add(playerId);
+            } else {
+                // No reliable per-location timestamp available, fall back to pruning by lastMiningTime if present.
+                paths.values().forEach(path -> {
+                    if (lastTime > 0) {
+                        path.removeIf(loc -> now - lastTime > traceBackLength);
+                    }
+                    // If we don't have a lastMiningTime, keep the path to be conservative.
+                });
             }
-            return;
         }
 
-        long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
-        if (lastTime > 0 && now - lastTime > traceBackLength) {
-            // Player hasn't mined within the retention window: clear stored paths for them.
-            miningPath.remove(playerId);
-            lastMiningTime.remove(playerId);
-            lastVeinClusters.remove(playerId);
-            lastVeinLocation.remove(playerId);
-            minedVeinCount.remove(playerId);
-            // remove per-player path analysis counters
-            totalTurnsMap.remove(playerId);
-            branchCountMap.remove(playerId);
-            yChangesMap.remove(playerId);
-            return;
+        // Remove cleared players from the miningPath map
+        for (UUID uuid : playersToClear) {
+            miningPath.remove(uuid);
+            lastMiningTime.remove(uuid);
         }
 
-        // Prune individual paths by lastMiningTime if available
-        if (lastTime > 0) {
-            for (List<Location> path : paths.values()) {
-                path.removeIf(loc -> now - lastTime > traceBackLength);
+        // ALSO: cleanup cached vein clusters and lastVeinLocation for players who haven't mined recently
+        // This prevents lastVeinClusters from growing indefinitely.
+        Set<UUID> clustersToRemove = new HashSet<>();
+        for (Map.Entry<UUID, Map<String, Set<Location>>> e : lastVeinClusters.entrySet()) {
+            UUID playerId = e.getKey();
+            long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
+            // If we don't have a lastMiningTime, be conservative and keep the cluster.
+            if (lastTime > 0 && now - lastTime > traceBackLength) {
+                clustersToRemove.add(playerId);
             }
+        }
+
+        for (UUID uuid : clustersToRemove) {
+            lastVeinClusters.remove(uuid);
+            lastVeinLocation.remove(uuid);
+            minedVeinCount.remove(uuid);
         }
     }
 
@@ -442,8 +437,7 @@ public class MiningListener implements Listener {
         for (Location a : currentCluster) {
             for (Location b : lastCluster) {
                 double d = a.distance(b);
-                if (d < minDist)
-                    minDist = d;
+                if (d < minDist) minDist = d;
             }
         }
 
@@ -455,14 +449,12 @@ public class MiningListener implements Listener {
             return false;
         }
 
-        // Special handling for very small veins: be conservative and avoid treating
-        // tiny nearby clusters as the same
+        // Special handling for very small veins: be conservative and avoid treating tiny nearby clusters as the same
         int currentSize = currentCluster.size();
         int lastSize = lastCluster.size();
 
         if (currentSize > 0 && currentSize <= smallVeinThreshold && lastSize > 0 && lastSize <= smallVeinThreshold) {
-            // If both are small but not overlapping and not within maxDistance, consider
-            // new
+            // If both are small but not overlapping and not within maxDistance, consider new
             playerClusters.put(worldName, new HashSet<>(currentCluster));
             lastLocations.put(worldName, location);
             lastVeinLocation.put(playerId, lastLocations);
@@ -480,24 +472,20 @@ public class MiningListener implements Listener {
         return false; // fallback: treat as same
     }
 
-    // Helper: find all connected ore locations starting from startLocation within a
-    // search limit
+    // Helper: find all connected ore locations starting from startLocation within a search limit
     private Set<Location> getVeinLocations(Location startLocation, Material type, int maxDistance) {
         Set<Location> visited = new HashSet<>();
         Queue<Location> toVisit = new LinkedList<>();
-        if (startLocation == null)
-            return visited;
+        if (startLocation == null) return visited;
 
-        // If the start block itself matches, use it as seed. Otherwise, search nearby
-        // for seeds
+        // If the start block itself matches, use it as seed. Otherwise, search nearby for seeds
         // Use squared distance to avoid repeated sqrt. maxDistance is inclusive.
         double maxDistanceSq = Math.max(1, maxDistance) * (double) Math.max(1, maxDistance);
 
         if (startLocation.getBlock().getType().equals(type)) {
             toVisit.add(startLocation);
         } else {
-            // scan a cube around startLocation to find any nearby ore blocks to act as
-            // seeds
+            // scan a cube around startLocation to find any nearby ore blocks to act as seeds
             int seedRadius = Math.max(1, maxDistance);
             int baseX = startLocation.getBlockX();
             int baseY = startLocation.getBlockY();
@@ -507,8 +495,7 @@ public class MiningListener implements Listener {
                 for (int dy = -seedRadius; dy <= seedRadius; dy++) {
                     for (int dz = -seedRadius; dz <= seedRadius; dz++) {
                         Location loc = new Location(world, baseX + dx, baseY + dy, baseZ + dz);
-                        if (!loc.getWorld().equals(startLocation.getWorld()))
-                            continue;
+                        if (!loc.getWorld().equals(startLocation.getWorld())) continue;
                         // only accept seeds within the configured maxDistance from the start
                         double distSq = loc.distanceSquared(startLocation);
                         if (distSq <= maxDistanceSq && loc.getBlock().getType().equals(type)) {
@@ -518,10 +505,8 @@ public class MiningListener implements Listener {
                 }
             }
             // If no seeds found, return empty set
-            if (toVisit.isEmpty())
-                return visited;
-            // If the start block was the triggering block but is now air, include its
-            // location
+            if (toVisit.isEmpty()) return visited;
+            // If the start block was the triggering block but is now air, include its location
             // in the result so callers treat the broken block as part of the vein.
             // We don't enqueue it for searching since it's not the ore type.
             visited.add(startLocation);
@@ -532,29 +517,21 @@ public class MiningListener implements Listener {
 
         while (!toVisit.isEmpty() && visited.size() < safetyCap) {
             Location current = toVisit.poll();
-            if (visited.contains(current))
-                continue;
-            if (!current.getBlock().getType().equals(type))
-                continue;
+            if (visited.contains(current)) continue;
+            if (!current.getBlock().getType().equals(type)) continue;
 
             visited.add(current);
 
-            // traverse neighbors (including diagonals) but only enqueue neighbors within a
-            // bounding cube
+            // traverse neighbors (including diagonals) but only enqueue neighbors within a bounding cube
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
-                        if (dx == 0 && dy == 0 && dz == 0)
-                            continue;
+                        if (dx == 0 && dy == 0 && dz == 0) continue;
                         Location neighbor = current.clone().add(dx, dy, dz);
-                        if (visited.contains(neighbor))
-                            continue;
-                        if (!neighbor.getBlock().getType().equals(type))
-                            continue;
-                        // accept neighbor if it's within maxDistance from the start (use squared
-                        // distance)
-                        if (neighbor.getWorld().equals(startLocation.getWorld())
-                                && neighbor.distanceSquared(startLocation) <= maxDistanceSq) {
+                        if (visited.contains(neighbor)) continue;
+                        if (!neighbor.getBlock().getType().equals(type)) continue;
+                        // accept neighbor if it's within maxDistance from the start (use squared distance)
+                        if (neighbor.getWorld().equals(startLocation.getWorld()) && neighbor.distanceSquared(startLocation) <= maxDistanceSq) {
                             toVisit.add(neighbor);
                         }
                     }
@@ -564,35 +541,34 @@ public class MiningListener implements Listener {
 
         return visited;
     }
-
+    
     public int countVeinBlocks(Location startLocation, Material type) {
-        // Reuse getVeinLocations which now includes the triggering location when
-        // appropriate
+        // Reuse getVeinLocations which now includes the triggering location when appropriate
         double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
         Set<Location> vein = getVeinLocations(startLocation, type, (int) Math.max(1, Math.round(maxDistance)));
         return vein.size();
     }
-
-    // Per-player counters to avoid shared state across players
-    private final Map<UUID, Integer> totalTurnsMap = new HashMap<>();
-    private final Map<UUID, Integer> branchCountMap = new HashMap<>();
-    private final Map<UUID, Integer> yChangesMap = new HashMap<>();
-
+    
+    
+    // Per-player counters for path analysis (turns, branches, Y changes)
+    private final Map<UUID, Integer> totalTurns = new HashMap<>();
+    private final Map<UUID, Integer> branchCount = new HashMap<>();
+    private final Map<UUID, Integer> yChanges = new HashMap<>();
+    
     private boolean isSmoothPath(UUID playerId, List<Location> path) {
-        if (path.size() < 2)
-            return true;
-
+        if (path.size() < 2) return true;
+        
         int turnThreshold = plugin.getConfigManager().getTurnCountThreshold();
         int branchThreshold = plugin.getConfigManager().getBranchCountThreshold();
         int yChangeThreshold = plugin.getConfigManager().getYChangeThreshold();
 
+        // load per-player counters
+        int playerTotalTurns = totalTurns.getOrDefault(playerId, 0);
+        int playerBranchCount = branchCount.getOrDefault(playerId, 0);
+        int playerYChanges = yChanges.getOrDefault(playerId, 0);
+
         Location lastLocation = null;
         Vector lastDirection = null;
-
-        // compute path-specific counts first
-        int pathTurns = 0;
-        int pathBranches = 0;
-        int pathYChanges = 0;
 
         for (int i = 0; i < path.size(); i++) {
             Location currentLocation = path.get(i);
@@ -604,14 +580,13 @@ public class MiningListener implements Listener {
                     // 计算方向变化的角度（转向幅度）
                     double dotProduct = lastDirection.dot(currentDirection);
                     if (dotProduct < Math.cos(Math.toRadians(30))) { // 夹角大于30度，记为一次转向
-                        pathTurns++;
+                        playerTotalTurns++;
                     }
                 }
 
                 // 检查Y轴的变化
-                if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager()
-                        .getYPosChangeThresholdAddRequired()) {
-                    pathYChanges++;
+                if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager().getYPosChangeThresholdAddRequired()) {
+                    playerYChanges++;
                 }
 
                 // 检查分支（检测是否突然偏离主方向）
@@ -619,7 +594,7 @@ public class MiningListener implements Listener {
                     Location prevLocation = path.get(i - 1);
                     Vector prevDirection = prevLocation.toVector().subtract(lastLocation.toVector()).normalize();
                     if (currentDirection.angle(prevDirection) > Math.toRadians(60)) { // 分支角度大于60°
-                        pathBranches++;
+                        playerBranchCount++;
                     }
                 }
 
@@ -628,23 +603,18 @@ public class MiningListener implements Listener {
             lastLocation = currentLocation;
         }
 
-        // accumulate into per-player totals
-        int totalTurns = totalTurnsMap.getOrDefault(playerId, 0) + pathTurns;
-        int branchCount = branchCountMap.getOrDefault(playerId, 0) + pathBranches;
-        int yChanges = yChangesMap.getOrDefault(playerId, 0) + pathYChanges;
-
-        totalTurnsMap.put(playerId, totalTurns);
-        branchCountMap.put(playerId, branchCount);
-        yChangesMap.put(playerId, yChanges);
+        // persist per-player counters back to maps
+        totalTurns.put(playerId, playerTotalTurns);
+        branchCount.put(playerId, playerBranchCount);
+        yChanges.put(playerId, playerYChanges);
 
         // 检查总转向次数、分支次数和Y轴变化是否超过阈值
-        return totalTurns < turnThreshold && branchCount < branchThreshold && yChanges < yChangeThreshold;
+        return playerTotalTurns < turnThreshold && playerBranchCount < branchThreshold && playerYChanges < yChangeThreshold;
     }
-
+    
     private boolean isInNaturalEnvironment(Player player, Location location, List<Location> path) {
-        if (!plugin.getConfigManager().getNaturalEnable())
-            return false;
-
+    	if (!plugin.getConfigManager().getNaturalEnable()) return false;
+    	
         int airCount = 0;
         int waterCount = 0;
         int lavaCount = 0;
@@ -674,8 +644,7 @@ public class MiningListener implements Listener {
                             airCount++;
                             break;
                         case WATER:
-                            if (checkRunningWater
-                                    || isWaterStill(location.getWorld(), baseX + x, baseY + y, baseZ + z)) {
+                            if (checkRunningWater || isWaterStill(location.getWorld(), baseX + x, baseY + y, baseZ + z)) {
                                 waterCount++;
                             }
                             break;
@@ -689,18 +658,14 @@ public class MiningListener implements Listener {
             }
         }
 
-        if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL()
-                && airViolationLevel.getOrDefault(player, 0) < plugin.getConfigManager().AirMonitorVLT())
-            return true;
-        if (waterCount > waterThreshold && plugin.getConfigManager().isSeaSkipVL())
-            return true;
-        if (lavaCount > lavaThreshold && plugin.getConfigManager().isLavaSeaSkipVL())
-            return true;
+		if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL() && airViolationLevel.getOrDefault(player, 0) < plugin.getConfigManager().AirMonitorVLT()) return true;
+        if (waterCount > waterThreshold && plugin.getConfigManager().isSeaSkipVL()) return true;
+        if (lavaCount > lavaThreshold && plugin.getConfigManager().isLavaSeaSkipVL()) return true;
 
         return false;
     }
 
-    private boolean isWaterStill(World world, int x, int y, int z) {
+	private boolean isWaterStill(World world, int x, int y, int z) {
         Block block = world.getBlockAt(x, y, z);
         if (block.getType() == Material.WATER) {
             return block.getBlockData() instanceof Levelled && ((Levelled) block.getBlockData()).getLevel() == 0;
@@ -708,26 +673,25 @@ public class MiningListener implements Listener {
         return false;
     }
 
-    private void analyzeMiningPath(Player player, List<Location> path, Material blockType, int count,
-            Location blockLocation) {
+    
+    private void analyzeMiningPath(Player player, List<Location> path, Material blockType, int count, Location blockLocation) {
         UUID playerId = player.getUniqueId();
         Map<String, Location> lastVeins = lastVeinLocation.getOrDefault(playerId, new HashMap<>());
         String worldName = blockLocation.getWorld().getName();
         Location lastVeinLocation = lastVeins.get(worldName);
 
         /*
-         * // 如果有上一个矿脉记录，检查路径联通性
-         * if (lastVeinLocation != null) {
-         * double veinDistance = lastVeinLocation.distance(blockLocation);
-         * 
-         * // 如果路径不联通，认为是在洞穴中挖矿
-         * if (!isPathConnected(lastVeinLocation, blockLocation, path)) {
-         * if (plugin.getConfigManager().caveSkipVL()) {
-         * return;
-         * }
-         * }
-         * }
-         */
+        // 如果有上一个矿脉记录，检查路径联通性
+        if (lastVeinLocation != null) {
+            double veinDistance = lastVeinLocation.distance(blockLocation);
+
+            // 如果路径不联通，认为是在洞穴中挖矿
+            if (!isPathConnected(lastVeinLocation, blockLocation, path)) {
+                if (plugin.getConfigManager().caveSkipVL()) {
+                    return;
+                }
+            }
+        }*/
 
         // 如果路径分析通过，继续处理违规逻辑
         int disconnectedSegments = 0;
@@ -748,9 +712,9 @@ public class MiningListener implements Listener {
 
         int veinCount = minedVeinCount.getOrDefault(playerId, 0);
         increaseViolationLevel(player, 1, blockType.name(), count, veinCount, blockLocation);
-        // minedVeinCount.put(playerId, 0);
+        //minedVeinCount.put(playerId, 0);
     }
-
+    
     private boolean isPathConnected(Location start, Location end, List<Location> path) {
         // 如果路径为空，直接返回 false
         if (path == null || path.isEmpty()) {
@@ -785,7 +749,7 @@ public class MiningListener implements Listener {
         // 如果搜索完成后仍未找到连接路径，则不联通
         return false;
     }
-
+    
     private void checkForArtificialAir(Player player, List<Location> path) {
         if (!plugin.getConfig().getBoolean("xray.natural-detection.cave.air-monitor.enable", true)) {
             return;
@@ -805,8 +769,7 @@ public class MiningListener implements Listener {
         }
 
         double airRatio = (double) airBlockCount / path.size();
-        double threshold = plugin.getConfig().getDouble("xray.natural-detection.cave.air-monitor.air-ratio-threshold",
-                0.3);
+        double threshold = plugin.getConfig().getDouble("xray.natural-detection.cave.air-monitor.air-ratio-threshold", 0.3);
 
         if (airRatio > threshold) {
             UUID playerId = player.getUniqueId();
@@ -815,118 +778,88 @@ public class MiningListener implements Listener {
             lastAirViolationTime.put(playerId, System.currentTimeMillis());
         }
     }
-
+    
     private void cleanupExpiredPlacedBlocks() {
-        // Backwards-compatible: run per-player cleanup for all owners
-        Set<UUID> owners = new HashSet<>(placedOres.keySet());
-        for (UUID owner : owners) {
-            cleanupExpiredPlacedBlocks(owner);
-        }
-    }
-
-    private void cleanupExpiredPlacedBlocks(UUID owner) {
         long currentTime = System.currentTimeMillis();
         long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L;
-        Map<Location, Long> map = placedOres.get(owner);
-        if (map == null)
-            return;
-        map.entrySet().removeIf(e -> currentTime - e.getValue() > expirationTime);
-        if (map.isEmpty())
-            placedOres.remove(owner);
-    }
 
+        // Remove entries older than expirationTime
+        List<UUID> ownersToRemove = new ArrayList<>();
+        for (Map.Entry<UUID, Map<Location, Long>> entry : placedOres.entrySet()) {
+            UUID owner = entry.getKey();
+            Map<Location, Long> map = entry.getValue();
+            map.entrySet().removeIf(e -> currentTime - e.getValue() > expirationTime);
+            if (map.isEmpty()) ownersToRemove.add(owner);
+        }
+
+        for (UUID id : ownersToRemove) placedOres.remove(id);
+
+        //plugin.getLogger().info("清理了过期的放置方块记录。当前记录总数: " + placedOres.size());
+    }
+    
     private void cleanUpAirViolations() {
-        // Backwards-compatible: run per-player cleanup
-        Set<UUID> players = new HashSet<>(lastAirViolationTime.keySet());
-        for (UUID uuid : players) {
-            cleanUpAirViolations(uuid);
-        }
-    }
-
-    private void cleanUpAirViolations(UUID playerId) {
         long now = System.currentTimeMillis();
-        long decayTime = plugin.getConfig().getLong("xray.natural-detection.cave.air-monitor.remove-time", 20) * 60
-                * 1000L;
-        Long t = lastAirViolationTime.get(playerId);
-        if (t == null)
-            return;
-        if (now - t > decayTime) {
-            airViolationLevel.remove(playerId);
-            lastAirViolationTime.remove(playerId);
-        }
-    }
+        long decayTime = plugin.getConfig().getLong("xray.natural-detection.cave.air-monitor.remove-time", 20) * 60 * 1000L;
 
-    private void checkAndResetPaths() {
-        // Backwards-compatible: call per-player version for all keys
-        Set<UUID> players = new HashSet<>(vlZeroTimestamp.keySet());
-        for (UUID uuid : players) {
-            checkAndResetPaths(uuid);
-        }
-    }
+        List<UUID> toRemove = new ArrayList<>();
 
-    private void checkAndResetPaths(UUID playerId) {
-        long now = System.currentTimeMillis();
-        long traceRemoveMillis = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L; // 默认15分钟
-
-        Long lastZeroTime = vlZeroTimestamp.get(playerId);
-        int vl = ViolationManager.getViolationLevel(playerId);
-
-        if (lastZeroTime != null && vl == 0 && now - lastZeroTime > traceRemoveMillis) {
-            miningPath.remove(playerId); // 清除路径
-            minedVeinCount.remove(playerId); // 清除矿脉计数
-            vlZeroTimestamp.remove(playerId); // 清除时间戳
-
-            // remove per-player counters
-            totalTurnsMap.remove(playerId);
-            branchCountMap.remove(playerId);
-            yChangesMap.remove(playerId);
-
-            // plugin.getLogger().info("Path reset for player: " + playerId + " due to VL=0 and timeout.");
-        }
-    }
-
-    /**
-     * Per-player cleanup: perform cleanup tasks that can be scoped to a single
-     * player. This reduces work when only one player's state needs maintaining.
-     */
-    public void cleanUpTrack(UUID playerId) {
-        if (playerId == null)
-            return;
-
-        checkAndResetPaths(playerId);
-        cleanUpAirViolations(playerId);
-        cleanupExpiredPaths(playerId);
-        cleanupExpiredPlacedBlocks(playerId);
-        // explosionExposedOres is a global store (explosion events affect world),
-        // leave its cleanup to the global runner to avoid repeated work per player.
-    }
-
-    /**
-     * Backwards-compatible: iterate all known players and run per-player cleanup.
-     * Also perform global cleanups that cannot be scoped to a player.
-     */
-    public void cleanUpTrack() {
-        // Build a union of player UUIDs that have per-player state
-        Set<UUID> players = new HashSet<>();
-        players.addAll(miningPath.keySet());
-        players.addAll(vlZeroTimestamp.keySet());
-        players.addAll(lastAirViolationTime.keySet());
-        players.addAll(placedOres.keySet());
-
-        for (UUID uuid : players) {
-            try {
-                cleanUpTrack(uuid);
-            } catch (Exception ignored) {
-                // keep running for other players
+        for (Map.Entry<UUID, Long> entry : lastAirViolationTime.entrySet()) {
+            if (now - entry.getValue() > decayTime) {
+                toRemove.add(entry.getKey());
             }
         }
 
-        // Cleanup global stores once per tick run
-        cleanupExpiredExplosions();
+        for (UUID uuid : toRemove) {
+            airViolationLevel.remove(uuid);
+            lastAirViolationTime.remove(uuid);
+        }
+    }
+    
+    private void checkAndResetPaths() {
+        long now = System.currentTimeMillis();
+        long traceRemoveMillis = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L; // 默认15分钟
+
+        for (UUID playerId : new HashSet<>(vlZeroTimestamp.keySet())) {
+            Long lastZeroTime = vlZeroTimestamp.get(playerId);
+            int vl = ViolationManager.getViolationLevel(playerId);
+
+            if (lastZeroTime != null && vl == 0 && now - lastZeroTime > traceRemoveMillis) {
+                miningPath.remove(playerId); // 清除路径
+                minedVeinCount.remove(playerId); // 清除矿脉计数
+                vlZeroTimestamp.remove(playerId); // 清除时间戳
+
+                // 移除该玩家的按玩家计数
+                totalTurns.remove(playerId);
+                branchCount.remove(playerId);
+                yChanges.remove(playerId);
+
+                // plugin.getLogger().info("Path reset for player: " + playerId + " due to VL=0 and timeout.");
+            }
+        }
     }
 
-    private void increaseViolationLevel(Player player, int amount, String blockType, int count, int vein,
-            Location location) {
+    /**
+     * Reset tracking data for a specific player. Called externally when VL is reset.
+     */
+    public void checkAndResetPaths(UUID playerId) {
+        if (playerId == null) return;
+
+        miningPath.remove(playerId);
+        lastMiningTime.remove(playerId);
+        minedVeinCount.remove(playerId);
+        lastVeinLocation.remove(playerId);
+        lastVeinClusters.remove(playerId);
+        placedOres.remove(playerId);
+        vlZeroTimestamp.remove(playerId);
+        airViolationLevel.remove(playerId);
+        lastAirViolationTime.remove(playerId);
+
+        totalTurns.remove(playerId);
+        branchCount.remove(playerId);
+        yChanges.remove(playerId);
+    }
+
+    private void increaseViolationLevel(Player player, int amount, String blockType, int count, int vein, Location location) {
         UUID playerId = player.getUniqueId();
         violationLevel.put(playerId, violationLevel.getOrDefault(playerId, 0) + amount);
         vlZeroTimestamp.remove(playerId); // When the violation level increases, remove the timestamp with VL of 0

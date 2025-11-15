@@ -225,13 +225,12 @@ public class ViolationManager {
 
                     List<String> commandsToRun = new ArrayList<>();
 
-                    if (raw instanceof List) {
-                        //noinspection unchecked
-                        for (Object o : (List<Object>) raw) {
-                            if (o != null) commandsToRun.add(o.toString());
+                    if (raw instanceof List<?>) {
+                        for (Object o : (List<?>) raw) {
+                            if (o != null) commandsToRun.add(String.valueOf(o));
                         }
                     } else if (raw != null) {
-                        commandsToRun.add(raw.toString());
+                        commandsToRun.add(String.valueOf(raw));
                     }
 
                     for (String commandTemplate : commandsToRun) {
@@ -418,7 +417,7 @@ public class ViolationManager {
         try {
             MiningListener listener = plugin.getMiningListener();
             if (listener != null) {
-                listener.cleanUpTrack(playerId);
+                listener.checkAndResetPaths(playerId);
             }
         } catch (Exception ignored) {
             // If mining listener isn't available or something goes wrong, we still

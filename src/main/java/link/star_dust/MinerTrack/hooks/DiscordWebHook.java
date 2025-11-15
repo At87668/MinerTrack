@@ -24,6 +24,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.bukkit.Bukkit;
+import link.star_dust.MinerTrack.FoliaCheck;
 
 public class DiscordWebHook {
 
@@ -60,7 +61,7 @@ public class DiscordWebHook {
      * @param payload The payload to send.
      */
     private void send(Payload payload) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        Runnable task = () -> {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
                 HttpPost post = new HttpPost(webHookUrl);
                 post.setHeader("Content-Type", "application/json");
@@ -79,7 +80,18 @@ public class DiscordWebHook {
                 plugin.getLogger().severe("Error while sending message to Discord WebHook: " + e.getMessage());
                 e.printStackTrace();
             }
-        });
+        };
+
+        // On Folia the Bukkit async scheduler may throw UnsupportedOperationException when
+        // called from certain region threads, so use a plain thread instead. Fall back to
+        // Bukkit async scheduling on non-Folia servers for compatibility.
+        if (FoliaCheck.isFolia()) {
+            Thread t = new Thread(task, "MinerTrack-DiscordWebHook");
+            t.setDaemon(true);
+            t.start();
+        } else {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, task);
+        }
     }
 
     /**
