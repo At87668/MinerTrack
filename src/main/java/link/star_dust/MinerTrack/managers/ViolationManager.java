@@ -355,6 +355,8 @@ public class ViolationManager {
 
     	// 获取 WebHook 配置项
     	String webHookURL = plugin.getConfigManager().WebHookURL();
+        // Debug: log which URL will be used for this webhook invocation
+        //plugin.getLogger().info("[Webhook] ViolationManager will use WebHookURL = " + webHookURL);
     	
     	// 如果启用了自定义JSON格式
     	if (plugin.getConfigManager().isCustomJsonEnabled()) {

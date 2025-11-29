@@ -51,6 +51,9 @@ public class CustomJsonWebHook {
                     jsonPayload = jsonPayload.replace("%" + entry.getKey() + "%", entry.getValue());
                 }
 
+                // Debug: log webhook URL and payload preview
+                //plugin.getLogger().info("[CustomJsonWebHook] Sending to URL: " + webHookUrl + " payload: " + jsonPayload);
+
                 post.setEntity(new StringEntity(jsonPayload, StandardCharsets.UTF_8));
 
                 try (CloseableHttpResponse response = httpClient.execute(post)) {
