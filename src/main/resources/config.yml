@@ -81,6 +81,12 @@ DiscordWebHook:
 ##        ##   Don't detect for common ores either, you should only detect for rare ores!                                  ##
 #############################################################################################################################
 
+#############################################################################################################################
+##        ##   Default configuration may be slow on the first check-out.                                                   ##
+##  Info  ##   It will be more accurate afterwards,                                                                        ##
+##        ##   Therefore, it is recommended to adjust the configuration to suit your needs.                                ##
+#############################################################################################################################
+
 xray:
   enable: true  # Enable X-ray detection
 
@@ -116,7 +122,7 @@ xray:
   max_vein_distance: 5  # When two veins are close together, VL is not increased.
   
   # VL is increased as the player digs the number of veins
-  veinCountThreshold: 3
+  veinCountThreshold: 2
 
   # Small vein detection size
   # If a vein contains <= this number of blocks, the plugin uses a more sensitive
