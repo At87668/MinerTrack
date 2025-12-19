@@ -1,0 +1,90 @@
+#### MinerTrack Config - language.yml ##################################################
+#
+#     你好! 欢迎使用 MinerTrack anti-xray。这是 language.yml 文件，
+#  用于定义 anti-xray 插件显示的语言内容。你可以在这里自定义插件显示的所有消息。
+#
+#  有用的链接: 
+#  获取更新: https://modrinth.com/plugin/minertrack  
+#  查看源码: https://github.com/At87668/MinerTrack  
+#  提交问题: https://github.com/At87668/MinerTrack/issues  
+#  提交合并请求: https://github.com/At87668/MinerTrack/pulls  
+#  查阅 Wiki: https://minertrack.pages.dev/wiki/  
+#  加入 Discord: https://discord.gg/MzTea2W9cb  
+#
+#  不管怎样，感谢你使用 MinerTrack anti-xray!❤
+#
+#####################################################################################
+
+# 在此定义消息前缀
+prefix: '&8[&9&lMiner&c&lTrack&8]&r '
+
+# 定义当玩家因使用 X-Ray 被踢出时的公告消息
+# 占位符: %player% %reason%
+kick-format: '&b%player% &7因涉嫌使用 X-Ray 被踢出服务器! &8(%reason%)'
+
+# 定义详细模式(verbose)消息格式
+# 占位符: %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+verbose-format: '&7%player% 未通过 &fX-Ray &7检测 &7违规等级: %vl%&b(+%add_vl%) &7方块: &6%block_type%&ex%count%&7(矿脉&ax%vein_count%&7)&7 世界: %world% 位置: X%pos_x% Y%pos_y% Z%pos_z%'
+
+# 定义日志格式
+# 占位符: %year% %month% %day% %hour% %minute% %second% %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+log-format: '%year%-%month%-%day% %hour%:%minute%:%second% | %player% 未通过 X-Ray 检测 违规等级: %vl%(+%add_vl%) 方块: %block_type%x%count%(矿脉x%vein_count%) 世界: %world% 位置: X%pos_x% Y%pos_y% Z%pos_z%'
+
+# 当玩家被踢出时，是否广播消息？
+kick-broadcast: true
+
+help:
+  - "&8----[&9&lMiner&c&lTrack &6帮助&8]-----------"
+  - ""
+  - "&f/mtrack notify <消息> &7- 向工作人员发送警报"
+  - "&f/mtrack verbose &7- 开启详细模式，当玩家违规等级上升时，向启用该模式的工作人员发送通知"
+  - "&f/mtrack check <玩家> &7- 查看玩家的违规历史记录"
+  - "&f/mtrack reset <玩家> &7- 重置玩家的违规记录"
+  - "&f/mtrack help &7- 显示插件帮助信息"
+  - "&f/mtrack update &7- 检查更新"
+  - "&f/mtrack kick <玩家> <原因> &7- 以指定原因踢出玩家"
+  - "&f/mtrack logs <日志文件名.log> &7- 查看 MinerTrack 日志文件"
+
+no-permission: "&c你没有权限使用此命令。"
+
+usage-notify: "&c用法: /mtrack notify <消息>"
+usage-check: "&c用法: /mtrack check <玩家>"
+usage-reset: "&c用法: /mtrack reset <玩家>"
+usage-kick: "&c用法: /mtrack kick <玩家> <原因>"
+usage-logs: "&c用法: /mtrack logs <日志文件名.log>"
+
+# 占位符: {player}
+reset-success: "&a成功重置 {player} 的违规记录。"
+
+# 占位符: {player} {level}
+violation-level: "&e{player} 的违规等级为 {level}。"
+
+# 占位符: {player}
+player-not-found: "&c未找到玩家 {player}。"
+
+config-reloaded: "&a配置与语言文件已成功重载。"
+
+unknown-command: "&c未知子命令。使用 /mtrack help 查看命令列表。"
+
+verbose-enable: "&7详细模式已&a启用&7!"
+verbose-disable: "&7详细模式已&c禁用&7!"
+
+# 日志查看器每页显示行数
+log-viewer-lines-per-page: 10
+log-viewer-header: "&7---- &9&lMiner&c&lTrack &b日志 &7({current_page}/{max_page}) ----"
+log-viewer-logs-color: "&7"
+log-viewer-not-found: "&c未找到日志文件 {log_file}。"
+log-viewer-not-log-file: "&c只能查看日志文件。"
+log-viewer-cant-read: "&c读取日志失败。"
+log-viewer-page-invalid: "&c页码超出范围 (1 - {max_page})。"
+log-viewer-page-nan: "&c页码必须为数字"
+log-viewer-next-page: "&6使用 &a/mtrack logs page {next_page} &6查看下一页。"
+log-viewer-empty: "&7无日志条目可显示。"
+
+# 占位符: %latest_version%
+update:
+  alpha-available: '&c新 Alpha 版本 %latest_version% 现已可用!'
+  beta-available: '&e新 Beta 版本 %latest_version% 现已可用!'
+  stable-available: '&a新稳定版本 %latest_version% 现已可用!'
+  using-latest: '&2你正在使用最新版本。'
+  check-failed: '&c检查更新失败。'
