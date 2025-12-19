@@ -14,36 +14,37 @@ package link.star_dust.MinerTrack.listeners;
 import link.star_dust.MinerTrack.FoliaCheck;
 import link.star_dust.MinerTrack.MinerTrack;
 import link.star_dust.MinerTrack.managers.ViolationManager;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Levelled;
-import org.bukkit.entity.Creeper;
-import org.bukkit.entity.EnderCrystal;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.TNTPrimed;
-import org.bukkit.entity.WitherSkull;
-import org.bukkit.entity.minecart.ExplosiveMinecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import java.util.function.Consumer;
 import org.bukkit.util.Vector;
+/*import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.entity.Creeper;
+import org.bukkit.entity.EnderCrystal;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.TNTPrimed;
+import org.bukkit.entity.WitherSkull;
+import org.bukkit.entity.minecart.ExplosiveMinecart;
+import org.bukkit.event.entity.EntityExplodeEvent;*/
 
 import java.util.*;
 
 public class MiningListener implements Listener {
     private final MinerTrack plugin;
-    private final Map<UUID, Map<String, List<Location>>> miningPath = new HashMap<>();
+    // Store mining paths per world: worldName -> (playerUUID -> path)
+    private final Map<String, Map<UUID, List<Location>>> miningPath = new HashMap<>();
     private final Map<UUID, Long> lastMiningTime = new HashMap<>();
     private final Map<UUID, Integer> violationLevel = new HashMap<>();
     private final Map<UUID, Integer> minedVeinCount = new HashMap<>();
@@ -81,7 +82,7 @@ public class MiningListener implements Listener {
                         checkAndResetPaths();
                         cleanUpAirViolations();
                         cleanupExpiredPaths();
-                        cleanupExpiredExplosions();
+                        //cleanupExpiredExplosions();
                         cleanupExpiredPlacedBlocks();
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -97,7 +98,7 @@ public class MiningListener implements Listener {
                     checkAndResetPaths();
                     cleanUpAirViolations();
                     cleanupExpiredPaths();
-                    cleanupExpiredExplosions();
+                    //cleanupExpiredExplosions();
                     cleanupExpiredPlacedBlocks();
                 }
             }.runTaskTimer(plugin, interval, interval);
@@ -156,6 +157,7 @@ public class MiningListener implements Listener {
         return false; // not placed by player (or entry expired)
     }
     
+    /* EntityExplode
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
         Entity entity = event.getEntity();
@@ -307,13 +309,13 @@ public class MiningListener implements Listener {
         long currentTime = System.currentTimeMillis();
         int maxPathLength = plugin.getConfig().getInt("xray.max_path_length", 500);
 
-        // Initialize player's mining path information
-        miningPath.putIfAbsent(playerId, new HashMap<>());
-        Map<String, List<Location>> worldPaths = miningPath.get(playerId);
+        // Initialize world's player path information
         String worldName = blockLocation.getWorld().getName();
+        miningPath.putIfAbsent(worldName, new HashMap<>());
+        Map<UUID, List<Location>> worldPlayers = miningPath.get(worldName);
 
-        worldPaths.putIfAbsent(worldName, new ArrayList<>());
-        List<Location> path = worldPaths.get(worldName);
+        worldPlayers.putIfAbsent(playerId, new ArrayList<>());
+        List<Location> path = worldPlayers.get(playerId);
 
         // Update mining path and time
         path.add(blockLocation);
@@ -345,30 +347,34 @@ public class MiningListener implements Listener {
         // Prefer to use lastMiningTime (epoch ms) when available to decide expiry.
         // If a player's last mining time is older than the traceBackLength, clear their stored paths.
         Set<UUID> playersToClear = new HashSet<>();
-        for (Map.Entry<UUID, Map<String, List<Location>>> entry : miningPath.entrySet()) {
-            UUID playerId = entry.getKey();
-            Map<String, List<Location>> paths = entry.getValue();
-            long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
+        // Iterate per world, then per player
+        for (Map.Entry<String, Map<UUID, List<Location>>> worldEntry : miningPath.entrySet()) {
+            Map<UUID, List<Location>> playerMap = worldEntry.getValue();
+            for (Map.Entry<UUID, List<Location>> p : playerMap.entrySet()) {
+                UUID playerId = p.getKey();
+                List<Location> path = p.getValue();
+                long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
 
-            if (lastTime > 0 && now - lastTime > traceBackLength) {
-                // Player hasn't mined within the retention window: clear stored paths for them.
-                playersToClear.add(playerId);
-            } else {
-                // No reliable per-location timestamp available, fall back to pruning by lastMiningTime if present.
-                paths.values().forEach(path -> {
+                if (lastTime > 0 && now - lastTime > traceBackLength) {
+                    playersToClear.add(playerId);
+                } else {
                     if (lastTime > 0) {
                         path.removeIf(loc -> now - lastTime > traceBackLength);
                     }
-                    // If we don't have a lastMiningTime, keep the path to be conservative.
-                });
+                }
             }
         }
 
-        // Remove cleared players from the miningPath map
+        // Remove cleared players from every world's map
         for (UUID uuid : playersToClear) {
-            miningPath.remove(uuid);
+            for (Map<UUID, List<Location>> playerMap : miningPath.values()) {
+                playerMap.remove(uuid);
+            }
             lastMiningTime.remove(uuid);
         }
+
+        // Remove empty world entries
+        miningPath.entrySet().removeIf(e -> e.getValue().isEmpty());
 
         // ALSO: cleanup cached vein clusters and lastVeinLocation for players who haven't mined recently
         // This prevents lastVeinClusters from growing indefinitely.
@@ -824,7 +830,11 @@ public class MiningListener implements Listener {
             int vl = ViolationManager.getViolationLevel(playerId);
 
             if (lastZeroTime != null && vl == 0 && now - lastZeroTime > traceRemoveMillis) {
-                miningPath.remove(playerId); // 清除路径
+                // 从所有世界中移除该玩家的路径
+                for (Map<UUID, List<Location>> playerMap : miningPath.values()) {
+                    playerMap.remove(playerId);
+                }
+                miningPath.entrySet().removeIf(e -> e.getValue().isEmpty());
                 minedVeinCount.remove(playerId); // 清除矿脉计数
                 vlZeroTimestamp.remove(playerId); // 清除时间戳
 
@@ -844,7 +854,11 @@ public class MiningListener implements Listener {
     public void checkAndResetPaths(UUID playerId) {
         if (playerId == null) return;
 
-        miningPath.remove(playerId);
+        // Remove this player from all world maps
+        for (Map<UUID, List<Location>> playerMap : miningPath.values()) {
+            playerMap.remove(playerId);
+        }
+        miningPath.entrySet().removeIf(e -> e.getValue().isEmpty());
         lastMiningTime.remove(playerId);
         minedVeinCount.remove(playerId);
         lastVeinLocation.remove(playerId);
