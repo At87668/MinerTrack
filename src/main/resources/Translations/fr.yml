@@ -1,0 +1,96 @@
+# ### MinerTrack Config - language.yml ##################################################
+#
+#     Bonjour et bienvenue sur MinerTrack anti-xray, ceci est le fichier language.yml,
+#  utilisé pour définir la langue d’affichage de l’anti-xray. Ici, vous pouvez définir
+#  les messages que l’anti-xray affichera.
+#
+#  Liens utiles :
+#  Obtenir les mises à jour : https://modrinth.com/plugin/minertrack
+#  Voir le code source : https://github.com/At87668/MinerTrack
+#  Signaler un problème : https://github.com/At87668/MinerTrack/issues
+#  Pull Request : https://github.com/At87668/MinerTrack/pulls
+#  Consulter le Wiki : https://minertrack.pages.dev/wiki/
+#  Rejoindre le Discord : https://discord.gg/MzTea2W9cb
+#
+#  Quoi qu’il en soit, merci d’utiliser MinerTrack anti-xray ! ❤
+#
+# ####################################################################################
+
+# Vous pouvez définir ici le préfixe des messages
+prefix: '&8[&9&lMiner&c&lTrack&8]&r '
+
+# Message d’annonce après qu’un joueur a été expulsé pour usage suspect de X-Ray
+# Placeholders : %player% %reason%
+kick-format: '&b%player% &7a été expulsé du serveur pour utilisation suspecte de X-Ray ! &8(%reason%)'
+
+# Format du message détaillé (verbose)
+# Placeholders : %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+verbose-format: '&7%player% a échoué au &fcontrôle X-Ray &7VL:%vl%&b(+%add_vl%) &7Bloc:&6%block_type%&ex%count%&7(Veine&ax%vein_count%&7)
+  &7Monde : %world% Pos : X%pos_x% Y%pos_y% Z%pos_z%'
+
+# Format des logs
+# Placeholders : %year% %month% %day% %hour% %minute% %second% %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+log-format: '%year%-%month%-%day% %hour%:%minute%:%second% | %player% a échoué au contrôle X-Ray
+  VL:%vl%(+%add_vl%) Bloc:%block_type%x%count%(Veinex%vein_count%) Monde : %world%
+  Pos : X%pos_x% Y%pos_y% Z%pos_z%'
+
+# MinerTrack doit-il diffuser un message lorsqu’un joueur est expulsé ?
+kick-broadcast: true
+
+help:
+- '&8----[&9&lMiner&c&lTrack &6Aide&8]-----------'
+- ''
+- '&f/mtrack notify <message> &7- Envoyer une alerte au staff'
+- '&f/mtrack verbose &7- Activer le mode détaillé et envoyer une notification au staff
+  ayant le mode détaillé activé à chaque augmentation du VL d’un joueur'
+- '&f/mtrack check <player> &7- Consulter l’historique des infractions d’un joueur'
+- '&f/mtrack reset <player> &7- Réinitialiser les infractions d’un joueur'
+- '&f/mtrack help &7- Afficher l’aide du plugin'
+- '&f/mtrack update &7- Vérifier les mises à jour'
+- '&f/mtrack kick <player> <reason> &7- Expulser un joueur avec une raison spécifiée'
+- '&f/mtrack logs <log name.log> &7- Consulter un fichier de logs MinerTrack'
+
+no-permission: '&cVous n’avez pas la permission d’utiliser cette commande.'
+
+usage-notify: '&cUtilisation : /mtrack notify <message>'
+usage-check: '&cUtilisation : /mtrack check <player>'
+usage-reset: '&cUtilisation : /mtrack reset <player>'
+usage-kick: '&cUtilisation : /mtrack kick <player> <reason>'
+usage-logs: '&cUtilisation : /mtrack logs <log name.log>'
+
+# Placeholders : {player}
+reset-success: '&aLe niveau d’infraction de {player} a été réinitialisé avec succès.'
+
+# Placeholders : {player} {level}
+violation-level: '&eLe niveau d’infraction de {player} est de {level}.'
+
+# Placeholders : {player}
+player-not-found: '&cJoueur {player} introuvable.'
+
+config-reloaded: '&aConfiguration et langue rechargées avec succès.'
+
+unknown-command: '&cSous-commande inconnue. Utilisez /mtrack help pour la liste des commandes.'
+
+verbose-enable: '&7Mode Verbose &aActivé&7!'
+verbose-disable: '&7Mode Verbose &cDésactivé&7!'
+
+# Placeholders : {current_page} {max_page} {log_file} {next_page}
+log-viewer-lines-per-page: 10
+log-viewer-header: '&7---- &9&lMiner&c&lTrack &bLogs &7({current_page}/{max_page})
+  ----'
+log-viewer-logs-color: '&7'
+log-viewer-not-found: '&cFichier de log {log_file} introuvable.'
+log-viewer-not-log-file: '&cSeuls les fichiers de logs peuvent être consultés.'
+log-viewer-cant-read: '&cImpossible de lire les logs.'
+log-viewer-page-invalid: '&cNuméro de page hors limites (1 - {max_page})'
+log-viewer-page-nan: '&cLe numéro de page doit être un nombre'
+log-viewer-next-page: '&6Utilisez &a/mtrack logs page {next_page} &6pour voir la page suivante.'
+log-viewer-empty: '&7Aucune entrée de log à afficher.'
+
+# Placeholders : %latest_version%
+update:
+  alpha-available: '&cUne nouvelle version alpha %latest_version% est disponible !'
+  beta-available: '&eUne nouvelle version bêta %latest_version% est disponible !'
+  stable-available: '&aUne nouvelle version stable %latest_version% est disponible !'
+  using-latest: '&2Vous utilisez la dernière version.'
+  check-failed: '&cÉchec de la vérification des mises à jour.'
