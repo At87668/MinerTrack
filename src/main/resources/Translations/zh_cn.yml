@@ -36,6 +36,7 @@ kick-broadcast: true
 help:
   - "&8----[&9&lMiner&c&lTrack &6帮助&8]-----------"
   - ""
+  - "&f/mtrack reload &7- 重载插件的配置文件"
   - "&f/mtrack notify <消息> &7- 向工作人员发送警报"
   - "&f/mtrack verbose &7- 开启详细模式，当玩家违规等级上升时，向启用该模式的工作人员发送通知"
   - "&f/mtrack check <玩家> &7- 查看玩家的违规历史记录"

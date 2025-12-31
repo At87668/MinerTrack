@@ -37,6 +37,7 @@ kick-broadcast: true
 help:
   - "&8----[&9&lMiner&c&lTrack &6Help&8]-----------"
   - ""
+  - "&f/mtrack reload &7- Reload plugin's configuration file"
   - "&f/mtrack notify <message> &7- Send alerts to staff"
   - "&f/mtrack verbose &7- Turn on Detailed Mode, and send a notification to the staff who have Detailed Mode enabled whenever the player's VL increases"
   - "&f/mtrack check <player> &7- Check player's history of violations"

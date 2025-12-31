@@ -40,6 +40,7 @@ kick-broadcast: true
 help:
 - '&8----[&9&lMiner&c&lTrack &6Aide&8]-----------'
 - ''
+- '&f/mtrack reload &7- Recharger le fichier de configuration du plugin'
 - '&f/mtrack notify <message> &7- Envoyer une alerte au staff'
 - '&f/mtrack verbose &7- Activer le mode détaillé et envoyer une notification au staff
   ayant le mode détaillé activé à chaque augmentation du VL d’un joueur'
