@@ -42,6 +42,11 @@ public class LanguageManager {
         loadLanguageFile();
     }
 
+    // Reload the language file
+    public void reloadLanguageFile() {
+        languageConfig = YamlConfiguration.loadConfiguration(languageFile);
+    }
+
     public void loadLanguageFile() {
         // Save default language file if it doesn't exist
         if (!languageFile.exists()) {
@@ -74,10 +79,6 @@ public class LanguageManager {
             instance = new LanguageManager(plugin);
         }
         return instance;
-    }
-    
-    public void reloadLanguage() {
-    	reloadLanguageFile();
     }
 
     public String getKickMessage(String playerName) {
@@ -160,17 +161,6 @@ public class LanguageManager {
             }
         } catch (URISyntaxException | IOException e) {
             plugin.getLogger().severe("Could not extract translation files: " + e.getMessage());
-        }
-    }
-
-    
-
-    // Reload the language file
-    public void reloadLanguageFile() {
-        try {
-            languageConfig.load(languageFile);
-        } catch (IOException | InvalidConfigurationException e) {
-            plugin.getLogger().severe("Could not reload language configuration: " + e.getMessage());
         }
     }
 

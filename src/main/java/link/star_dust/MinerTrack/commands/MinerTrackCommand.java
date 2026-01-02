@@ -186,7 +186,7 @@ public class MinerTrackCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 plugin.getConfigManager().reloadConfig();
-                plugin.getLanguageManager().loadLanguageFile();
+                plugin.getLanguageManager().reloadLanguageFile();
                 sender.sendMessage(plugin.getLanguageManager().getPrefixedMessage("config-reloaded"));
                 break;
 

@@ -26,20 +26,33 @@ import java.util.Set;
 public class ConfigManager {
     private final MinerTrack plugin;
     private final File configFile;
-    private final FileConfiguration config;
+    private YamlConfiguration config;
 
     public ConfigManager(MinerTrack plugin) {
         this.plugin = plugin;
         this.configFile = new File(plugin.getDataFolder(), "config.yml");
+        loadConfigFile();
+    }
 
-        // Load existing config
+    // Reload the config file (replaces in-memory config)
+    public void reloadConfigFile() {
+        this.config = YamlConfiguration.loadConfiguration(configFile);
+    }
+
+    public void loadConfigFile() {
+        // Save default config file if it doesn't exist
+        if (!configFile.exists()) {
+            plugin.saveResource("config.yml", false);
+        }
+
+        // Load the config file
         this.config = YamlConfiguration.loadConfiguration(configFile);
 
-        // Load defaults and merge only missing keys
+        // Load defaults from the resource file and merge only missing keys
         try (InputStream defaultStream = plugin.getResource("config.yml")) {
             if (defaultStream != null) {
                 YamlConfiguration defaultConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream));
-                mergeConfigurations(config, defaultConfig, ""); // Recursive merge
+                mergeConfigurations(config, defaultConfig, ""); // Recursive merge (unchanged)
                 saveConfig(); // Save back merged configuration
             }
         } catch (IOException e) {
@@ -164,8 +177,8 @@ public class ConfigManager {
      */
     public void reloadConfig() {
         try {
-            config.load(configFile);
-        } catch (IOException | InvalidConfigurationException e) {
+            reloadConfigFile();
+        } catch (Exception e) {
             plugin.getLogger().severe("Error reloading configuration: " + e.getMessage());
         }
     }
