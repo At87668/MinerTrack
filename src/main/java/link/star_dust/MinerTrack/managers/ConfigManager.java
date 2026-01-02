@@ -176,6 +176,7 @@ public class ConfigManager {
      * Reloads the configuration from the file.
      */
     public void reloadConfig() {
+        // Use the centralized reload method
         try {
             reloadConfigFile();
         } catch (Exception e) {
@@ -189,7 +190,7 @@ public class ConfigManager {
     }
 
     public boolean isKickStrikeLightning() {
-        return config.getBoolean("xray.kick-strike-lightning", true);
+        return config.getBoolean("kick_strike_lightning", true);
     }
 
     public List<String> getRareOres() {
