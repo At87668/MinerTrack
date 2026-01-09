@@ -150,7 +150,8 @@ public class LanguageManager {
                         String name = entry.getName();
                         if (name.startsWith("Translations/") && !entry.isDirectory()) {
                             try {
-                                plugin.saveResource(name, false);
+                                // Always overwrite bundled Translations files so they match the JAR
+                                plugin.saveResource(name, true);
                             } catch (IllegalArgumentException | IllegalStateException ex) {
                                 // saveResource may throw if resource not found or IO error; log and continue
                                 plugin.getLogger().warning("Could not save resource '" + name + "': " + ex.getMessage());

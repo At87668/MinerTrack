@@ -36,6 +36,18 @@ public class ConfigManager {
 
     // Reload the config file (replaces in-memory config)
     public void reloadConfigFile() {
+        // Ensure default file exists (do not merge on reload)
+        if (!configFile.exists()) {
+            plugin.saveResource("config.yml", false);
+        }
+
+        // Reload plugin config to keep plugin.getConfig() in sync
+        try {
+            plugin.reloadConfig();
+        } catch (Exception ignored) {
+        }
+
+        // Load into our local config object without merging defaults
         this.config = YamlConfiguration.loadConfiguration(configFile);
     }
 
