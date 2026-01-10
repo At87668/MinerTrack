@@ -397,6 +397,7 @@ public class ViolationManager {
     				.replace("%pos_x%", String.valueOf(location.getBlockX()))
     				.replace("%pos_y%", String.valueOf(location.getBlockY()))
     				.replace("%pos_z%", String.valueOf(location.getBlockZ()))
+                    .replace("%timestamp%", LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME))
     				);
     	}
 

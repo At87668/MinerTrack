@@ -32,7 +32,7 @@ delete_time: 30
 disable_bypass_permission: false
 
 # Discord WebHook
-# Placeholders: %player% %player_uuid% %player_vl% %ore_type% %ore_count% %mined_veins% %world% %pos_x% %pos_y% %pos_z%
+# Placeholders: %player% %player_uuid% %player_vl% %ore_type% %ore_count% %mined_veins% %pos_x% %pos_y% %pos_z% %world% %timestamp%
 DiscordWebHook:
   enable: false
   WebHookURL: ''
@@ -50,6 +50,8 @@ DiscordWebHook:
       - ''
       - 'World: %world%'
       - 'Pos: %pos_x% %pos_y% %pos_z%'
+      - ''
+      - '%timestamp%'
   # If the custom Json format below is enabled, this Json body format will be used to send to the WebHookURL configured above
   custom-json:
     enable: false
