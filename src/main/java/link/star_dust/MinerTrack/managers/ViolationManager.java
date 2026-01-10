@@ -352,6 +352,7 @@ public class ViolationManager {
     	if (player == null) {
     		return; // 如果玩家离线则跳过
     	}
+        String worldName = location.getWorld() != null ? location.getWorld().getName() : "unknown";
 
     	// 获取 WebHook 配置项
     	String webHookURL = plugin.getConfigManager().WebHookURL();
@@ -367,6 +368,7 @@ public class ViolationManager {
     		placeholders.put("ore_type", oreType);
     		placeholders.put("mined_veins", String.valueOf(minedVeins));
     		placeholders.put("ore_count", String.valueOf(ore_count));
+            placeholders.put("world", worldName);
     		placeholders.put("pos_x", String.valueOf(location.getBlockX()));
     		placeholders.put("pos_y", String.valueOf(location.getBlockY()));
     		placeholders.put("pos_z", String.valueOf(location.getBlockZ()));
@@ -391,6 +393,7 @@ public class ViolationManager {
     				.replace("%ore_type%", oreType)
     				.replace("%mined_veins%", String.valueOf(minedVeins))
     				.replace("%ore_count%", String.valueOf(ore_count))
+                    .replace("%world%", worldName)
     				.replace("%pos_x%", String.valueOf(location.getBlockX()))
     				.replace("%pos_y%", String.valueOf(location.getBlockY()))
     				.replace("%pos_z%", String.valueOf(location.getBlockZ()))

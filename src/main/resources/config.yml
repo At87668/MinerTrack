@@ -32,7 +32,7 @@ delete_time: 30
 disable_bypass_permission: false
 
 # Discord WebHook
-# Placeholders: %player% %player_uuid% %player_vl% %ore_type% %ore_count% %mined_veins% %pos_x% %pos_y% %pos_z% %timestamp%
+# Placeholders: %player% %player_uuid% %player_vl% %ore_type% %ore_count% %mined_veins% %world% %pos_x% %pos_y% %pos_z%
 DiscordWebHook:
   enable: false
   WebHookURL: ''
@@ -48,6 +48,7 @@ DiscordWebHook:
       - 'Mining Ore: %ore_type%x%ore_count%'
       - 'Mined Veins: %mined_veins%'
       - ''
+      - 'World: %world%'
       - 'Pos: %pos_x% %pos_y% %pos_z%'
   # If the custom Json format below is enabled, this Json body format will be used to send to the WebHookURL configured above
   custom-json:
@@ -67,6 +68,7 @@ DiscordWebHook:
             "mined_veins": %mined_veins%
           },
           "location": {
+            "world": %world%',
             "x": %pos_x%,
             "y": %pos_y%,
             "z": %pos_z%
