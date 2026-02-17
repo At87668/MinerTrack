@@ -194,6 +194,30 @@ public class ConfigManager {
             }
         }
 
+        // Respect mappings declared in main config.yml: xray.worlds: { 'file.yml': [worlds...] }
+        if (config != null) {
+            ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
+            if (worldsSection != null) {
+                for (String fileKey : worldsSection.getKeys(false)) {
+                    try {
+                        List<String> list = worldsSection.getStringList(fileKey);
+                        if (list == null) continue;
+                        String k = fileKey.replaceFirst("\\\\.yml$", "");
+                        for (String w : list) {
+                            if (w == null) continue;
+                            if (w.equalsIgnoreCase("all_unnamed_world")) {
+                                defaultUnnamedGroupKey = k;
+                            } else {
+                                if (groupConfigs.containsKey(k)) {
+                                    worldToGroup.put(w, k);
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
         // After loading each group, attempt to merge missing defaults from jar resource of same name
         for (File f : files) {
             try (InputStream defaultStream = plugin.getResource("Configuration/" + f.getName())) {
