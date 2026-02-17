@@ -85,12 +85,12 @@ xray:
   # If 'all_unnamed_world' not listed, worlds that are not listed do not have XRay detection.
   # Configuration will be loaded from 'Configuration/file_name.yml'
   worlds:
-    'overworld.yml':
+    'overworld': # It means overworld.yml
       - world
       - all_unnamed_world
-    'nether.yml':
+    'nether':
       - world_nether
-    'end.yml':
+    'end':
       - world_the_end
 
   # Violation level decay settings (Unit: minute)
