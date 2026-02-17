@@ -113,14 +113,20 @@ public class ConfigManager {
         }
 
         // Load any .yml files present
-        File[] files = configDir.listFiles((d, name) -> name.toLowerCase().endsWith(".yml"));
-
-        // Ensure files referenced in main config.yml xray.worlds mapping exist; if missing, create from defaults
+        // We'll ensure referenced group files exist (but only when the config key looks like a filename)
         if (config != null) {
             ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
             if (worldsSection != null) {
                 for (String fileKey : worldsSection.getKeys(false)) {
-                    String filename = fileKey;
+                    // Only treat keys that explicitly look like filenames (contain a dot or end with yml)
+                    if (fileKey == null) continue;
+                    String trimmed = fileKey.trim();
+                    if (!trimmed.toLowerCase().endsWith(".yml") && !trimmed.contains(".")) {
+                        // Skip keys that are plain world names like 'world' or 'world_nether'
+                        continue;
+                    }
+
+                    String filename = trimmed;
                     if (!filename.toLowerCase().endsWith(".yml")) filename = filename + ".yml";
                     File out = new File(configDir, filename);
                     if (!out.exists()) {
@@ -150,6 +156,8 @@ public class ConfigManager {
             }
         }
 
+        // Refresh file list after possibly creating missing group files
+        File[] files = configDir.listFiles((d, name) -> name.toLowerCase().endsWith(".yml"));
         if (files == null) return;
 
         // Clear existing maps
