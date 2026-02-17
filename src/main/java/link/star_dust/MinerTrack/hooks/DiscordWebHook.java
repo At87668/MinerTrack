@@ -15,8 +15,6 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 import link.star_dust.MinerTrack.MinerTrack;
 
-import javax.net.ssl.*;
-import java.security.cert.X509Certificate;
 import java.nio.charset.StandardCharsets;
 
 import org.apache.hc.client5.http.classic.methods.HttpPost;
