@@ -400,8 +400,8 @@ public class MiningListener implements Listener {
         Map<String, Location> lastLocations = lastVeinLocation.getOrDefault(playerId, new HashMap<>());
         Location lastLocation = lastLocations.get(worldName);
 
-        int maxDistance = plugin.getConfigManager().getMaxVeinDistance();
-        int smallVeinThreshold = plugin.getConfigManager().getSmallVeinSize();
+        int maxDistance = plugin.getConfigManager().getMaxVeinDistance(worldName);
+        int smallVeinThreshold = plugin.getConfigManager().getSmallVeinSize(worldName);
 
         // Build current cluster from the provided location
         Set<Location> currentCluster = getVeinLocations(location, oreType, maxDistance);
@@ -550,7 +550,7 @@ public class MiningListener implements Listener {
     
     public int countVeinBlocks(Location startLocation, Material type) {
         // Reuse getVeinLocations which now includes the triggering location when appropriate
-        double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
+        double maxDistance = plugin.getConfigManager().getMaxVeinDistance(startLocation.getWorld().getName());
         Set<Location> vein = getVeinLocations(startLocation, type, (int) Math.max(1, Math.round(maxDistance)));
         return vein.size();
     }
@@ -564,9 +564,10 @@ public class MiningListener implements Listener {
     private boolean isSmoothPath(UUID playerId, List<Location> path) {
         if (path.size() < 2) return true;
         
-        int turnThreshold = plugin.getConfigManager().getTurnCountThreshold();
-        int branchThreshold = plugin.getConfigManager().getBranchCountThreshold();
-        int yChangeThreshold = plugin.getConfigManager().getYChangeThreshold();
+        String worldName = (path != null && !path.isEmpty()) ? path.get(0).getWorld().getName() : null;
+        int turnThreshold = plugin.getConfigManager().getTurnCountThreshold(worldName);
+        int branchThreshold = plugin.getConfigManager().getBranchCountThreshold(worldName);
+        int yChangeThreshold = plugin.getConfigManager().getYChangeThreshold(worldName);
 
         // load per-player counters
         int playerTotalTurns = totalTurns.getOrDefault(playerId, 0);
@@ -591,7 +592,7 @@ public class MiningListener implements Listener {
                 }
 
                 // 检查Y轴的变化
-                if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager().getYPosChangeThresholdAddRequired()) {
+                if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager().getYPosChangeThresholdAddRequired(worldName)) {
                     playerYChanges++;
                 }
 
@@ -727,7 +728,7 @@ public class MiningListener implements Listener {
             return false;
         }
 
-        double maxDistance = plugin.getConfigManager().getMaxVeinDistance();
+        double maxDistance = plugin.getConfigManager().getMaxVeinDistance(start.getWorld().getName());
         Set<Location> visited = new HashSet<>();
         Queue<Location> queue = new LinkedList<>();
 
