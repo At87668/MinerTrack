@@ -156,20 +156,18 @@ public class ConfigManager {
             }
         }
 
-        // Load any .yml files present
-        File[] files = configDir.listFiles((d, name) -> name.toLowerCase().endsWith(".yml"));
-
-        // Ensure files referenced in main config.yml xray.worlds mapping exist; if missing, create from defaults
+        // Ensure files referenced in main config.yml xray.worlds exist; if missing, create from defaults
         if (config != null) {
             ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
             if (worldsSection != null) {
                 for (String fileKey : worldsSection.getKeys(false)) {
-                    // fileKey is the group name without .yml (e.g., "overworld")
+                    // Normalize fileKey to a group key without extension
                     String groupKey = fileKey;
+                    if (groupKey.toLowerCase().endsWith(".yml")) groupKey = groupKey.substring(0, groupKey.length() - 4);
                     String filename = groupKey + ".yml";
                     File out = new File(configDir, filename);
                     if (!out.exists()) {
-                        // Try to copy same-name resource first (Configuration/overworld.yml)
+                        // Try to copy same-name resource first (Configuration/<group>.yml)
                         try {
                             plugin.saveResource("Configuration/" + filename, false);
                             plugin.getLogger().info("Created missing group config from resource: " + filename);
@@ -195,6 +193,9 @@ public class ConfigManager {
             }
         }
 
+        // Load any .yml files present (re-list after possibly creating missing files)
+        File[] files = configDir.listFiles((d, name) -> name.toLowerCase().endsWith(".yml"));
+
         if (files == null) return;
 
         // Clear existing maps
@@ -205,7 +206,8 @@ public class ConfigManager {
         for (File f : files) {
             try {
                 YamlConfiguration yc = YamlConfiguration.loadConfiguration(f);
-                String key = f.getName().replaceFirst("\\\\.yml$", "");
+                String key = f.getName();
+                if (key.toLowerCase().endsWith(".yml")) key = key.substring(0, key.length() - 4);
                 groupConfigs.put(key, yc);
 
                 // If group file declares a list of worlds, map them
@@ -247,16 +249,18 @@ public class ConfigManager {
                     try {
                         List<String> list = worldsSection.getStringList(fileKey);
                         if (list == null) continue;
-                        // fileKey is the group name without .yml (e.g., "overworld")
+                        // Normalize group key (support keys with or without .yml)
                         String k = fileKey;
+                        if (k.toLowerCase().endsWith(".yml")) k = k.substring(0, k.length() - 4);
                         for (String w : list) {
                             if (w == null) continue;
                             if (w.equalsIgnoreCase("all_unnamed_world")) {
                                 defaultUnnamedGroupKey = k;
                             } else {
-                                if (groupConfigs.containsKey(k)) {
-                                    worldToGroup.put(w, k);
-                                }
+                                // Map explicit world to the group key. Even if the group file
+                                // wasn't found in this run, store mapping so lookups can resolve
+                                // against the normalized group key.
+                                worldToGroup.put(w, k);
                             }
                         }
                     } catch (Exception ignored) {}
@@ -269,7 +273,9 @@ public class ConfigManager {
             try (InputStream defaultStream = plugin.getResource("Configuration/" + f.getName())) {
                 if (defaultStream != null) {
                     YamlConfiguration defaultGroup = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream));
-                    YamlConfiguration current = groupConfigs.get(f.getName().replaceFirst("\\\\.yml$", ""));
+                    String curKey = f.getName();
+                    if (curKey.toLowerCase().endsWith(".yml")) curKey = curKey.substring(0, curKey.length() - 4);
+                    YamlConfiguration current = groupConfigs.get(curKey);
                     if (current != null) {
                         mergeConfigurations(current, defaultGroup, "");
                         try {
@@ -342,7 +348,8 @@ public class ConfigManager {
                     try {
                         List<String> list = worldsSection.getStringList(fileKey);
                         if (list == null) continue;
-                        String k = fileKey.replaceFirst("\\\\.yml$", "");
+                        String k = fileKey;
+                        if (k.toLowerCase().endsWith(".yml")) k = k.substring(0, k.length() - 4);
                         for (String w : list) {
                             if (w == null) continue;
                             if (w.equalsIgnoreCase("all_unnamed_world")) {
