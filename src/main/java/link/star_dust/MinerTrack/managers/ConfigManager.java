@@ -62,6 +62,9 @@ public class ConfigManager {
         // Save default config file if it doesn't exist
         if (!configFile.exists()) {
             plugin.saveResource("config.yml", false);
+        } else {
+            // Check config version and update if necessary
+            checkAndUpgradeConfig();
         }
 
         // Load the config file
@@ -80,6 +83,50 @@ public class ConfigManager {
 
         // Load per-world/group configuration files from the Configuration/ folder
         loadGroupConfigurations();
+    }
+
+    /**
+     * Check config version and upgrade if necessary.
+     * Backs up current config.yml and replaces with default from JAR if version is outdated.
+     */
+    private void checkAndUpgradeConfig() {
+        try {
+            // Load current config version
+            YamlConfiguration currentConfig = YamlConfiguration.loadConfiguration(configFile);
+            int currentVersion = currentConfig.getInt("_config-version", 0);
+            
+            // Load default config version from JAR
+            try (InputStream defaultStream = plugin.getResource("config.yml")) {
+                if (defaultStream != null) {
+                    YamlConfiguration defaultConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream));
+                    int defaultVersion = defaultConfig.getInt("_config-version", 0);
+                    
+                    // If current version is less than default version, upgrade
+                    if (currentVersion < defaultVersion) {
+                        plugin.getLogger().info("Config version " + currentVersion + " is outdated. Backing up and updating to version " + defaultVersion);
+                        
+                        // Backup current config with timestamp
+                        String backupFileName = "config-" + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")) + ".yml.bak";
+                        File backupFile = new File(plugin.getDataFolder(), backupFileName);
+                        
+                        try {
+                            java.nio.file.Files.copy(configFile.toPath(), backupFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            plugin.getLogger().info("Backed up current config to " + backupFile.getAbsolutePath());
+                        } catch (IOException e) {
+                            plugin.getLogger().warning("Failed to backup config file: " + e.getMessage());
+                        }
+                        
+                        // Replace with default config from JAR
+                        plugin.saveResource("config.yml", true);
+                        plugin.getLogger().info("Updated config.yml to version " + defaultVersion);
+                    }
+                } else {
+                    plugin.getLogger().warning("Could not load default config.yml from JAR for version check");
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Error checking config version: " + e.getMessage());
+        }
     }
 
     /**

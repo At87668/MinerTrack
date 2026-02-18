@@ -13,6 +13,9 @@
 #
 ##################################################################################
 
+# ! NOTE: DON'T EDIT CONFIG VERSION !
+_config-version: 2
+
 # Check for updates on startup (recommended for latest optimizations).
 check_update: true
 # Available options: stable/beta/alpha. Using the pre-release version will receive updates from more stable versions.
