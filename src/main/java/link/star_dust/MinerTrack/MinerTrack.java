@@ -11,22 +11,13 @@
 **/
 package link.star_dust.MinerTrack;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
@@ -35,7 +26,6 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.Listener;
-import org.json.JSONObject;
 
 import link.star_dust.MinerTrack.managers.ConfigManager;
 import link.star_dust.MinerTrack.managers.LanguageManager;
@@ -61,6 +51,7 @@ public class MinerTrack extends JavaPlugin implements Listener {
     // Keep a reference to the listener so other managers can request per-player cleanup
     private MiningListener miningListener;
 
+    @SuppressWarnings("deprecation")
     @Override
     public void onEnable() {
     	saveDefaultConfig();
@@ -118,6 +109,7 @@ public class MinerTrack extends JavaPlugin implements Listener {
     	}
     }
     
+    @SuppressWarnings("deprecation")
     public String applyColors(String message) {
         return ChatColor.translateAlternateColorCodes('&', message);
     }
@@ -190,6 +182,7 @@ public class MinerTrack extends JavaPlugin implements Listener {
     }
 
     
+    @SuppressWarnings("deprecation")
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
     	if (!configManager.updateCheck()) {

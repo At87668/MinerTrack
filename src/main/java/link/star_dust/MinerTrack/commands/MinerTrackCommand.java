@@ -13,7 +13,6 @@ package link.star_dust.MinerTrack.commands;
 
 import link.star_dust.MinerTrack.FoliaCheck;
 import link.star_dust.MinerTrack.MinerTrack;
-import link.star_dust.MinerTrack.managers.LanguageManager;
 import link.star_dust.MinerTrack.utils.LogViewerUtils;
 
 import org.bukkit.Bukkit;
@@ -24,18 +23,13 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
 
-import io.papermc.paper.threadedregions.scheduler.RegionScheduler;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class MinerTrackCommand implements CommandExecutor, TabCompleter {
     private final MinerTrack plugin;

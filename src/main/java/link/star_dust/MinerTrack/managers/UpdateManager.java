@@ -34,6 +34,7 @@ public class UpdateManager {
     private final String currentVersion;
     private String downloadUrl;
 
+    @SuppressWarnings("deprecation")
     public UpdateManager(MinerTrack plugin) {
         this.plugin = plugin;
         this.currentVersion = plugin.getDescription().getVersion();
@@ -253,6 +254,7 @@ public class UpdateManager {
         return latestVersion != null && shouldConsiderAsUpdate(latestVersion, currentVersion);
     }
 
+    @SuppressWarnings("deprecation")
     public BaseComponent[] getUpdateMessageComponent() {
         if (latestVersion == null || !shouldConsiderAsUpdate(latestVersion, currentVersion)) {
             return null;
@@ -302,6 +304,7 @@ public class UpdateManager {
         }
     }
     
+    @SuppressWarnings("deprecation")
     private void sendUpdateMessage(CommandSender sender, String latestVersion) {
         String messageKey;
         if (latestVersion.contains("-beta")) {

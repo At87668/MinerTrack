@@ -680,7 +680,7 @@ public class MiningListener implements Listener {
         return false;
     }
 
-    
+    @SuppressWarnings("unused")
     private void analyzeMiningPath(Player player, List<Location> path, Material blockType, int count, Location blockLocation) {
         UUID playerId = player.getUniqueId();
         Map<String, Location> lastVeins = lastVeinLocation.getOrDefault(playerId, new HashMap<>());
@@ -722,6 +722,7 @@ public class MiningListener implements Listener {
         //minedVeinCount.put(playerId, 0);
     }
     
+    @SuppressWarnings("unused")
     private boolean isPathConnected(Location start, Location end, List<Location> path) {
         // 如果路径为空，直接返回 false
         if (path == null || path.isEmpty()) {

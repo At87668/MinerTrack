@@ -13,14 +13,12 @@ package link.star_dust.MinerTrack;
 
 import link.star_dust.MinerTrack.managers.LanguageManager;
 
-import java.util.Arrays;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+@SuppressWarnings("unused")
 public class Notifier {
     private final MinerTrack plugin;
     private final LanguageManager lang;
@@ -30,11 +28,13 @@ public class Notifier {
         this.lang = plugin.getLanguageManager();
     }
     
+    @SuppressWarnings("deprecation")
     public void kickPlayer(Player player, String reason) {
         player.kickPlayer(reason);
     }
 
 
+    @SuppressWarnings("deprecation")
     public void sendNotifyMessage(String messageContent) {
         // Define prefixes and add color codes
         String prefix = ChatColor.translateAlternateColorCodes('&', "&8[&9&lMiner&c&lTrack&8]&r ");

@@ -36,6 +36,7 @@ public class CustomJsonWebHook {
         this.jsonFormat = jsonFormat;
     }
 
+    @SuppressWarnings("deprecation")
     public void sendMessage(Map<String, String> placeholders) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {

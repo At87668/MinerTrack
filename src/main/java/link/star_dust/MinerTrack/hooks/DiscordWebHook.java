@@ -60,6 +60,7 @@ public class DiscordWebHook {
      *
      * @param payload The payload to send.
      */
+    @SuppressWarnings("deprecation")
     private void send(Payload payload) {
         Runnable task = () -> {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {

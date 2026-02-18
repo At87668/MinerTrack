@@ -12,9 +12,7 @@
 package link.star_dust.MinerTrack.managers;
 
 import org.bukkit.ChatColor;
-import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.jetbrains.annotations.NotNull;
 
 import link.star_dust.MinerTrack.MinerTrack;
 
@@ -106,6 +104,7 @@ public class LanguageManager {
         return applyColors(languageConfig.getString(path));
     }
 
+    @SuppressWarnings("deprecation")
     public String applyColors(String message) {
         return ChatColor.translateAlternateColorCodes('&', message);
     }

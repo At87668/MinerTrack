@@ -12,8 +12,6 @@
 package link.star_dust.MinerTrack.managers;
 
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.InvalidConfigurationException;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,7 +25,6 @@ import java.util.HashMap;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 import java.util.ArrayList;
-import java.util.Optional;
 
 public class ConfigManager {
     private final MinerTrack plugin;
@@ -333,6 +330,7 @@ public class ConfigManager {
         return config.getBoolean(path, def);
     }
 
+    @SuppressWarnings("unused")
     private List<String> getStringListForWorld(String worldName, String path) {
         YamlConfiguration yc = getGroupConfigForWorld(worldName);
         if (yc != null && yc.contains(path)) return yc.getStringList(path);
