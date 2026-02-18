@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.Arrays;
 import java.util.regex.Pattern;
 import java.util.ArrayList;
 
@@ -145,17 +144,6 @@ public class ConfigManager {
         File configDir = new File(plugin.getDataFolder(), "Configuration");
         if (!configDir.exists()) configDir.mkdirs();
 
-        // Ensure common default group files exist in data folder
-        List<String> defaultGroupFiles = Arrays.asList("Configuration/overworld.yml", "Configuration/nether.yml", "Configuration/end.yml");
-        for (String res : defaultGroupFiles) {
-            File out = new File(plugin.getDataFolder(), res);
-            if (!out.exists()) {
-                try {
-                    plugin.saveResource(res, false);
-                } catch (Exception ignored) {}
-            }
-        }
-
         // Ensure files referenced in main config.yml xray.worlds exist; if missing, create from defaults
         if (config != null) {
             ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
@@ -202,6 +190,7 @@ public class ConfigManager {
         this.groupConfigs = new HashMap<>();
         this.worldToGroup = new HashMap<>();
         this.groupWorldPatterns = new HashMap<>();
+        this.defaultUnnamedGroupKey = null;
 
         for (File f : files) {
             try {
@@ -226,15 +215,7 @@ public class ConfigManager {
                         }
                     }
                 } else {
-                    // Heuristic defaults for common group names
-                    String lname = key.toLowerCase();
-                    if (lname.contains("over")) {
-                        worldToGroup.putIfAbsent("world", key);
-                    } else if (lname.contains("nether")) {
-                        worldToGroup.putIfAbsent("world_nether", key);
-                    } else if (lname.contains("end")) {
-                        worldToGroup.putIfAbsent("world_the_end", key);
-                    }
+                    // No implicit heuristics: do not auto-map worlds here.
                 }
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to load group config " + f.getName() + ": " + e.getMessage());
@@ -257,10 +238,12 @@ public class ConfigManager {
                             if (w.equalsIgnoreCase("all_unnamed_world")) {
                                 defaultUnnamedGroupKey = k;
                             } else {
-                                // Map explicit world to the group key. Even if the group file
-                                // wasn't found in this run, store mapping so lookups can resolve
-                                // against the normalized group key.
-                                worldToGroup.put(w, k);
+                                // Only map if the referenced group config actually exists
+                                if (groupConfigs.containsKey(k)) {
+                                    worldToGroup.put(w, k);
+                                } else {
+                                    plugin.getLogger().warning("xray.worlds references group '" + k + "' but no such group file was loaded; skipping mapping for world '" + w + "'");
+                                }
                             }
                         }
                     } catch (Exception ignored) {}
@@ -286,6 +269,38 @@ public class ConfigManager {
                     }
                 }
             } catch (Exception ignored) {}
+        }
+
+        // Prune any loaded group configs that are not assigned to any world
+        List<String> toUnload = new ArrayList<>();
+        for (String groupKey : new ArrayList<>(groupConfigs.keySet())) {
+            boolean assigned = false;
+            // explicitly assigned via worldToGroup
+            for (String mapped : worldToGroup.values()) {
+                if (groupKey.equals(mapped)) { assigned = true; break; }
+            }
+            // assigned via wildcard patterns
+            if (!assigned && groupWorldPatterns.containsKey(groupKey) && !groupWorldPatterns.get(groupKey).isEmpty()) assigned = true;
+            // assigned as default for unnamed worlds
+            if (!assigned && defaultUnnamedGroupKey != null && defaultUnnamedGroupKey.equals(groupKey)) assigned = true;
+
+            if (!assigned) {
+                toUnload.add(groupKey);
+            }
+        }
+        for (String ung : toUnload) {
+            groupConfigs.remove(ung);
+            groupWorldPatterns.remove(ung);
+            //plugin.getLogger().info("Unloaded unused group config: " + ung);
+        }
+
+        // Clean up worldToGroup entries that now point to missing group keys
+        List<String> worldKeys = new ArrayList<>(worldToGroup.keySet());
+        for (String w : worldKeys) {
+            String mapped = worldToGroup.get(w);
+            if (!groupConfigs.containsKey(mapped)) {
+                worldToGroup.remove(w);
+            }
         }
 
         // Log mapping relationships for visibility
@@ -366,10 +381,6 @@ public class ConfigManager {
         // Default for unnamed worlds if configured in config.yml
         if (defaultUnnamedGroupKey != null && groupConfigs.containsKey(defaultUnnamedGroupKey)) return groupConfigs.get(defaultUnnamedGroupKey);
 
-        // Heuristic: map by common default names
-        if (groupConfigs.containsKey("overworld") && (worldName.equalsIgnoreCase("world") || worldName.toLowerCase().contains("over"))) return groupConfigs.get("overworld");
-        if (groupConfigs.containsKey("nether") && (worldName.equalsIgnoreCase("world_nether") || worldName.toLowerCase().contains("nether"))) return groupConfigs.get("nether");
-        if (groupConfigs.containsKey("end") && (worldName.equalsIgnoreCase("world_the_end") || worldName.toLowerCase().contains("the_end") || worldName.toLowerCase().contains("end"))) return groupConfigs.get("end");
         return null;
     }
 
