@@ -164,11 +164,12 @@ public class ConfigManager {
             ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
             if (worldsSection != null) {
                 for (String fileKey : worldsSection.getKeys(false)) {
-                    String filename = fileKey;
-                    if (!filename.toLowerCase().endsWith(".yml")) filename = filename + ".yml";
+                    // fileKey is the group name without .yml (e.g., "overworld")
+                    String groupKey = fileKey;
+                    String filename = groupKey + ".yml";
                     File out = new File(configDir, filename);
                     if (!out.exists()) {
-                        // Try to copy same-name resource first
+                        // Try to copy same-name resource first (Configuration/overworld.yml)
                         try {
                             plugin.saveResource("Configuration/" + filename, false);
                             plugin.getLogger().info("Created missing group config from resource: " + filename);
@@ -238,7 +239,7 @@ public class ConfigManager {
             }
         }
 
-        // Respect mappings declared in main config.yml: xray.worlds: { 'file.yml': [worlds...] }
+        // Respect mappings declared in main config.yml: xray.worlds: { 'groupname': [worlds...] }
         if (config != null) {
             ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
             if (worldsSection != null) {
@@ -246,7 +247,8 @@ public class ConfigManager {
                     try {
                         List<String> list = worldsSection.getStringList(fileKey);
                         if (list == null) continue;
-                        String k = fileKey.replaceFirst("\\\\.yml$", "");
+                        // fileKey is the group name without .yml (e.g., "overworld")
+                        String k = fileKey;
                         for (String w : list) {
                             if (w == null) continue;
                             if (w.equalsIgnoreCase("all_unnamed_world")) {
