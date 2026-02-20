@@ -83,7 +83,6 @@ DiscordWebHook:
       }
 
 xray:
-  # At what height should I start detecting X-Ray?
   # All worlds not explicitly listed will follow 'all_unnamed_world'
   # If 'all_unnamed_world' not listed, worlds that are not listed do not have XRay detection.
   # Configuration will be loaded from 'Configuration/file_name.yml'
