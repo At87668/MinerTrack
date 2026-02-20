@@ -328,8 +328,8 @@ public class MiningListener implements Listener {
         boolean smooth = isSmoothPath(player.getUniqueId(), path);
         boolean natural = isInNaturalEnvironment(player, blockLocation, path);
 
-        // If it's not a natural environment OR the path is suspicious (not smooth), analyze it
-        if (!natural || !smooth) {
+        // If it's not a natural environment AND the path is suspicious (not smooth), analyze it
+        if (!natural && !smooth) {
             if (isNewVein(playerId, worldName, blockLocation, blockType)) {
                 minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
                 lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
