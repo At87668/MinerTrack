@@ -732,6 +732,14 @@ public class ConfigManager {
     public int traceBackLength() {
         return config.getInt("xray.trace_back_length", 10);
     }
+
+    public int traceBackLength(String worldName) {
+        return getIntForWorld(worldName, "xray.trace_back_length", 10);
+    }
+
+    public int getMaxPathLength(String worldName) {
+        return getIntForWorld(worldName, "xray.max_path_length", 500);
+    }
     
     public boolean updateCheck() {
         return config.getBoolean("check_update", true);

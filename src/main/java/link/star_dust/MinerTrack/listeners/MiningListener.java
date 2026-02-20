@@ -307,10 +307,10 @@ public class MiningListener implements Listener {
     private void handleXRayDetection(Player player, Material blockType, Location blockLocation) {
         UUID playerId = player.getUniqueId();
         long currentTime = System.currentTimeMillis();
-        int maxPathLength = plugin.getConfig().getInt("xray.max_path_length", 500);
+        String worldName = blockLocation.getWorld().getName();
+        int maxPathLength = plugin.getConfigManager().getMaxPathLength(worldName);
 
         // Initialize world's player path information
-        String worldName = blockLocation.getWorld().getName();
         miningPath.putIfAbsent(worldName, new HashMap<>());
         Map<UUID, List<Location>> worldPlayers = miningPath.get(worldName);
 
@@ -325,16 +325,16 @@ public class MiningListener implements Listener {
             path.remove(0);
         }
 
-    // Check new veins
-    checkForArtificialAir(player, path);
-    if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(player.getUniqueId(), path)) {
+        // Check new veins
+        checkForArtificialAir(player, path);
+        if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(player.getUniqueId(), path)) {
             if (isNewVein(playerId, worldName, blockLocation, blockType)) {
                 minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
                 lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
                 lastVeinLocation.get(playerId).put(worldName, blockLocation);
 
                 int veinCount = minedVeinCount.getOrDefault(playerId, 0);
-                if (veinCount >= plugin.getConfigManager().getVeinCountThreshold()) {
+                if (veinCount >= plugin.getConfigManager().getVeinCountThreshold(worldName)) {
                     analyzeMiningPath(player, path, blockType, countVeinBlocks(blockLocation, blockType), blockLocation);
                 }
             }
@@ -343,13 +343,13 @@ public class MiningListener implements Listener {
 
     private void cleanupExpiredPaths() {
         long now = System.currentTimeMillis();
-        long traceBackLength = plugin.getConfigManager().traceBackLength(); // Get the length of time to look back
-        // Prefer to use lastMiningTime (epoch ms) when available to decide expiry.
-        // If a player's last mining time is older than the traceBackLength, clear their stored paths.
-        Set<UUID> playersToClear = new HashSet<>();
         // Iterate per world, then per player
         for (Map.Entry<String, Map<UUID, List<Location>>> worldEntry : miningPath.entrySet()) {
+            String worldName = worldEntry.getKey();
+            long traceBackLength = plugin.getConfigManager().traceBackLength(worldName) * 60 * 1000L; // Convert minutes to ms
             Map<UUID, List<Location>> playerMap = worldEntry.getValue();
+            
+            Set<UUID> playersToClear = new HashSet<>();
             for (Map.Entry<UUID, List<Location>> p : playerMap.entrySet()) {
                 UUID playerId = p.getKey();
                 List<Location> path = p.getValue();
@@ -363,36 +363,18 @@ public class MiningListener implements Listener {
                     }
                 }
             }
-        }
-
-        // Remove cleared players from every world's map
-        for (UUID uuid : playersToClear) {
-            for (Map<UUID, List<Location>> playerMap : miningPath.values()) {
+            
+            for (UUID uuid : playersToClear) {
                 playerMap.remove(uuid);
+                lastMiningTime.remove(uuid);
+                lastVeinClusters.remove(uuid);
+                lastVeinLocation.remove(uuid);
+                minedVeinCount.remove(uuid);
             }
-            lastMiningTime.remove(uuid);
         }
 
         // Remove empty world entries
         miningPath.entrySet().removeIf(e -> e.getValue().isEmpty());
-
-        // ALSO: cleanup cached vein clusters and lastVeinLocation for players who haven't mined recently
-        // This prevents lastVeinClusters from growing indefinitely.
-        Set<UUID> clustersToRemove = new HashSet<>();
-        for (Map.Entry<UUID, Map<String, Set<Location>>> e : lastVeinClusters.entrySet()) {
-            UUID playerId = e.getKey();
-            long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
-            // If we don't have a lastMiningTime, be conservative and keep the cluster.
-            if (lastTime > 0 && now - lastTime > traceBackLength) {
-                clustersToRemove.add(playerId);
-            }
-        }
-
-        for (UUID uuid : clustersToRemove) {
-            lastVeinClusters.remove(uuid);
-            lastVeinLocation.remove(uuid);
-            minedVeinCount.remove(uuid);
-        }
     }
 
     private boolean isNewVein(UUID playerId, String worldName, Location location, Material oreType) {
@@ -759,11 +741,14 @@ public class MiningListener implements Listener {
     }
     
     private void checkForArtificialAir(Player player, List<Location> path) {
-        if (!plugin.getConfig().getBoolean("xray.natural-detection.cave.air-monitor.enable", true)) {
+        if (path == null || path.isEmpty()) return;
+        String worldName = path.get(0).getWorld().getName();
+        
+        if (!plugin.getConfigManager().isAirMonitorEnabled(worldName)) {
             return;
         }
 
-        int minPathLength = plugin.getConfig().getInt("xray.natural-detection.cave.air-monitor.min-path-length", 10);
+        int minPathLength = plugin.getConfigManager().getAirMonitorMinPathLength(worldName);
         if (path.size() < minPathLength) {
             return;
         }
@@ -777,11 +762,11 @@ public class MiningListener implements Listener {
         }
 
         double airRatio = (double) airBlockCount / path.size();
-        double threshold = plugin.getConfig().getDouble("xray.natural-detection.cave.air-monitor.air-ratio-threshold", 0.3);
+        double threshold = plugin.getConfigManager().getAirMonitorAirRatioThreshold(worldName);
 
         if (airRatio > threshold) {
             UUID playerId = player.getUniqueId();
-            int increase = plugin.getConfig().getInt("xray.natural-detection.cave.air-monitor.violation-increase", 1);
+            int increase = plugin.getConfigManager().getAirMonitorViolationIncrease(worldName);
             airViolationLevel.put(playerId, airViolationLevel.getOrDefault(playerId, 0) + increase);
             lastAirViolationTime.put(playerId, System.currentTimeMillis());
         }
@@ -807,13 +792,16 @@ public class MiningListener implements Listener {
     
     private void cleanUpAirViolations() {
         long now = System.currentTimeMillis();
-        long decayTime = plugin.getConfig().getLong("xray.natural-detection.cave.air-monitor.remove-time", 20) * 60 * 1000L;
-
         List<UUID> toRemove = new ArrayList<>();
 
         for (Map.Entry<UUID, Long> entry : lastAirViolationTime.entrySet()) {
+            UUID playerId = entry.getKey();
+            Player player = plugin.getServer().getPlayer(playerId);
+            String worldName = (player != null) ? player.getWorld().getName() : null;
+            long decayTime = plugin.getConfigManager().getAirMonitorRemoveTime(worldName) * 60 * 1000L;
+
             if (now - entry.getValue() > decayTime) {
-                toRemove.add(entry.getKey());
+                toRemove.add(playerId);
             }
         }
 
