@@ -114,14 +114,15 @@ public class MiningListener implements Listener {
 
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
-    	if (!plugin.getConfig().getBoolean("xray.enable", true)) {
+        String worldName = event.getBlock().getWorld().getName();
+        if (!plugin.getConfigManager().isWorldDetectionEnabled(worldName)) {
             return;
         }
     	
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
         Material blockType = event.getBlock().getType();
-        List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
+        List<String> rareOres = plugin.getConfigManager().getRareOres();
 
         if (rareOres.contains(blockType.name())) {
             placedOres.putIfAbsent(playerId, new HashMap<>());
@@ -132,7 +133,8 @@ public class MiningListener implements Listener {
     
     private boolean isPlayerPlacedBlock(Location blockLocation) {
         long now = System.currentTimeMillis();
-        long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L; // minutes -> ms
+        String worldName = blockLocation.getWorld().getName();
+        long expirationTime = plugin.getConfigManager().getTraceRemoveTime(worldName) * 60 * 1000L; // minutes -> ms
 
         // Iterate each player's placed map and check timestamp; remove expired entries on the fly
         List<UUID> emptyOwners = new ArrayList<>();
@@ -255,7 +257,8 @@ public class MiningListener implements Listener {
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
-        if (!plugin.getConfig().getBoolean("xray.enable", true)) {
+        String worldName = event.getBlock().getWorld().getName();
+        if (!plugin.getConfigManager().isWorldDetectionEnabled(worldName)) {
             return;
         }
 
@@ -268,17 +271,11 @@ public class MiningListener implements Listener {
             return;
         }
         
-        List<String> rareOres = plugin.getConfig().getStringList("xray.rare-ores");
+        List<String> rareOres = plugin.getConfigManager().getRareOres();
 
         if (!player.hasPermission("minertrack.bypass") || player.hasPermission("minertrack.bypass") && plugin.getConfigManager().DisableBypass()) {
         	if (violationLevel.getOrDefault(playerId, 0) == 0) {
         		vlZeroTimestamp.put(playerId, System.currentTimeMillis());
-        	}
-
-        	// Check if detection is enabled for the player's world
-        	String worldName = player.getWorld().getName();
-        	if (!plugin.getConfigManager().isWorldDetectionEnabled(worldName)) {
-        		return; // Detection is disabled for this world
         	}
 
         	// Check if the block height exceeds max height for detection
@@ -327,7 +324,12 @@ public class MiningListener implements Listener {
 
         // Check new veins
         checkForArtificialAir(player, path);
-        if (!isInNaturalEnvironment(player, blockLocation, path) && !isSmoothPath(player.getUniqueId(), path)) {
+        
+        boolean smooth = isSmoothPath(player.getUniqueId(), path);
+        boolean natural = isInNaturalEnvironment(player, blockLocation, path);
+
+        // If it's not a natural environment OR the path is suspicious (not smooth), analyze it
+        if (!natural || !smooth) {
             if (isNewVein(playerId, worldName, blockLocation, blockType)) {
                 minedVeinCount.put(playerId, minedVeinCount.getOrDefault(playerId, 0) + 1);
                 lastVeinLocation.putIfAbsent(playerId, new HashMap<>());
@@ -546,15 +548,15 @@ public class MiningListener implements Listener {
     private boolean isSmoothPath(UUID playerId, List<Location> path) {
         if (path.size() < 2) return true;
         
-        String worldName = (path != null && !path.isEmpty()) ? path.get(0).getWorld().getName() : null;
+        String worldName = path.get(0).getWorld().getName();
         int turnThreshold = plugin.getConfigManager().getTurnCountThreshold(worldName);
         int branchThreshold = plugin.getConfigManager().getBranchCountThreshold(worldName);
         int yChangeThreshold = plugin.getConfigManager().getYChangeThreshold(worldName);
 
-        // load per-player counters
-        int playerTotalTurns = totalTurns.getOrDefault(playerId, 0);
-        int playerBranchCount = branchCount.getOrDefault(playerId, 0);
-        int playerYChanges = yChanges.getOrDefault(playerId, 0);
+        // Calculate current path metrics instead of accumulating indefinitely
+        int currentTurns = 0;
+        int currentBranches = 0;
+        int currentYChanges = 0;
 
         Location lastLocation = null;
         Vector lastDirection = null;
@@ -562,28 +564,30 @@ public class MiningListener implements Listener {
         for (int i = 0; i < path.size(); i++) {
             Location currentLocation = path.get(i);
             if (lastLocation != null) {
-                // 当前方向向量
-                Vector currentDirection = currentLocation.toVector().subtract(lastLocation.toVector()).normalize();
+                Vector currentDirection = currentLocation.toVector().subtract(lastLocation.toVector());
+                if (currentDirection.lengthSquared() > 0) {
+                    currentDirection.normalize();
+                }
 
-                if (lastDirection != null) {
-                    // 计算方向变化的角度（转向幅度）
+                if (lastDirection != null && currentDirection.lengthSquared() > 0) {
                     double dotProduct = lastDirection.dot(currentDirection);
-                    if (dotProduct < Math.cos(Math.toRadians(30))) { // 夹角大于30度，记为一次转向
-                        playerTotalTurns++;
+                    if (dotProduct < Math.cos(Math.toRadians(30))) { 
+                        currentTurns++;
                     }
                 }
 
-                // 检查Y轴的变化
                 if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager().getYPosChangeThresholdAddRequired(worldName)) {
-                    playerYChanges++;
+                    currentYChanges++;
                 }
 
-                // 检查分支（检测是否突然偏离主方向）
-                if (i > 1) {
+                if (i > 1 && currentDirection.lengthSquared() > 0) {
                     Location prevLocation = path.get(i - 1);
-                    Vector prevDirection = prevLocation.toVector().subtract(lastLocation.toVector()).normalize();
-                    if (currentDirection.angle(prevDirection) > Math.toRadians(60)) { // 分支角度大于60°
-                        playerBranchCount++;
+                    Vector prevDirection = prevLocation.toVector().subtract(path.get(i-2).toVector());
+                    if (prevDirection.lengthSquared() > 0) {
+                        prevDirection.normalize();
+                        if (currentDirection.angle(prevDirection) > Math.toRadians(60)) {
+                            currentBranches++;
+                        }
                     }
                 }
 
@@ -592,13 +596,12 @@ public class MiningListener implements Listener {
             lastLocation = currentLocation;
         }
 
-        // persist per-player counters back to maps
-        totalTurns.put(playerId, playerTotalTurns);
-        branchCount.put(playerId, playerBranchCount);
-        yChanges.put(playerId, playerYChanges);
+        // Update persistent maps for other potential uses, but check against current path
+        totalTurns.put(playerId, currentTurns);
+        branchCount.put(playerId, currentBranches);
+        yChanges.put(playerId, currentYChanges);
 
-        // 检查总转向次数、分支次数和Y轴变化是否超过阈值
-        return playerTotalTurns < turnThreshold && playerBranchCount < branchThreshold && playerYChanges < yChangeThreshold;
+        return currentTurns < turnThreshold && currentBranches < branchThreshold && currentYChanges < yChangeThreshold;
     }
     
     private boolean isInNaturalEnvironment(Player player, Location location, List<Location> path) {
@@ -774,22 +777,23 @@ public class MiningListener implements Listener {
     
     private void cleanupExpiredPlacedBlocks() {
         long currentTime = System.currentTimeMillis();
-        long expirationTime = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L;
 
         // Remove entries older than expirationTime
         List<UUID> ownersToRemove = new ArrayList<>();
         for (Map.Entry<UUID, Map<Location, Long>> entry : placedOres.entrySet()) {
             UUID owner = entry.getKey();
             Map<Location, Long> map = entry.getValue();
-            map.entrySet().removeIf(e -> currentTime - e.getValue() > expirationTime);
+            map.entrySet().removeIf(e -> {
+                String worldName = e.getKey().getWorld().getName();
+                long expirationTime = plugin.getConfigManager().getTraceRemoveTime(worldName) * 60 * 1000L;
+                return currentTime - e.getValue() > expirationTime;
+            });
             if (map.isEmpty()) ownersToRemove.add(owner);
         }
 
         for (UUID id : ownersToRemove) placedOres.remove(id);
-
-        //plugin.getLogger().info("清理了过期的放置方块记录。当前记录总数: " + placedOres.size());
     }
-    
+
     private void cleanUpAirViolations() {
         long now = System.currentTimeMillis();
         List<UUID> toRemove = new ArrayList<>();
@@ -813,11 +817,14 @@ public class MiningListener implements Listener {
     
     private void checkAndResetPaths() {
         long now = System.currentTimeMillis();
-        long traceRemoveMillis = plugin.getConfig().getInt("xray.trace_remove", 15) * 60 * 1000L; // 默认15分钟
 
         for (UUID playerId : new HashSet<>(vlZeroTimestamp.keySet())) {
             Long lastZeroTime = vlZeroTimestamp.get(playerId);
             int vl = ViolationManager.getViolationLevel(playerId);
+            
+            Player player = plugin.getServer().getPlayer(playerId);
+            String worldName = (player != null) ? player.getWorld().getName() : null;
+            long traceRemoveMillis = plugin.getConfigManager().getTraceRemoveTime(worldName) * 60 * 1000L;
 
             if (lastZeroTime != null && vl == 0 && now - lastZeroTime > traceRemoveMillis) {
                 // 从所有世界中移除该玩家的路径

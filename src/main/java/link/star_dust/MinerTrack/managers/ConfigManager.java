@@ -729,6 +729,10 @@ public class ConfigManager {
         return getBooleanForWorld(worldName, "xray.natural-detection.lava-sea.check_skip_vl", true);
     }
 
+    public int getTraceRemoveTime(String worldName) {
+        return getIntForWorld(worldName, "xray.trace_remove", 15);
+    }
+
     public int traceBackLength() {
         return config.getInt("xray.trace_back_length", 10);
     }
