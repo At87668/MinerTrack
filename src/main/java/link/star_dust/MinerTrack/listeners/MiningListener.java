@@ -326,7 +326,7 @@ public class MiningListener implements Listener {
         checkForArtificialAir(player, path);
         
         boolean smooth = isSmoothPath(player.getUniqueId(), path);
-        boolean natural = isInNaturalEnvironment(player, blockLocation, path);
+        boolean natural = isInNaturalEnvironment(worldName, player, blockLocation, path);
 
         // If it's not a natural environment AND the path is suspicious (not smooth), analyze it
         if (!natural && !smooth) {
@@ -604,21 +604,21 @@ public class MiningListener implements Listener {
         return currentTurns < turnThreshold && currentBranches < branchThreshold && currentYChanges < yChangeThreshold;
     }
     
-    private boolean isInNaturalEnvironment(Player player, Location location, List<Location> path) {
-    	if (!plugin.getConfigManager().getNaturalEnable()) return false;
+    private boolean isInNaturalEnvironment(String worldName, Player player, Location location, List<Location> path) {
+    	if (!plugin.getConfigManager().getNaturalEnable(worldName)) return false;
     	
         int airCount = 0;
         int waterCount = 0;
         int lavaCount = 0;
 
-        int caveAirMultiplier = plugin.getConfigManager().getCaveAirMultiplier();
-        int airThreshold = plugin.getConfigManager().getCaveBypassAirThreshold();
-        int detectionRange = plugin.getConfigManager().getCaveDetectionRange();
+        int caveAirMultiplier = plugin.getConfigManager().getCaveAirMultiplier(worldName);
+        int airThreshold = plugin.getConfigManager().getCaveBypassAirThreshold(worldName);
+        int detectionRange = plugin.getConfigManager().getCaveDetectionRange(worldName);
 
-        int waterThreshold = plugin.getConfigManager().getWaterThreshold();
-        int lavaThreshold = plugin.getConfigManager().getLavaThreshold();
+        int waterThreshold = plugin.getConfigManager().getWaterThreshold(worldName);
+        int lavaThreshold = plugin.getConfigManager().getLavaThreshold(worldName);
 
-        boolean checkRunningWater = plugin.getConfigManager().isRunningWaterCheckEnabled();
+        boolean checkRunningWater = plugin.getConfigManager().isRunningWaterCheckEnabled(worldName);
 
         int baseX = location.getBlockX();
         int baseY = location.getBlockY();
@@ -650,9 +650,9 @@ public class MiningListener implements Listener {
             }
         }
 
-		if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL() && airViolationLevel.getOrDefault(player, 0) < plugin.getConfigManager().AirMonitorVLT()) return true;
-        if (waterCount > waterThreshold && plugin.getConfigManager().isSeaSkipVL()) return true;
-        if (lavaCount > lavaThreshold && plugin.getConfigManager().isLavaSeaSkipVL()) return true;
+		if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL(worldName) && airViolationLevel.getOrDefault(player, 0) < plugin.getConfigManager().AirMonitorVLT(worldName)) return true;
+        if (waterCount > waterThreshold && plugin.getConfigManager().isSeaSkipVL(worldName)) return true;
+        if (lavaCount > lavaThreshold && plugin.getConfigManager().isLavaSeaSkipVL(worldName)) return true;
 
         return false;
     }

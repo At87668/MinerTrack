@@ -821,6 +821,10 @@ public class ConfigManager {
 		return getIntForWorld(null, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
 	}
 
+    public int AirMonitorVLT(String worldName) {
+		return getIntForWorld(null, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
+	}
+
     public boolean isAirMonitorEnabled(String worldName) {
         return getBooleanForWorld(worldName, "xray.natural-detection.cave.air-monitor.enable", true);
     }
