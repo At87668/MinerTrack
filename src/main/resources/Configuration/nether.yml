@@ -29,7 +29,7 @@ xray:
   max_vein_distance: 3  # When two veins are close together, VL is not increased.
   
   # VL is increased as the player digs the number of veins
-  veinCountThreshold: 2
+  veinCountThreshold: 3
 
   # Small vein detection size
   # If a vein contains <= this number of blocks, the plugin uses a more sensitive
@@ -38,8 +38,8 @@ xray:
   small_vein_detection_size: 4
   
   path-detection:
-    turn-count-threshold: 5           # Maximum number of turns threshold
-    branch-count-threshold: 3          # Maximum number of branches
+    turn-count-threshold: 10           # Maximum number of turns threshold
+    branch-count-threshold: 6          # Maximum number of branches
     y-change-threshold: 0              # Maximum Y-axis change threshold
     y-change-threshold-add-required: 0 # If y pos transformation exceeds this value, the threshold is increased
 
