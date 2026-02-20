@@ -122,7 +122,7 @@ public class MiningListener implements Listener {
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
         Material blockType = event.getBlock().getType();
-        List<String> rareOres = plugin.getConfigManager().getRareOres();
+        List<String> rareOres = plugin.getConfigManager().getRareOres(worldName);
 
         if (rareOres.contains(blockType.name())) {
             placedOres.putIfAbsent(playerId, new HashMap<>());
@@ -271,7 +271,7 @@ public class MiningListener implements Listener {
             return;
         }
         
-        List<String> rareOres = plugin.getConfigManager().getRareOres();
+        List<String> rareOres = plugin.getConfigManager().getRareOres(worldName);
 
         if (!player.hasPermission("minertrack.bypass") || player.hasPermission("minertrack.bypass") && plugin.getConfigManager().DisableBypass()) {
         	if (violationLevel.getOrDefault(playerId, 0) == 0) {

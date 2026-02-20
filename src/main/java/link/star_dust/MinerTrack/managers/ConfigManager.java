@@ -387,26 +387,42 @@ public class ConfigManager {
     // Typed helpers that prefer group config values when available
     private int getIntForWorld(String worldName, String path, int def) {
         YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null && yc.contains(path)) return yc.getInt(path, def);
+        if (yc != null) {
+            if (yc.contains(path)) return yc.getInt(path, def);
+            // Fallback: if path is "xray.something", try "something" in sub-config
+            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
+            if (yc.contains(subPath)) return yc.getInt(subPath, def);
+        }
         return config.getInt(path, def);
     }
 
     private boolean getBooleanForWorld(String worldName, String path, boolean def) {
         YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null && yc.contains(path)) return yc.getBoolean(path, def);
+        if (yc != null) {
+            if (yc.contains(path)) return yc.getBoolean(path, def);
+            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
+            if (yc.contains(subPath)) return yc.getBoolean(subPath, def);
+        }
         return config.getBoolean(path, def);
     }
 
-    @SuppressWarnings("unused")
     private List<String> getStringListForWorld(String worldName, String path) {
         YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null && yc.contains(path)) return yc.getStringList(path);
+        if (yc != null) {
+            if (yc.contains(path)) return yc.getStringList(path);
+            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
+            if (yc.contains(subPath)) return yc.getStringList(subPath);
+        }
         return config.getStringList(path);
     }
 
     private double getDoubleForWorld(String worldName, String path, double def) {
         YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null && yc.contains(path)) return yc.getDouble(path, def);
+        if (yc != null) {
+            if (yc.contains(path)) return yc.getDouble(path, def);
+            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
+            if (yc.contains(subPath)) return yc.getDouble(subPath, def);
+        }
         return config.getDouble(path, def);
     }
 
@@ -545,6 +561,10 @@ public class ConfigManager {
 
     public List<String> getRareOres() {
         return config.getStringList("xray.rare-ores");
+    }
+
+    public List<String> getRareOres(String worldName) {
+        return getStringListForWorld(worldName, "xray.rare-ores");
     }
 
     public int getVeinCountThreshold() {
