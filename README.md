@@ -1,4 +1,4 @@
-![MinerTrack Anti-XRay](./Images/MinerTrack.png)
+![MinerTrack Anti-XRay](https://at87668.github.io/MinerTrack/Images/MinerTrack.png)
 
 ## MinerTrack Anti-XRay
 
@@ -10,9 +10,7 @@
 
 [![Support Server](https://img.shields.io/discord/1302190990639235122.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/MzTea2W9cb)
 
-[English](./README.md) | [简体中文](./README-zh_hans.md)
-
-![Image](./Images/Overview.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Overview.png)
 
 **MinerTrack** is a plugin that will really help you catch those naughty players using Xray on your server in a **different way** from other Anti-Xray plugins. This plugin doesn't hide ores, as hiding ores requires a lot of resources.
 
@@ -23,21 +21,22 @@ To catch Xray, MinerTrack uses an **advanced algorithm** that combines **several
 *But can't people still use Xray?*
 
 Yes and no. Indeed, a player using Xray has two options:
+
 1. Keep using Xray but behave like a normal player to avoid being caught. They can't get more ores than a normal player or they’ll be caught by MinerTrack.
 2. Uninstall their Xray or be caught.
 
 *Why choose MinerTrack over other AntiXray options?*
 
 Compared to Paper Anti-XRay and Orebfuscator:
+
 - MinerTrack is lightweight.
 - MinerTrack's engine is innovative.
 - MinerTrack detects Xray users, leaving it to you to decide on sanctions.
 
 Compared to other AntiXray solutions:
+
 - MinerTrack supports the latest Minecraft version.
-
 - MinerTrack has been tested on servers with about 20 simultaneous players, with very few false positives (*default config*).
-
 - MinerTrack is free.
 
 Look what users have to say:
@@ -50,18 +49,19 @@ Look what users have to say:
 ![Assessment 2](https://cdn.modrinth.com/data/O3VQnhG2/images/8c9ccc951e5baf6a4181154f499a0fab30749a74.png)
 
 ![Assessment 3](https://cdn.modrinth.com/data/O3VQnhG2/images/edde401191d2d235c48995b962c89461e0ad97c6.png)
+
+![Assessment 4](https://cdn.modrinth.com/data/O3VQnhG2/images/569d7702322651b750c5c0238fa2abf83b8f27db.png)
 </details>
 
-![Image](./Images/Features.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Features.png)
 
 - Detect XRayer
 - Automatically handle cases when a player's X-Ray violation level reaches a threshold
 - Automatically reduce the violation level when the player's behavior normalizes
-- Analyze player mining paths to detect X-Ray usage
 - When the player is mining in a cave, they will not be detected incorrectly
 - Highly configurable profiles
 
-![Image](./Images/Commands.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Commands.png)
 
 - `/mtrack notify <message>` - Send alerts to staff
 - `/mtrack verbose` - Enable Detailed Mode and notify staff with it enabled whenever a player’s violation level increases
@@ -73,7 +73,7 @@ Look what users have to say:
 - `/mtrack update` - Check for plugin updates
 - `/mtrack logs <log name.log>` - View a MinerTrack log file
 
-![Image](./Images/Permissions.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Permissions.png)
 
 - `minertrack.bypass` - Bypass X-Ray detection
 - `minertrack.notify` - Receive notifications and verbose information
@@ -88,22 +88,20 @@ Look what users have to say:
 - `minertrack.verbose` - Use `/mtrack verbose`
 - `minertrack.reload` - Use `/mtrack reload`
 
-![Image](./Images/Installation.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Installation.png)
 
-1. Download the latest version of **MinerTrack** from SpigotMC.
+1. Download the latest version of **MinerTrack** from Modrinth.
 2. Place the .jar file into the plugins folder.
 3. Restart the server to generate the configuration and necessary files.
 
-![Image](./Images/Requirements.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Requirements.png)
 
 - Java 17 or higher
-- Paper, Purpur, Folia or compatible forks (1.18 or newer) *Not Spigot!*
+- Paper, Purpur, Folia or compatible forks (1.18 or newer)  *Not Spigot!*
 
-![Image](./Images/Support.png)
+![Image](https://at87668.github.io/MinerTrack/Images/Support.png)
 
 If you encounter any issues or have suggestions for new features, feel free to reach out via Discord or open an issue on the plugin’s GitHub repository.
-
-
 
 **View Source: https://github.com/At87668/MinerTrack**
 
@@ -114,7 +112,6 @@ If you encounter any issues or have suggestions for new features, feel free to r
 **Visit Wiki: https://minertrack.pages.dev/wiki/**
 
 **Join Discord: https://discord.gg/MzTea2W9cb**
-
 
 
 [![bStats](https://bstats.org/signatures/bukkit/MinerTrack.svg)](https://bstats.org/plugin/bukkit/MinerTrack/23790)
