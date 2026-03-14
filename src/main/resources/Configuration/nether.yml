@@ -45,4 +45,20 @@ xray:
 
   # Natural Detection
   natural-detection:
-    enable: false
+    enable: true
+    
+    # Satisfying the conditions will think they are in a natural.
+    cave:
+      air-threshold: 14        # When the number of air blocks reaches several, the player is considered to be in a cave?
+      CaveAirMultiplier: 5     # If cave air is found, regarded as how many ordinary air?
+      detection-range: 3       # 3 = 7x7x7, 2 = 5x5x5
+      check_skip_vl: true      # VL add of whether or not to skip natural behavior
+      
+      # Prevents players from manually creating air to bypass detection.
+      air-monitor:
+        enable: true              # Enable or disable
+        min-path-length: 10       # Minimum digging path required to perform this detection.
+        air-ratio-threshold: 0.3  # Air percentage threshold (e.g., 0.3 for 30%).
+        violation-increase: 1     # The value of the increase in rating after each triggered violation.
+        violation-threshold: 5    # The number of ratings reached should be flagged as suspicion of deliberate creation of artificial air.
+        remove-time: 20           # How long to remove this record once (in minutes)
