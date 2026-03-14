@@ -40,8 +40,8 @@ xray:
   path-detection:
     turn-count-threshold: 10           # Maximum number of turns threshold
     branch-count-threshold: 6          # Maximum number of branches
-    y-change-threshold: 0              # Maximum Y-axis change threshold
-    y-change-threshold-add-required: 0 # If y pos transformation exceeds this value, the threshold is increased
+    y-change-threshold: 4              # Maximum Y-axis change threshold
+    y-change-threshold-add-required: 3 # If y pos transformation exceeds this value, the threshold is increased
 
   # Natural Detection
   natural-detection:
