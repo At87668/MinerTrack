@@ -6,7 +6,7 @@
 
 [![Dev Build CI](https://img.shields.io/github/actions/workflow/status/At87668/MinerTrack/AutoBuild_CI_dev.yml?style=flat&label=Dev%20Build%20CI)](https://github.com/At87668/MinerTrack/actions/workflows/AutoBuild_CI_dev.yml) [![Latest Version](https://img.shields.io/github/release/At87668/MinerTrack.svg?style=flat&label=Latest%20Version)](https://gitHub.com/At87668/MinerTrack/releases/) [![GitHub issues](https://img.shields.io/github/issues/At87668/MinerTrack.svg?style=flat&label=Github%20Issue)](https://gitHub.com/At87668/MinerTrack/issues/) [![GitHub latest commit](https://img.shields.io/github/last-commit/At87668/MinerTrack?style=flat&label=Last%20Commit)](https://gitHub.com/At87668/MinerTrack/commit/) [![GPLv3 license](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat&label=Open%20Source%20License)](https://github.com/At87668/MinerTrack/blob/main/LICENSE)
 
-![Support Versiopn](https://img.shields.io/badge/Support_Version-1.21.x_%7C_1.20.x_%7C_1.19.x_%7C_1.18.x-&?color=069F00)
+![Support Versiopn](https://img.shields.io/badge/Support_Version-26.x_%7C_1.21.x_%7C_1.20.x_%7C_1.19.x_%7C_1.18.x-&?color=069F00)
 
 [![Support Server](https://img.shields.io/discord/1302190990639235122.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/MzTea2W9cb)
 
