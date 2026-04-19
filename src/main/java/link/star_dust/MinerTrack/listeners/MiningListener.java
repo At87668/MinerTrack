@@ -18,6 +18,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Levelled;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -25,6 +26,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import java.util.function.Consumer;
@@ -45,6 +47,7 @@ public class MiningListener implements Listener {
     private final MinerTrack plugin;
     // Store mining paths per world: worldName -> (playerUUID -> path)
     private final Map<String, Map<UUID, List<Location>>> miningPath = new HashMap<>();
+    private final Map<String, Map<UUID, List<Boolean>>> airExposurePath = new HashMap<>();
     private final Map<UUID, Long> lastMiningTime = new HashMap<>();
     private final Map<UUID, Integer> violationLevel = new HashMap<>();
     private final Map<UUID, Integer> minedVeinCount = new HashMap<>();
@@ -110,6 +113,25 @@ public class MiningListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         UUID playerUUID = event.getPlayer().getUniqueId();
         plugin.getVerbosePlayers().remove(playerUUID);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerTeleport(PlayerTeleportEvent event) {
+        Location from = event.getFrom();
+        Location to = event.getTo();
+
+        if (to == null) {
+            return;
+        }
+
+        if (Objects.equals(from.getWorld(), to.getWorld())
+                && from.getBlockX() == to.getBlockX()
+                && from.getBlockY() == to.getBlockY()
+                && from.getBlockZ() == to.getBlockZ()) {
+            return;
+        }
+
+        clearPlayerPathTracking(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -310,20 +332,28 @@ public class MiningListener implements Listener {
         // Initialize world's player path information
         miningPath.putIfAbsent(worldName, new HashMap<>());
         Map<UUID, List<Location>> worldPlayers = miningPath.get(worldName);
+        airExposurePath.putIfAbsent(worldName, new HashMap<>());
+        Map<UUID, List<Boolean>> worldAirExposure = airExposurePath.get(worldName);
 
         worldPlayers.putIfAbsent(playerId, new ArrayList<>());
         List<Location> path = worldPlayers.get(playerId);
+        worldAirExposure.putIfAbsent(playerId, new ArrayList<>());
+        List<Boolean> exposedPath = worldAirExposure.get(playerId);
 
         // Update mining path and time
         path.add(blockLocation);
+        exposedPath.add(isExposedToAir(blockLocation));
         lastMiningTime.put(playerId, currentTime);
 
         if (path.size() > maxPathLength) {
             path.remove(0);
         }
+        if (exposedPath.size() > maxPathLength) {
+            exposedPath.remove(0);
+        }
 
         // Check new veins
-        checkForArtificialAir(player, path);
+        checkForArtificialAir(player, exposedPath);
         
         boolean smooth = isSmoothPath(player.getUniqueId(), path);
         boolean natural = isInNaturalEnvironment(worldName, player, blockLocation, path);
@@ -345,38 +375,26 @@ public class MiningListener implements Listener {
 
     private void cleanupExpiredPaths() {
         long now = System.currentTimeMillis();
-        // Iterate per world, then per player
+        Set<UUID> playersToClear = new HashSet<>();
+
         for (Map.Entry<String, Map<UUID, List<Location>>> worldEntry : miningPath.entrySet()) {
             String worldName = worldEntry.getKey();
             long traceBackLength = plugin.getConfigManager().traceBackLength(worldName) * 60 * 1000L; // Convert minutes to ms
             Map<UUID, List<Location>> playerMap = worldEntry.getValue();
-            
-            Set<UUID> playersToClear = new HashSet<>();
+
             for (Map.Entry<UUID, List<Location>> p : playerMap.entrySet()) {
                 UUID playerId = p.getKey();
-                List<Location> path = p.getValue();
                 long lastTime = lastMiningTime.getOrDefault(playerId, 0L);
 
                 if (lastTime > 0 && now - lastTime > traceBackLength) {
                     playersToClear.add(playerId);
-                } else {
-                    if (lastTime > 0) {
-                        path.removeIf(loc -> now - lastTime > traceBackLength);
-                    }
                 }
-            }
-            
-            for (UUID uuid : playersToClear) {
-                playerMap.remove(uuid);
-                lastMiningTime.remove(uuid);
-                lastVeinClusters.remove(uuid);
-                lastVeinLocation.remove(uuid);
-                minedVeinCount.remove(uuid);
             }
         }
 
-        // Remove empty world entries
-        miningPath.entrySet().removeIf(e -> e.getValue().isEmpty());
+        for (UUID playerId : playersToClear) {
+            clearPlayerPathTracking(playerId);
+        }
     }
 
     private boolean isNewVein(UUID playerId, String worldName, Location location, Material oreType) {
@@ -650,7 +668,7 @@ public class MiningListener implements Listener {
             }
         }
 
-		if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL(worldName) && airViolationLevel.getOrDefault(player, 0) < plugin.getConfigManager().AirMonitorVLT(worldName)) return true;
+		if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL(worldName) && airViolationLevel.getOrDefault(player.getUniqueId(), 0) < plugin.getConfigManager().getAirMonitorViolationThreshold(worldName)) return true;
         if (waterCount > waterThreshold && plugin.getConfigManager().isSeaSkipVL(worldName)) return true;
         if (lavaCount > lavaThreshold && plugin.getConfigManager().isLavaSeaSkipVL(worldName)) return true;
 
@@ -743,28 +761,27 @@ public class MiningListener implements Listener {
         return false;
     }
     
-    private void checkForArtificialAir(Player player, List<Location> path) {
-        if (path == null || path.isEmpty()) return;
-        String worldName = path.get(0).getWorld().getName();
+    private void checkForArtificialAir(Player player, List<Boolean> exposedPath) {
+        if (exposedPath == null || exposedPath.isEmpty()) return;
+        String worldName = player.getWorld().getName();
         
         if (!plugin.getConfigManager().isAirMonitorEnabled(worldName)) {
             return;
         }
 
         int minPathLength = plugin.getConfigManager().getAirMonitorMinPathLength(worldName);
-        if (path.size() < minPathLength) {
+        if (exposedPath.size() < minPathLength) {
             return;
         }
 
-        int airBlockCount = 0;
-        for (Location loc : path) {
-            Material type = loc.getBlock().getType();
-            if (type == Material.AIR || type == Material.CAVE_AIR) {
-                airBlockCount++;
+        int airExposureCount = 0;
+        for (Boolean exposed : exposedPath) {
+            if (Boolean.TRUE.equals(exposed)) {
+                airExposureCount++;
             }
         }
 
-        double airRatio = (double) airBlockCount / path.size();
+        double airRatio = (double) airExposureCount / exposedPath.size();
         double threshold = plugin.getConfigManager().getAirMonitorAirRatioThreshold(worldName);
 
         if (airRatio > threshold) {
@@ -827,6 +844,7 @@ public class MiningListener implements Listener {
             long traceRemoveMillis = plugin.getConfigManager().getTraceRemoveTime(worldName) * 60 * 1000L;
 
             if (lastZeroTime != null && vl == 0 && now - lastZeroTime > traceRemoveMillis) {
+                clearPlayerPathTracking(playerId);
                 // 从所有世界中移除该玩家的路径
                 for (Map<UUID, List<Location>> playerMap : miningPath.values()) {
                     playerMap.remove(playerId);
@@ -851,6 +869,7 @@ public class MiningListener implements Listener {
     public void checkAndResetPaths(UUID playerId) {
         if (playerId == null) return;
 
+        clearPlayerPathTracking(playerId);
         // Remove this player from all world maps
         for (Map<UUID, List<Location>> playerMap : miningPath.values()) {
             playerMap.remove(playerId);
@@ -868,6 +887,48 @@ public class MiningListener implements Listener {
         totalTurns.remove(playerId);
         branchCount.remove(playerId);
         yChanges.remove(playerId);
+    }
+
+    private void clearPlayerPathTracking(UUID playerId) {
+        removePlayerPathEntries(miningPath, playerId);
+        removePlayerPathEntries(airExposurePath, playerId);
+        lastMiningTime.remove(playerId);
+        minedVeinCount.remove(playerId);
+        lastVeinLocation.remove(playerId);
+        lastVeinClusters.remove(playerId);
+        totalTurns.remove(playerId);
+        branchCount.remove(playerId);
+        yChanges.remove(playerId);
+    }
+
+    private <T> void removePlayerPathEntries(Map<String, Map<UUID, List<T>>> trackedPaths, UUID playerId) {
+        for (Map<UUID, List<T>> playerMap : trackedPaths.values()) {
+            playerMap.remove(playerId);
+        }
+        trackedPaths.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+    }
+
+    private boolean isExposedToAir(Location location) {
+        Block block = location.getBlock();
+
+        for (BlockFace face : new BlockFace[] {
+                BlockFace.UP,
+                BlockFace.DOWN,
+                BlockFace.NORTH,
+                BlockFace.SOUTH,
+                BlockFace.EAST,
+                BlockFace.WEST
+        }) {
+            if (isAir(block.getRelative(face).getType())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isAir(Material material) {
+        return material == Material.AIR || material == Material.CAVE_AIR || material == Material.VOID_AIR;
     }
 
     private void increaseViolationLevel(Player player, int amount, String blockType, int count, int vein, Location location) {
