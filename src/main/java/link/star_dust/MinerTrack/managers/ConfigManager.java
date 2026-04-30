@@ -822,7 +822,7 @@ public class ConfigManager {
 	}
 
     public int AirMonitorVLT(String worldName) {
-		return getIntForWorld(null, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
+		return getIntForWorld(worldName, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
 	}
 
     public boolean isAirMonitorEnabled(String worldName) {
