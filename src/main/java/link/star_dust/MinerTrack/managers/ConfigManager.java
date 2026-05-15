@@ -826,7 +826,8 @@ public class ConfigManager {
 	}
 
     public boolean isAirMonitorEnabled(String worldName) {
-        return getBooleanForWorld(worldName, "xray.natural-detection.cave.air-monitor.enable", true);
+        //return getBooleanForWorld(worldName, "xray.natural-detection.cave.air-monitor.enable", true);
+        return false;
     }
 
     public int getAirMonitorMinPathLength(String worldName) {
