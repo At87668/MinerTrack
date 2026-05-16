@@ -57,9 +57,9 @@ public class MiningListener implements Listener {
     // store placed ore locations along with the timestamp (epoch ms) when they were placed
     private final Map<UUID, Map<Location, Long>> placedOres = new HashMap<>();
     private final Map<Location, Long> explosionExposedOres = new HashMap<>();
+    // Track recently broken blocks that became air (artificial air) per player
+    private final Map<UUID, Map<Location, Long>> brokenAir = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
-    private final Map<UUID, Integer> airViolationLevel = new HashMap<>();
-    private final Map<UUID, Long> lastAirViolationTime = new HashMap<>();
     //private final MiningDetectionExtension ex;
     
     public MiningListener(MinerTrack plugin) {
@@ -83,10 +83,10 @@ public class MiningListener implements Listener {
                             return;
                         }
                         checkAndResetPaths();
-                        cleanUpAirViolations();
                         cleanupExpiredPaths();
                         //cleanupExpiredExplosions();
                         cleanupExpiredPlacedBlocks();
+                        cleanupExpiredBrokenAir();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -97,12 +97,12 @@ public class MiningListener implements Listener {
         } else {
             new BukkitRunnable() {
                 @Override
-                public void run() {
+                    public void run() {
                     checkAndResetPaths();
-                    cleanUpAirViolations();
                     cleanupExpiredPaths();
                     //cleanupExpiredExplosions();
                     cleanupExpiredPlacedBlocks();
+                    cleanupExpiredBrokenAir();
                 }
             }.runTaskTimer(plugin, interval, interval);
         }
@@ -292,6 +292,10 @@ public class MiningListener implements Listener {
         if (isPlayerPlacedBlock(blockLocation)) {
             return;
         }
+
+        // Record this broken block as recently-created artificial air for air-monitoring
+        brokenAir.putIfAbsent(playerId, new HashMap<>());
+        brokenAir.get(playerId).put(blockLocation, System.currentTimeMillis());
         
         List<String> rareOres = plugin.getConfigManager().getRareOres(worldName);
 
@@ -353,7 +357,6 @@ public class MiningListener implements Listener {
         }
 
         // Check new veins
-        checkForArtificialAir(player, exposedPath);
         
         boolean smooth = isSmoothPath(player.getUniqueId(), path);
         boolean natural = isInNaturalEnvironment(worldName, player, blockLocation, path);
@@ -642,10 +645,34 @@ public class MiningListener implements Listener {
         int baseY = location.getBlockY();
         int baseZ = location.getBlockZ();
 
+        long now = System.currentTimeMillis();
         for (int x = -detectionRange; x <= detectionRange; x++) {
             for (int y = -detectionRange; y <= detectionRange; y++) {
                 for (int z = -detectionRange; z <= detectionRange; z++) {
-                    Material type = location.getWorld().getBlockAt(baseX + x, baseY + y, baseZ + z).getType();
+                    Location checkLoc = new Location(location.getWorld(), baseX + x, baseY + y, baseZ + z);
+                    Material type = checkLoc.getBlock().getType();
+
+                    // If configured, ignore artificially created air near this player
+                    boolean isArtificialAir = false;
+                    if (plugin.getConfigManager().isIgnoreArtificialAir(worldName) && (type == Material.AIR || type == Material.CAVE_AIR) && brokenAir.containsKey(player.getUniqueId())) {
+                        Map<Location, Long> br = brokenAir.get(player.getUniqueId());
+                        if (br != null) {
+                            Long t = br.get(checkLoc);
+                            if (t != null) {
+                                long expiration = plugin.getConfigManager().getArtificialAirRemoveTime(worldName) * 60 * 1000L;
+                                if (now - t <= expiration) {
+                                    isArtificialAir = true;
+                                } else {
+                                    br.remove(checkLoc); // expired
+                                }
+                            }
+                        }
+                    }
+
+                    if (isArtificialAir) {
+                        continue; // ignore artificially created air for cave detection
+                    }
+
                     switch (type) {
                         case CAVE_AIR:
                             airCount += caveAirMultiplier;
@@ -668,7 +695,7 @@ public class MiningListener implements Listener {
             }
         }
 
-		if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL(worldName) && airViolationLevel.getOrDefault(player.getUniqueId(), 0) < plugin.getConfigManager().getAirMonitorViolationThreshold(worldName)) return true;
+        if (airCount > airThreshold && plugin.getConfigManager().isCaveSkipVL(worldName)) return true;
         if (waterCount > waterThreshold && plugin.getConfigManager().isSeaSkipVL(worldName)) return true;
         if (lavaCount > lavaThreshold && plugin.getConfigManager().isLavaSeaSkipVL(worldName)) return true;
 
@@ -761,36 +788,7 @@ public class MiningListener implements Listener {
         return false;
     }
     
-    private void checkForArtificialAir(Player player, List<Boolean> exposedPath) {
-        if (exposedPath == null || exposedPath.isEmpty()) return;
-        String worldName = player.getWorld().getName();
-        
-        if (!plugin.getConfigManager().isAirMonitorEnabled(worldName)) {
-            return;
-        }
-
-        int minPathLength = plugin.getConfigManager().getAirMonitorMinPathLength(worldName);
-        if (exposedPath.size() < minPathLength) {
-            return;
-        }
-
-        int airExposureCount = 0;
-        for (Boolean exposed : exposedPath) {
-            if (Boolean.TRUE.equals(exposed)) {
-                airExposureCount++;
-            }
-        }
-
-        double airRatio = (double) airExposureCount / exposedPath.size();
-        double threshold = plugin.getConfigManager().getAirMonitorAirRatioThreshold(worldName);
-
-        if (airRatio > threshold) {
-            UUID playerId = player.getUniqueId();
-            int increase = plugin.getConfigManager().getAirMonitorViolationIncrease(worldName);
-            airViolationLevel.put(playerId, airViolationLevel.getOrDefault(playerId, 0) + increase);
-            lastAirViolationTime.put(playerId, System.currentTimeMillis());
-        }
-    }
+    // air-monitor removed: functionality intentionally deleted
     
     private void cleanupExpiredPlacedBlocks() {
         long currentTime = System.currentTimeMillis();
@@ -811,26 +809,25 @@ public class MiningListener implements Listener {
         for (UUID id : ownersToRemove) placedOres.remove(id);
     }
 
-    private void cleanUpAirViolations() {
-        long now = System.currentTimeMillis();
-        List<UUID> toRemove = new ArrayList<>();
+    private void cleanupExpiredBrokenAir() {
+        long currentTime = System.currentTimeMillis();
+        List<UUID> ownersToRemove = new ArrayList<>();
 
-        for (Map.Entry<UUID, Long> entry : lastAirViolationTime.entrySet()) {
-            UUID playerId = entry.getKey();
-            Player player = plugin.getServer().getPlayer(playerId);
-            String worldName = (player != null) ? player.getWorld().getName() : null;
-            long decayTime = plugin.getConfigManager().getAirMonitorRemoveTime(worldName) * 60 * 1000L;
-
-            if (now - entry.getValue() > decayTime) {
-                toRemove.add(playerId);
-            }
+        for (Map.Entry<UUID, Map<Location, Long>> entry : brokenAir.entrySet()) {
+            UUID owner = entry.getKey();
+            Map<Location, Long> map = entry.getValue();
+            map.entrySet().removeIf(e -> {
+                String worldName = e.getKey().getWorld().getName();
+                long expirationTime = plugin.getConfigManager().getArtificialAirRemoveTime(worldName) * 60 * 1000L;
+                return currentTime - e.getValue() > expirationTime;
+            });
+            if (map.isEmpty()) ownersToRemove.add(owner);
         }
 
-        for (UUID uuid : toRemove) {
-            airViolationLevel.remove(uuid);
-            lastAirViolationTime.remove(uuid);
-        }
+        for (UUID id : ownersToRemove) brokenAir.remove(id);
     }
+
+    // air-monitor removed: cleanup no longer needed
     
     private void checkAndResetPaths() {
         long now = System.currentTimeMillis();
@@ -881,8 +878,6 @@ public class MiningListener implements Listener {
         lastVeinClusters.remove(playerId);
         placedOres.remove(playerId);
         vlZeroTimestamp.remove(playerId);
-        airViolationLevel.remove(playerId);
-        lastAirViolationTime.remove(playerId);
 
         totalTurns.remove(playerId);
         branchCount.remove(playerId);

@@ -471,13 +471,9 @@ public class ConfigManager {
     		    "xray.natural-detection.cave.CaveAirMultiplier",
     		    "xray.natural-detection.cave.detection-range",
     		    "xray.natural-detection.cave.check_skip_vl",
-    		    "xray.natural-detection.cave.air-monitor",
-    		    "xray.natural-detection.cave.air-monitor.enable",
-    		    "xray.natural-detection.cave.air-monitor.min-path-length",
-    		    "xray.natural-detection.cave.air-monitor.air-ratio-threshold",
-    		    "xray.natural-detection.cave.air-monitor.violation-increase",
-    		    "xray.natural-detection.cave.air-monitor.violation-threshold",
-    		    "xray.natural-detection.cave.air-monitor.remove-time",
+    		
+        		"xray.natural-detection.cave.artificial-air-remove-time",
+        		"xray.natural-detection.cave.ignore-artificial-air",
     		    "xray.natural-detection.sea",
     		    "xray.natural-detection.sea.check-running-water",
     		    "xray.natural-detection.sea.water-threshold",
@@ -693,6 +689,10 @@ public class ConfigManager {
         return getBooleanForWorld(worldName, "xray.natural-detection.cave.check_skip_vl", true);
     }
 
+    public boolean isIgnoreArtificialAir(String worldName) {
+        return getBooleanForWorld(worldName, "xray.natural-detection.cave.ignore-artificial-air", true);
+    }
+
     public boolean isRunningWaterCheckEnabled() {
         return config.getBoolean("xray.natural-detection.sea.check-running-water", false);
     }
@@ -817,37 +817,16 @@ public class ConfigManager {
         return getIntForWorld(worldName, "xray.path-detection.y-change-threshold-add-required", 3);
     }
 
-	public int AirMonitorVLT() {
-		return getIntForWorld(null, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
-	}
+    
 
-    public int AirMonitorVLT(String worldName) {
-		return getIntForWorld(worldName, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
-	}
-
-    public boolean isAirMonitorEnabled(String worldName) {
-        //return getBooleanForWorld(worldName, "xray.natural-detection.cave.air-monitor.enable", true);
-        return false;
-    }
-
-    public int getAirMonitorMinPathLength(String worldName) {
-        return getIntForWorld(worldName, "xray.natural-detection.cave.air-monitor.min-path-length", 10);
-    }
-
-    public double getAirMonitorAirRatioThreshold(String worldName) {
-        return getDoubleForWorld(worldName, "xray.natural-detection.cave.air-monitor.air-ratio-threshold", 0.3);
-    }
-
-    public int getAirMonitorViolationIncrease(String worldName) {
-        return getIntForWorld(worldName, "xray.natural-detection.cave.air-monitor.violation-increase", 1);
-    }
-
-    public int getAirMonitorViolationThreshold(String worldName) {
-        return getIntForWorld(worldName, "xray.natural-detection.cave.air-monitor.violation-threshold", 5);
-    }
-
-    public int getAirMonitorRemoveTime(String worldName) {
-        return getIntForWorld(worldName, "xray.natural-detection.cave.air-monitor.remove-time", 20);
+    /**
+     * How long artificially created air (broken blocks) should be considered recent (minutes).
+     * New key: xray.natural-detection.cave.artificial-air-remove-time
+     */
+    public int getArtificialAirRemoveTime(String worldName) {
+        // Fallback to old air-monitor.remove-time for backward compatibility
+        int def = config.getInt("xray.natural-detection.cave.air-monitor.remove-time", 20);
+        return getIntForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", def);
     }
 }
 
