@@ -115,25 +115,6 @@ public class MiningListener implements Listener {
         plugin.getVerbosePlayers().remove(playerUUID);
     }
 
-    @EventHandler(ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        Location from = event.getFrom();
-        Location to = event.getTo();
-
-        if (to == null) {
-            return;
-        }
-
-        if (Objects.equals(from.getWorld(), to.getWorld())
-                && from.getBlockX() == to.getBlockX()
-                && from.getBlockY() == to.getBlockY()
-                && from.getBlockZ() == to.getBlockZ()) {
-            return;
-        }
-
-        clearPlayerPathTracking(event.getPlayer().getUniqueId());
-    }
-
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         String worldName = event.getBlock().getWorld().getName();
