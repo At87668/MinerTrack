@@ -9,13 +9,13 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.listeners;
+package link.star_dust.MinerTrack.bukkit.listeners;
 
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.entity.Player;
-import link.star_dust.MinerTrack.commands.MinerTrackCommand;
+import link.star_dust.MinerTrack.bukkit.commands.MinerTrackCommand;
 
 public class LogCacheListener implements Listener {
     private final MinerTrackCommand command;

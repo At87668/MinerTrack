@@ -9,11 +9,11 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.commands;
+package link.star_dust.MinerTrack.bukkit.commands;
 
-import link.star_dust.MinerTrack.FoliaCheck;
-import link.star_dust.MinerTrack.MinerTrack;
-import link.star_dust.MinerTrack.utils.LogViewerUtils;
+import link.star_dust.MinerTrack.bukkit.FoliaCheck;
+import link.star_dust.MinerTrack.bukkit.MinerTrack;
+import link.star_dust.MinerTrack.bukkit.utils.LogViewerUtils;
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;

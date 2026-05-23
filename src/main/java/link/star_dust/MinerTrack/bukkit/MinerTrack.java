@@ -1,15 +1,15 @@
 /**
  * DON'T REMOVE THIS
- * 
- * /MinerTrack/src/main/java/link/star_dust/MinerTrack/MinerTrack.java
- * 
+ *
+ * /MinerTrack/src/main/java/link/star_dust/MinerTrack/bukkit/MinerTrack.java
+ *
  * MinerTrack Source Code - Public under GPLv3 license
  * Original Author: Author87668
  * Contributors: Author87668
- * 
+ *
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack;
+package link.star_dust.MinerTrack.bukkit;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -27,15 +27,17 @@ import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.Listener;
 
-import link.star_dust.MinerTrack.managers.ConfigManager;
-import link.star_dust.MinerTrack.managers.LanguageManager;
-import link.star_dust.MinerTrack.managers.UpdateManager;
-import link.star_dust.MinerTrack.managers.ViolationManager;
+import link.star_dust.MinerTrack.bukkit.managers.ConfigManager;
+import link.star_dust.MinerTrack.bukkit.managers.LanguageManager;
+import link.star_dust.MinerTrack.bukkit.managers.UpdateManager;
+import link.star_dust.MinerTrack.bukkit.managers.ViolationManager;
 import net.md_5.bungee.api.chat.BaseComponent;
-import link.star_dust.MinerTrack.listeners.MiningDetectionExtension;
-import link.star_dust.MinerTrack.listeners.MiningListener;
-import link.star_dust.MinerTrack.listeners.LogCacheListener;
-import link.star_dust.MinerTrack.commands.MinerTrackCommand;
+import link.star_dust.MinerTrack.bukkit.listeners.MiningDetectionExtension;
+import link.star_dust.MinerTrack.bukkit.listeners.MiningListener;
+import link.star_dust.MinerTrack.bukkit.listeners.LogCacheListener;
+import link.star_dust.MinerTrack.bukkit.commands.MinerTrackCommand;
+import link.star_dust.MinerTrack.bukkit.BukkitAdapter;
+import link.star_dust.MinerTrack.core.Core;
 
 public class MinerTrack extends JavaPlugin implements Listener {
     private ConfigManager configManager;
@@ -62,6 +64,13 @@ public class MinerTrack extends JavaPlugin implements Listener {
         updateManager = new UpdateManager(this);
         //miningDetectionExtension = new MiningDetectionExtension(this);
         //miningDetectionExtension.register();
+
+        // Initialize core with Bukkit adapter
+        try {
+            BukkitAdapter adapter = new BukkitAdapter(this);
+            Core core = new Core(adapter);
+            core.start();
+        } catch (Throwable ignored) {}
         
         int pluginId = 23790;
         new Metrics(this, pluginId);
@@ -82,7 +91,7 @@ public class MinerTrack extends JavaPlugin implements Listener {
         	ColoredVersion = "&av" + getDescription().getVersion();
         }
         
-		getServer().getConsoleSender().sendMessage(applyColors("&8----[&9&lMiner&c&lTrack " + ColoredVersion + " &8]-----------"));
+        getServer().getConsoleSender().sendMessage(applyColors("&8----[&9&lMiner&c&lTrack " + ColoredVersion + " &8]-----------"));
         getServer().getConsoleSender().sendMessage(applyColors("&9&lMiner&c&lTrack &4&oAnti-XRay &aEnabled!"));
         getServer().getConsoleSender().sendMessage(applyColors(""));
         getServer().getConsoleSender().sendMessage(applyColors("&7Authors: Author87668"));
@@ -91,12 +100,6 @@ public class MinerTrack extends JavaPlugin implements Listener {
         getServer().getConsoleSender().sendMessage(applyColors(""));
         getServer().getConsoleSender().sendMessage(applyColors("&a&oThanks for your use!"));
         getServer().getConsoleSender().sendMessage(applyColors("&8-----------------------------------------"));
-        
-        /*if (getConfigManager().updateCheck()) {
-            checkForUpdates(null);
-      	} else {
-      		return;
-      	}*/
     }
     
     @EventHandler
@@ -104,9 +107,9 @@ public class MinerTrack extends JavaPlugin implements Listener {
     	if (getConfigManager().updateCheck()) {
           getLogger().info("Server has finished loading. Checking for updates...");
           checkForUpdates(null);
-    	} else {
+     	} else {
     		return;
-    	}
+     	}
     }
     
     @SuppressWarnings("deprecation")
@@ -181,26 +184,24 @@ public class MinerTrack extends JavaPlugin implements Listener {
         }
     }
 
-    
     @SuppressWarnings("deprecation")
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
     	if (!configManager.updateCheck()) {
-    		return;
+			return;
     	}
-    	
+        
         Player player = event.getPlayer();
 
         if (player.hasPermission("minertrack.checkupdate") && updateManager.isHasNewerVersion()) {
         	BaseComponent[] updateComponent = updateManager.getUpdateMessageComponent();
             if (updateComponent != null) {
                 player.spigot().sendMessage(updateComponent);
-            }  // Call UpdateManager for player-specific check
-            //updateManager.checkForUpdates(player);
+            }
         }
     }
 
-    public void checkForUpdates(CommandSender sender) {
+    public void checkForUpdates(org.bukkit.command.CommandSender sender) {
         updateManager.checkForUpdates(sender);
     }
 

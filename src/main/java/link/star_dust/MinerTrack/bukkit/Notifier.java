@@ -1,18 +1,6 @@
-/**
- * DON'T REMOVE THIS
- * 
- * /MinerTrack/src/main/java/link/star_dust/MinerTrack/Notifier.java
- * 
- * MinerTrack Source Code - Public under GPLv3 license
- * Original Author: Author87668
- * Contributors: Author87668
- * 
- * DON'T REMOVE THIS
-**/
-package link.star_dust.MinerTrack;
+package link.star_dust.MinerTrack.bukkit;
 
-import link.star_dust.MinerTrack.managers.LanguageManager;
-
+import link.star_dust.MinerTrack.bukkit.managers.LanguageManager;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -36,19 +24,15 @@ public class Notifier {
 
     @SuppressWarnings("deprecation")
     public void sendNotifyMessage(String messageContent) {
-        // Define prefixes and add color codes
         String prefix = ChatColor.translateAlternateColorCodes('&', "&8[&9&lMiner&c&lTrack&8]&r ");
         String formattedMessage = prefix + ChatColor.translateAlternateColorCodes('&', messageContent);
         
-        // Send message to players with permissions
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.hasPermission("minertrack.notify")) {
                 player.sendMessage(formattedMessage);
             }
         }
         
-        // Send message to console
         Bukkit.getConsoleSender().sendMessage(formattedMessage);
     }
 }
-

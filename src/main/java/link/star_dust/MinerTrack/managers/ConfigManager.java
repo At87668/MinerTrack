@@ -9,13 +9,13 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.managers;
+package link.star_dust.MinerTrack.bukkit.managers;
 
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jetbrains.annotations.Nullable;
 
-import link.star_dust.MinerTrack.MinerTrack;
+import link.star_dust.MinerTrack.bukkit.MinerTrack;
 
 import java.io.*;
 import java.util.List;
@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.regex.Pattern;
 import java.util.ArrayList;
 
-public class ConfigManager {
+public class ConfigManager implements link.star_dust.MinerTrack.common.ConfigBridge, link.star_dust.MinerTrack.common.UpdateBridge {
     private final MinerTrack plugin;
     private final File configFile;
     private YamlConfiguration config;
@@ -55,6 +55,7 @@ public class ConfigManager {
         try {
             loadGroupConfigurations();
         } catch (Exception ignored) {}
+        rebuildCoreConfig();
     }
 
     public void loadConfigFile() {
@@ -322,6 +323,9 @@ public class ConfigManager {
                 plugin.getLogger().info("Default unnamed group (all_unnamed_world): " + defaultUnnamedGroupKey);
             }
         } catch (Exception ignored) {}
+
+        // Rebuild CoreConfig after group configs are fully loaded
+        rebuildCoreConfig();
     }
 
     // Maps group key -> YamlConfiguration
@@ -333,97 +337,47 @@ public class ConfigManager {
     // Group key to use for worlds not explicitly listed (from config.yml xray.worlds mapping via 'all_unnamed_world')
     private String defaultUnnamedGroupKey = null;
 
+    // Core world-aware helper (delegates to CoreConfig)
+    private link.star_dust.MinerTrack.common.CoreConfig coreConfig;
+
+    private void rebuildCoreConfig() {
+        this.coreConfig = new link.star_dust.MinerTrack.common.CoreConfig(
+            config,
+            groupConfigs,
+            worldToGroup,
+            groupWorldPatterns,
+            defaultUnnamedGroupKey
+        );
+    }
+
     /**
      * Return the group config applicable for the given world name, or null.
      */
     @Nullable
     private YamlConfiguration getGroupConfigForWorld(String worldName) {
-        if (worldName == null) return null;
-        if (worldToGroup.containsKey(worldName)) {
-            String k = worldToGroup.get(worldName);
-            return groupConfigs.get(k);
-        }
-        // Check patterns (wildcards) first
-        for (Map.Entry<String, List<Pattern>> e : groupWorldPatterns.entrySet()) {
-            for (Pattern p : e.getValue()) {
-                if (p.matcher(worldName).matches()) return groupConfigs.get(e.getKey());
-            }
-        }
-
-        // Scan groups for explicit "worlds" list (exact matches)
-        for (Map.Entry<String, YamlConfiguration> e : groupConfigs.entrySet()) {
-            List<String> worlds = e.getValue().getStringList("worlds");
-            if (worlds != null && worlds.contains(worldName)) return e.getValue();
-        }
-        // If main config.yml declares mapping xray.worlds: { 'file.yml': [worlds...] }, respect that mapping
-        if (config != null) {
-            ConfigurationSection worldsSection = config.getConfigurationSection("xray.worlds");
-            if (worldsSection != null) {
-                for (String fileKey : worldsSection.getKeys(false)) {
-                    try {
-                        List<String> list = worldsSection.getStringList(fileKey);
-                        if (list == null) continue;
-                        String k = fileKey;
-                        if (k.toLowerCase().endsWith(".yml")) k = k.substring(0, k.length() - 4);
-                        for (String w : list) {
-                            if (w == null) continue;
-                            if (w.equalsIgnoreCase("all_unnamed_world")) {
-                                defaultUnnamedGroupKey = k;
-                            } else if (w.equals(worldName)) {
-                                // only return if the group file was loaded
-                                if (groupConfigs.containsKey(k)) return groupConfigs.get(k);
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-        }
-        // Default for unnamed worlds if configured in config.yml
-        if (defaultUnnamedGroupKey != null && groupConfigs.containsKey(defaultUnnamedGroupKey)) return groupConfigs.get(defaultUnnamedGroupKey);
-
-        return null;
+        if (coreConfig == null) return null;
+        return coreConfig.getGroupConfigForWorld(worldName);
     }
 
     // Typed helpers that prefer group config values when available
     private int getIntForWorld(String worldName, String path, int def) {
-        YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null) {
-            if (yc.contains(path)) return yc.getInt(path, def);
-            // Fallback: if path is "xray.something", try "something" in sub-config
-            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
-            if (yc.contains(subPath)) return yc.getInt(subPath, def);
-        }
-        return config.getInt(path, def);
+        if (coreConfig == null) return config.getInt(path, def);
+        return coreConfig.getIntForWorld(worldName, path, def);
     }
 
     private boolean getBooleanForWorld(String worldName, String path, boolean def) {
-        YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null) {
-            if (yc.contains(path)) return yc.getBoolean(path, def);
-            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
-            if (yc.contains(subPath)) return yc.getBoolean(subPath, def);
-        }
-        return config.getBoolean(path, def);
+        if (coreConfig == null) return config.getBoolean(path, def);
+        return coreConfig.getBooleanForWorld(worldName, path, def);
     }
 
     private List<String> getStringListForWorld(String worldName, String path) {
-        YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null) {
-            if (yc.contains(path)) return yc.getStringList(path);
-            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
-            if (yc.contains(subPath)) return yc.getStringList(subPath);
-        }
-        return config.getStringList(path);
+        if (coreConfig == null) return config.getStringList(path);
+        return coreConfig.getStringListForWorld(worldName, path);
     }
 
     private double getDoubleForWorld(String worldName, String path, double def) {
-        YamlConfiguration yc = getGroupConfigForWorld(worldName);
-        if (yc != null) {
-            if (yc.contains(path)) return yc.getDouble(path, def);
-            String subPath = path.startsWith("xray.") ? path.substring(5) : path;
-            if (yc.contains(subPath)) return yc.getDouble(subPath, def);
-        }
-        return config.getDouble(path, def);
+        if (coreConfig == null) return config.getDouble(path, def);
+        return coreConfig.getDoubleForWorld(worldName, path, def);
     }
 
     /**
@@ -545,6 +499,25 @@ public class ConfigManager {
             plugin.getLogger().severe("Error reloading configuration: " + e.getMessage());
         }
     }
+
+    @Override
+    public Object get(String path) { return config.get(path); }
+
+    @Override
+    public int getInt(String path, int def) { return config.getInt(path, def); }
+
+    @Override
+    public boolean getBoolean(String path, boolean def) { return config.getBoolean(path, def); }
+
+    @Override
+    public double getDouble(String path, double def) { return config.getDouble(path, def); }
+
+    @Override
+    public java.util.List<String> getStringList(String path) { return config.getStringList(path); }
+
+
+    @Override
+    public java.io.File getDataFolder() { return plugin.getDataFolder(); }
 
     // Add your getter methods here, for example:
     public boolean isDenyBypassPermissionEnabled() {

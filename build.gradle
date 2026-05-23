@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'link.star_dust'
-version '1.10.1.1'
+version '2.1.0.0-dev'
 
 sourceCompatibility = 17
 
@@ -38,6 +38,12 @@ dependencies {
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
+}
+
+processResources {
+    filesMatching('**/plugin.yml') {
+        expand(version: project.version.toString())
+    }
 }
 
 jar {

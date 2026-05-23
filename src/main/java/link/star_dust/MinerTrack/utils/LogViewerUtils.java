@@ -9,7 +9,7 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.utils;
+package link.star_dust.MinerTrack.bukkit.utils;
 
 import org.bukkit.command.CommandSender;
 import java.io.File;

@@ -1,6 +1,6 @@
 name: MinerTrack
-version: 1.10.1.1
-main: link.star_dust.MinerTrack.MinerTrack
+version: ${version}
+main: link.star_dust.MinerTrack.bukkit.MinerTrack
 authors: [Author87668]
 contributors: [Author87668, Zhang12334, Thomas, xiaoyueyoqwq]
 website: https://modrinth.com/plugin/minertrack
