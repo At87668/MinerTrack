@@ -9,7 +9,7 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.legacy;
+package link.star_dust.MinerTrack;
 
 public class FoliaCheck {
     private static Boolean isFolia = null;

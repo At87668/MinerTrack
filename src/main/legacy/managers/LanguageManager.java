@@ -9,12 +9,12 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.bukkit.managers;
+package link.star_dust.MinerTrack.managers;
 
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
 
-import link.star_dust.MinerTrack.bukkit.MinerTrack;
+import link.star_dust.MinerTrack.MinerTrack;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,7 +28,7 @@ import java.util.jar.JarFile;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class LanguageManager implements link.star_dust.MinerTrack.common.LanguageBridge {
+public class LanguageManager {
     private final MinerTrack plugin;
     private YamlConfiguration languageConfig;
     private final File languageFile;

@@ -9,11 +9,11 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.bukkit.listeners;
+package link.star_dust.MinerTrack.listeners;
 
-import link.star_dust.MinerTrack.bukkit.FoliaCheck;
-import link.star_dust.MinerTrack.bukkit.MinerTrack;
-import link.star_dust.MinerTrack.bukkit.managers.ViolationManager;
+import link.star_dust.MinerTrack.FoliaCheck;
+import link.star_dust.MinerTrack.MinerTrack;
+import link.star_dust.MinerTrack.managers.ViolationManager;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -45,8 +45,6 @@ import java.util.*;
 
 public class MiningListener implements Listener {
     private final MinerTrack plugin;
-    private final link.star_dust.MinerTrack.core.detection.DetectionEngine detectionEngine;
-    private final link.star_dust.MinerTrack.core.detection.EnvironmentAnalyzer environmentAnalyzer;
     // Store mining paths per world: worldName -> (playerUUID -> path)
     private final Map<String, Map<UUID, List<Location>>> miningPath = new HashMap<>();
     private final Map<String, Map<UUID, List<Boolean>>> airExposurePath = new HashMap<>();
@@ -109,73 +107,6 @@ public class MiningListener implements Listener {
             }.runTaskTimer(plugin, interval, interval);
         }
 
-        // initialize detection engine bridge
-        link.star_dust.MinerTrack.common.DetectionBridge bridgeImpl = new link.star_dust.MinerTrack.common.DetectionBridge() {
-            @Override
-            public String getBlockType(String world, int x, int y, int z) {
-                org.bukkit.World w = plugin.getServer().getWorld(world);
-                if (w == null) return "AIR";
-                try {
-                    org.bukkit.Material m = w.getBlockAt(x, y, z).getType();
-                    return m.name();
-                } catch (Exception e) {
-                    return "AIR";
-                }
-            }
-
-            @Override
-            public boolean isPlayerPlacedBlock(UUID playerId, link.star_dust.MinerTrack.common.CommonLocation location) {
-                Map<UUID, Map<Location, Long>> placed = placedOres; // from outer class
-                Map<Location, Long> owner = placed.get(playerId);
-                if (owner == null) return false;
-                for (Location loc : owner.keySet()) {
-                    if (loc.getWorld().getName().equals(location.world)
-                            && loc.getBlockX() == location.x
-                            && loc.getBlockY() == location.y
-                            && loc.getBlockZ() == location.z) return true;
-                }
-                return false;
-            }
-
-            @Override
-            public Object getConfig(String path) {
-                return plugin.getConfig().get(path);
-            }
-            @Override
-            public boolean isArtificialAir(UUID playerId, link.star_dust.MinerTrack.common.CommonLocation location) {
-                Map<Location, Long> br = brokenAir.get(playerId);
-                if (br != null) {
-                    for (Location loc : br.keySet()) {
-                        if (loc.getWorld().getName().equals(location.world)
-                                && loc.getBlockX() == location.x
-                                && loc.getBlockY() == location.y
-                                && loc.getBlockZ() == location.z) {
-                            long t = br.get(loc);
-                            long expiration = plugin.getConfigManager().getArtificialAirRemoveTime(location.world) * 60 * 1000L;
-                            if (System.currentTimeMillis() - t <= expiration) return true;
-                        }
-                    }
-                }
-                return false;
-            }
-
-            @Override
-            public boolean isWaterStill(String world, int x, int y, int z) {
-                org.bukkit.World w = plugin.getServer().getWorld(world);
-                if (w == null) return false;
-                org.bukkit.block.Block block = w.getBlockAt(x, y, z);
-                if (block.getType() != Material.WATER) return false;
-                try {
-                    return block.getBlockData() instanceof Levelled && ((Levelled) block.getBlockData()).getLevel() == 0;
-                } catch (Exception e) {
-                    return false;
-                }
-            }
-        };
-
-        this.detectionEngine = new link.star_dust.MinerTrack.core.detection.DetectionEngine(bridgeImpl);
-        this.environmentAnalyzer = new link.star_dust.MinerTrack.core.detection.EnvironmentAnalyzer(bridgeImpl);
-
     }
 
     @EventHandler
@@ -201,8 +132,6 @@ public class MiningListener implements Listener {
             // store the placement time as current epoch ms
             placedOres.get(playerId).put(event.getBlock().getLocation(), System.currentTimeMillis());
         }
-
-        
     }
     
     private boolean isPlayerPlacedBlock(Location blockLocation) {
@@ -537,21 +466,72 @@ public class MiningListener implements Listener {
 
     // Helper: find all connected ore locations starting from startLocation within a search limit
     private Set<Location> getVeinLocations(Location startLocation, Material type, int maxDistance) {
-        // Delegate to core detection engine and convert CommonLocation -> Location
-        Set<link.star_dust.MinerTrack.common.CommonLocation> coreSet = detectionEngine.getVeinLocations(
-                new link.star_dust.MinerTrack.common.CommonLocation(startLocation.getWorld().getName(), startLocation.getBlockX(), startLocation.getBlockY(), startLocation.getBlockZ()),
-                type.name(),
-                maxDistance
-        );
-        Set<Location> out = new HashSet<>();
-        for (link.star_dust.MinerTrack.common.CommonLocation cl : coreSet) {
-            org.bukkit.World w = startLocation.getWorld();
-            if (w == null) continue;
-            org.bukkit.World worldObj = plugin.getServer().getWorld(cl.world);
-            if (worldObj == null) continue;
-            out.add(new Location(worldObj, cl.x, cl.y, cl.z));
+        Set<Location> visited = new HashSet<>();
+        Queue<Location> toVisit = new LinkedList<>();
+        if (startLocation == null) return visited;
+
+        // If the start block itself matches, use it as seed. Otherwise, search nearby for seeds
+        // Use squared distance to avoid repeated sqrt. maxDistance is inclusive.
+        double maxDistanceSq = Math.max(1, maxDistance) * (double) Math.max(1, maxDistance);
+
+        if (startLocation.getBlock().getType().equals(type)) {
+            toVisit.add(startLocation);
+        } else {
+            // scan a cube around startLocation to find any nearby ore blocks to act as seeds
+            int seedRadius = Math.max(1, maxDistance);
+            int baseX = startLocation.getBlockX();
+            int baseY = startLocation.getBlockY();
+            int baseZ = startLocation.getBlockZ();
+            World world = startLocation.getWorld();
+            for (int dx = -seedRadius; dx <= seedRadius; dx++) {
+                for (int dy = -seedRadius; dy <= seedRadius; dy++) {
+                    for (int dz = -seedRadius; dz <= seedRadius; dz++) {
+                        Location loc = new Location(world, baseX + dx, baseY + dy, baseZ + dz);
+                        if (!loc.getWorld().equals(startLocation.getWorld())) continue;
+                        // only accept seeds within the configured maxDistance from the start
+                        double distSq = loc.distanceSquared(startLocation);
+                        if (distSq <= maxDistanceSq && loc.getBlock().getType().equals(type)) {
+                            toVisit.add(loc);
+                        }
+                    }
+                }
+            }
+            // If no seeds found, return empty set
+            if (toVisit.isEmpty()) return visited;
+            // If the start block was the triggering block but is now air, include its location
+            // in the result so callers treat the broken block as part of the vein.
+            // We don't enqueue it for searching since it's not the ore type.
+            visited.add(startLocation);
         }
-        return out;
+
+        // Safety cap to prevent excessive work
+        int safetyCap = 2000;
+
+        while (!toVisit.isEmpty() && visited.size() < safetyCap) {
+            Location current = toVisit.poll();
+            if (visited.contains(current)) continue;
+            if (!current.getBlock().getType().equals(type)) continue;
+
+            visited.add(current);
+
+            // traverse neighbors (including diagonals) but only enqueue neighbors within a bounding cube
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dx == 0 && dy == 0 && dz == 0) continue;
+                        Location neighbor = current.clone().add(dx, dy, dz);
+                        if (visited.contains(neighbor)) continue;
+                        if (!neighbor.getBlock().getType().equals(type)) continue;
+                        // accept neighbor if it's within maxDistance from the start (use squared distance)
+                        if (neighbor.getWorld().equals(startLocation.getWorld()) && neighbor.distanceSquared(startLocation) <= maxDistanceSq) {
+                            toVisit.add(neighbor);
+                        }
+                    }
+                }
+            }
+        }
+
+        return visited;
     }
     
     public int countVeinBlocks(Location startLocation, Material type) {
@@ -566,29 +546,64 @@ public class MiningListener implements Listener {
     private final Map<UUID, Integer> totalTurns = new HashMap<>();
     private final Map<UUID, Integer> branchCount = new HashMap<>();
     private final Map<UUID, Integer> yChanges = new HashMap<>();
-    private final link.star_dust.MinerTrack.core.detection.PathAnalyzer pathAnalyzer = new link.star_dust.MinerTrack.core.detection.PathAnalyzer();
     
     private boolean isSmoothPath(UUID playerId, List<Location> path) {
-        if (path == null || path.size() < 2) return true;
-
+        if (path.size() < 2) return true;
+        
         String worldName = path.get(0).getWorld().getName();
         int turnThreshold = plugin.getConfigManager().getTurnCountThreshold(worldName);
         int branchThreshold = plugin.getConfigManager().getBranchCountThreshold(worldName);
         int yChangeThreshold = plugin.getConfigManager().getYChangeThreshold(worldName);
 
-        // convert to CommonLocation list
-        List<link.star_dust.MinerTrack.common.CommonLocation> commonPath = new ArrayList<>();
-        for (Location l : path) {
-            commonPath.add(new link.star_dust.MinerTrack.common.CommonLocation(l.getWorld().getName(), l.getBlockX(), l.getBlockY(), l.getBlockZ()));
+        // Calculate current path metrics instead of accumulating indefinitely
+        int currentTurns = 0;
+        int currentBranches = 0;
+        int currentYChanges = 0;
+
+        Location lastLocation = null;
+        Vector lastDirection = null;
+
+        for (int i = 0; i < path.size(); i++) {
+            Location currentLocation = path.get(i);
+            if (lastLocation != null) {
+                Vector currentDirection = currentLocation.toVector().subtract(lastLocation.toVector());
+                if (currentDirection.lengthSquared() > 0) {
+                    currentDirection.normalize();
+                }
+
+                if (lastDirection != null && currentDirection.lengthSquared() > 0) {
+                    double dotProduct = lastDirection.dot(currentDirection);
+                    if (dotProduct < Math.cos(Math.toRadians(30))) { 
+                        currentTurns++;
+                    }
+                }
+
+                if (Math.abs(currentLocation.getY() - lastLocation.getY()) > plugin.getConfigManager().getYPosChangeThresholdAddRequired(worldName)) {
+                    currentYChanges++;
+                }
+
+                if (i > 1 && currentDirection.lengthSquared() > 0) {
+                    Location prevLocation = path.get(i - 1);
+                    Vector prevDirection = prevLocation.toVector().subtract(path.get(i-2).toVector());
+                    if (prevDirection.lengthSquared() > 0) {
+                        prevDirection.normalize();
+                        if (currentDirection.angle(prevDirection) > Math.toRadians(60)) {
+                            currentBranches++;
+                        }
+                    }
+                }
+
+                lastDirection = currentDirection;
+            }
+            lastLocation = currentLocation;
         }
 
-        link.star_dust.MinerTrack.common.CommonPathMetrics metrics = pathAnalyzer.analyzePath(commonPath);
+        // Update persistent maps for other potential uses, but check against current path
+        totalTurns.put(playerId, currentTurns);
+        branchCount.put(playerId, currentBranches);
+        yChanges.put(playerId, currentYChanges);
 
-        totalTurns.put(playerId, metrics.turns);
-        branchCount.put(playerId, metrics.branches);
-        yChanges.put(playerId, metrics.yChanges);
-
-        return pathAnalyzer.isSmooth(metrics, turnThreshold, branchThreshold, yChangeThreshold);
+        return currentTurns < turnThreshold && currentBranches < branchThreshold && currentYChanges < yChangeThreshold;
     }
     
     private boolean isInNaturalEnvironment(String worldName, Player player, Location location, List<Location> path) {
@@ -697,21 +712,25 @@ public class MiningListener implements Listener {
         }*/
 
         // 如果路径分析通过，继续处理违规逻辑
-        // Convert path to CommonLocation list for core profiler
-        java.util.List<link.star_dust.MinerTrack.common.CommonLocation> cpath = new java.util.ArrayList<>();
-        for (Location l : path) {
-            cpath.add(new link.star_dust.MinerTrack.common.CommonLocation(l.getWorld().getName(), l.getBlockX(), l.getBlockY(), l.getBlockZ()));
+        int disconnectedSegments = 0;
+        double totalDistance = 0.0;
+        Location lastLocation = null;
+
+        for (Location currentLocation : path) {
+            if (lastLocation != null) {
+                double distance = currentLocation.distance(lastLocation);
+                totalDistance += distance;
+
+                if (distance > 3) {
+                    disconnectedSegments++;
+                }
+            }
+            lastLocation = currentLocation;
         }
 
         int veinCount = minedVeinCount.getOrDefault(playerId, 0);
-        link.star_dust.MinerTrack.core.detection.MiningProfiler.Result r = new link.star_dust.MinerTrack.core.detection.MiningProfiler().analyzeAndDecide(cpath, veinCount,
-                new link.star_dust.MinerTrack.common.CommonLocation(blockLocation.getWorld().getName(), blockLocation.getBlockX(), blockLocation.getBlockY(), blockLocation.getBlockZ()) );
-
-        if (r.increaseAmount > 0) {
-            increaseViolationLevel(player, r.increaseAmount, blockType.name(), count, veinCount, blockLocation);
-        }
-
-        // analysis handled by core MiningProfiler; violation increment applied above
+        increaseViolationLevel(player, 1, blockType.name(), count, veinCount, blockLocation);
+        //minedVeinCount.put(playerId, 0);
     }
     
     @SuppressWarnings("unused")

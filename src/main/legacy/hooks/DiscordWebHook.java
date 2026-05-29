@@ -9,11 +9,11 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.bukkit.hooks;
+package link.star_dust.MinerTrack.hooks;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
-import link.star_dust.MinerTrack.bukkit.MinerTrack;
+import link.star_dust.MinerTrack.MinerTrack;
 
 import java.nio.charset.StandardCharsets;
 
@@ -24,7 +24,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.bukkit.Bukkit;
-import link.star_dust.MinerTrack.bukkit.FoliaCheck;
+import link.star_dust.MinerTrack.FoliaCheck;
 
 public class DiscordWebHook {
 

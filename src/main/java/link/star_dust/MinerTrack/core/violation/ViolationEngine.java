@@ -1,7 +1,7 @@
 package link.star_dust.MinerTrack.core.violation;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
-import link.star_dust.MinerTrack.common.ViolationBridge;
+import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -10,12 +10,12 @@ import java.util.Set;
 import java.util.UUID;
 
 public class ViolationEngine {
-    private final ViolationBridge bridge;
+    private final ViolationManagerBridge bridge;
     private final Map<UUID, Integer> violationLevels = new HashMap<>();
     private final Map<UUID, Long> vlChangedTimestamp = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
 
-    public ViolationEngine(ViolationBridge bridge) {
+    public ViolationEngine(ViolationManagerBridge bridge) {
         this.bridge = bridge;
     }
 

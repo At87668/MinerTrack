@@ -3,6 +3,8 @@ package link.star_dust.MinerTrack.bukkit;
 import link.star_dust.MinerTrack.common.PluginAdapter;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
+import org.bukkit.ChatColor;
+import java.util.UUID;
 
 public class BukkitAdapter implements PluginAdapter {
     private final JavaPlugin plugin;
@@ -33,5 +35,25 @@ public class BukkitAdapter implements PluginAdapter {
     @Override
     public void info(String msg) {
         plugin.getLogger().info(msg);
+    }
+
+    @Override
+    public String applyColors(String message) {
+        return ChatColor.translateAlternateColorCodes('&', message);
+    }
+
+    @Override
+    public void sendConsoleMessage(String message) {
+        plugin.getServer().getConsoleSender().sendMessage(message);
+    }
+
+    @Override
+    public Object getPlayer(UUID uuid) {
+        return plugin.getServer().getPlayer(uuid);
+    }
+
+    @Override
+    public Object getPlugin() {
+        return plugin;
     }
 }

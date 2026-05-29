@@ -10,7 +10,7 @@
  * DON'T REMOVE THIS
 **/
 
-package link.star_dust.MinerTrack.bukkit.listeners;
+package link.star_dust.MinerTrack.listeners;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -22,7 +22,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 
-import link.star_dust.MinerTrack.bukkit.MinerTrack;
+import link.star_dust.MinerTrack.MinerTrack;
 
 import java.util.*;
 

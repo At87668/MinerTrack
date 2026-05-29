@@ -9,9 +9,9 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.bukkit.managers;
+package link.star_dust.MinerTrack.managers;
 
-import link.star_dust.MinerTrack.bukkit.MinerTrack;
+import link.star_dust.MinerTrack.MinerTrack;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.HoverEvent;

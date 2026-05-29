@@ -9,16 +9,13 @@
  * 
  * DON'T REMOVE THIS
 **/
-package link.star_dust.MinerTrack.bukkit.managers;
+package link.star_dust.MinerTrack.managers;
 
-import link.star_dust.MinerTrack.bukkit.FoliaCheck;
-import link.star_dust.MinerTrack.bukkit.MinerTrack;
-import link.star_dust.MinerTrack.bukkit.listeners.MiningListener;
-import link.star_dust.MinerTrack.bukkit.hooks.DiscordWebHook;
-import link.star_dust.MinerTrack.bukkit.hooks.CustomJsonWebHook;
-import link.star_dust.MinerTrack.common.CommonLocation;
-import link.star_dust.MinerTrack.common.ViolationBridge;
-import link.star_dust.MinerTrack.core.violation.ViolationEngine;
+import link.star_dust.MinerTrack.FoliaCheck;
+import link.star_dust.MinerTrack.MinerTrack;
+import link.star_dust.MinerTrack.listeners.MiningListener;
+import link.star_dust.MinerTrack.hooks.DiscordWebHook;
+import link.star_dust.MinerTrack.hooks.CustomJsonWebHook;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -39,125 +36,21 @@ import java.util.Map;
 import java.util.UUID;
 import org.bukkit.scheduler.BukkitRunnable;
 import java.util.function.Consumer;
-import java.util.Set;
 
 import io.papermc.paper.threadedregions.scheduler.RegionScheduler;
 
 public class ViolationManager {
     private final MinerTrack plugin;
-    private final ViolationEngine engine;
+    private final static Map<UUID, Integer> violationLevels = new HashMap<>();
+    private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
+    private final Map<UUID, Long> vlChangedTimestamp = new HashMap<>();
     private final Map<UUID, Object> vlDecayTasks = new HashMap<>();
+
     private String currentLogFileName;
-    private static ViolationManager INSTANCE;
 
     public ViolationManager(MinerTrack plugin) {
         this.plugin = plugin;
-        INSTANCE = this;
         this.currentLogFileName = generateLogFileName();
-
-        this.engine = new ViolationEngine(new ViolationBridge() {
-            @Override
-            public boolean isLogFileEnabled() {
-                return plugin.getConfig().getBoolean("log_file");
-            }
-
-            @Override
-            public String getLogFormat() {
-                return plugin.getLanguageManager().getLogFormat();
-            }
-
-            @Override
-            public void appendLogLine(String line) {
-                String fileName = getLogFileName();
-                File logDir = new File(plugin.getDataFolder(), "logs");
-                File logFile = new File(logDir, fileName);
-                try (FileWriter writer = new FileWriter(logFile, true)) {
-                    writer.write(line + "\n");
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            @Override
-            public void runConsoleCommand(String command) {
-                if (FoliaCheck.isFolia()) {
-                    try {
-                        RegionScheduler regionScheduler = Bukkit.getRegionScheduler();
-                        regionScheduler.run(plugin, null, scheduledTask -> {
-                            Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
-                                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                            });
-                        });
-                    } catch (Throwable t) {
-                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                    }
-                } else {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                }
-                logCommand(command);
-            }
-
-            @Override
-            public Set<UUID> getVerbosePlayers() {
-                return plugin.getVerbosePlayers();
-            }
-
-            @Override
-            public boolean isVerboseConsoleEnabled() {
-                return plugin.isVerboseConsoleEnabled();
-            }
-
-            @Override
-            public void sendMessageToPlayer(UUID playerId, String message) {
-                Player p = Bukkit.getPlayer(playerId);
-                if (p != null) p.sendMessage(message);
-            }
-
-            @Override
-            public boolean isWebHookEnabled() {
-                return plugin.getConfigManager().WebHookEnable();
-            }
-
-            @Override
-            public int getWebHookVLRequired() {
-                return plugin.getConfigManager().WebHookVLRequired();
-            }
-
-            @Override
-            public void sendWebhook(UUID playerId, String oreType, int minedVeins, int oreCount, CommonLocation location) {
-                Location loc = null;
-                if (location != null) {
-                    try {
-                        org.bukkit.World w = Bukkit.getWorld(location.world);
-                        if (w != null) loc = new Location(w, location.x, location.y, location.z);
-                    } catch (Exception ignored) {}
-                }
-                ViolationManager.this.WebHook(playerId, oreType, minedVeins, oreCount, loc);
-            }
-
-            @Override
-            public Map<String,Object> getConfigSection(String path) {
-                Object raw = plugin.getConfig().get(path);
-                if (raw instanceof Map) return (Map<String,Object>) raw;
-                return new HashMap<>();
-            }
-
-            @Override
-            public Object getConfig(String path) {
-                return plugin.getConfig().get(path);
-            }
-
-            @Override
-            public String getPrefixedMessage(String key) {
-                return plugin.getLanguageManager().getPrefixedMessage(key);
-            }
-
-            @Override
-            public File getDataFolder() {
-                return plugin.getDataFolder();
-            }
-        });
-
         int interval = 20 * 60; // Scheduling interval (unit: tick)
 
         if (FoliaCheck.isFolia()) {
@@ -187,11 +80,11 @@ public class ViolationManager {
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    if (!plugin.isEnabled()) {
+                	if (!plugin.isEnabled()) {
                         cancel();
                         return;
                     }
-                    processVLDecayTasks();
+                	processVLDecayTasks();
                 }
             }.runTaskTimer(plugin, interval, interval);
         }
@@ -235,8 +128,8 @@ public class ViolationManager {
     }
 
     private void logViolation(Player player, int vl, int addVl, String blockType, int count, int vein, Location location) {
-        // 保留兼容方法，实际日志写入由 ViolationEngine 通过 bridge.appendLogLine 执行
         if (!plugin.getConfig().getBoolean("log_file")) return;
+
         String logFormat = plugin.getLanguageManager().getLogFormat();
         String worldName = location.getWorld() != null ? location.getWorld().getName() : "unknown";
 
@@ -266,7 +159,15 @@ public class ViolationManager {
             .replace("%pos_y%", String.valueOf(location.getBlockY()))
             .replace("%pos_z%", String.valueOf(location.getBlockZ()));
 
-        engineAppendLog(formattedMessage);
+        String fileName = getLogFileName();
+        File logDir = new File(plugin.getDataFolder(), "logs");
+        File logFile = new File(logDir, fileName);
+
+        try (FileWriter writer = new FileWriter(logFile, true)) {
+            writer.write(formattedMessage + "\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
     
     private void logCommand(String command) {
@@ -283,49 +184,139 @@ public class ViolationManager {
         }
     }
 
-    // Helper used by bridge/engine to append raw log lines
-    private void engineAppendLog(String line) {
-        String fileName = getLogFileName();
-        File logDir = new File(plugin.getDataFolder(), "logs");
-        File logFile = new File(logDir, fileName);
-
-        try (FileWriter writer = new FileWriter(logFile, true)) {
-            writer.write(line + "\n");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
     public static int getViolationLevel(UUID uuid) {
-        if (INSTANCE == null) return 0;
-        return INSTANCE.engine.getViolationLevel(uuid);
+        return violationLevels.getOrDefault(uuid, 0);
     }
     
     public int getViolationLevel(Player player) {
-        return engine.getViolationLevel(player.getUniqueId());
+        return violationLevels.getOrDefault(player.getUniqueId(), 0);
     }
 
     public void increaseViolationLevel(Player player, int increment, String blockType, int count, int vein, Location location) {
+    	long now = System.currentTimeMillis();
         UUID playerId = player.getUniqueId();
 
+        vlZeroTimestamp.remove(playerId);
+        
+        vlChangedTimestamp.put(playerId, now);
+
         if (vlDecayTasks.containsKey(playerId)) {
-            cancelVLDecayTask(playerId);
+        	cancelVLDecayTask(playerId);
             vlDecayTasks.remove(playerId);
         }
 
         scheduleVLDecayTask(player);
 
-        CommonLocation cloc = null;
-        if (location != null && location.getWorld() != null) {
-            cloc = new CommonLocation(location.getWorld().getName(), location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        int oldLevel = getViolationLevel(playerId);
+        int newLevel = oldLevel + increment;
+        violationLevels.put(playerId, newLevel);
+
+        // 处理 VL 增加后的其他逻辑，覆盖所有从 oldLevel+1 到 newLevel 的阈值
+        if (plugin.getConfig().isConfigurationSection("xray.commands")) {
+            for (String key : plugin.getConfig().getConfigurationSection("xray.commands").getKeys(false)) {
+                int threshold = Integer.parseInt(key);
+                if (threshold > oldLevel && threshold <= newLevel) {
+                    Object raw = plugin.getConfig().get("xray.commands." + key);
+
+                    List<String> commandsToRun = new ArrayList<>();
+
+                    if (raw instanceof List<?>) {
+                        for (Object o : (List<?>) raw) {
+                            if (o != null) commandsToRun.add(String.valueOf(o));
+                        }
+                    } else if (raw != null) {
+                        commandsToRun.add(String.valueOf(raw));
+                    }
+
+                    for (String commandTemplate : commandsToRun) {
+                        if (commandTemplate == null || commandTemplate.trim().isEmpty()) continue;
+                        String command = commandTemplate.replace("%player%", player.getName());
+
+                        if (FoliaCheck.isFolia()) {
+                            RegionScheduler regionScheduler = Bukkit.getRegionScheduler();
+                            regionScheduler.run(plugin, location, scheduledTask -> {
+                                Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
+                                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                                    logCommand(command);
+                                });
+                            });
+                        } else {
+                            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                            logCommand(command);
+                        }
+                    }
+                }
+            }
         }
 
-        engine.increaseViolation(playerId, player.getName(), increment, blockType, count, vein, cloc);
+        if (newLevel >= 1) {
+            String verboseFormat = plugin.getLanguageManager().getPrefixedMessage("verbose-format");
+            String worldName = location.getWorld() != null ? location.getWorld().getName() : "unknown";
+
+            String formattedMessage = verboseFormat
+                .replace("%player%", player.getName())
+                .replace("%vl%", String.valueOf(newLevel))
+                .replace("%add_vl%", String.valueOf(increment))
+                .replace("%block_type%", blockType)
+                .replace("%count%", String.valueOf(count))
+                .replace("%vein_count%", String.valueOf(vein))
+                .replace("%world%", worldName)
+                .replace("%pos_x%", String.valueOf(location.getBlockX()))
+                .replace("%pos_y%", String.valueOf(location.getBlockY()))
+                .replace("%pos_z%", String.valueOf(location.getBlockZ()));
+
+            for (UUID uuid : plugin.getVerbosePlayers()) {
+                Player verbosePlayer = Bukkit.getPlayer(uuid);
+                if (verbosePlayer != null && verbosePlayer.hasPermission("minertrack.verbose")) {
+                    verbosePlayer.sendMessage(formattedMessage);
+                }
+            }
+
+            if (plugin.isVerboseConsoleEnabled()) {
+                Bukkit.getConsoleSender().sendMessage(formattedMessage);
+            }
+
+            logViolation(player, newLevel, increment, blockType, count, vein, location);
+            
+            if (plugin.getConfigManager().WebHookEnable() && newLevel >= plugin.getConfigManager().WebHookVLRequired()) {
+                WebHook(playerId, blockType, vein, count, location);
+            }
+        }
     }
     
     public void processVLDecayTasks() {
-        // 将衰减委托给核心引擎
-        engine.processDecay();
+    	long now = System.currentTimeMillis();
+
+    	for (UUID playerId : new HashSet<>(violationLevels.keySet())) {
+    		int currentVL = violationLevels.getOrDefault(playerId, 0);
+
+    		if (currentVL > 0) {
+    			long decayIntervalMillis = plugin.getConfig().getInt("xray.decay.interval", 3) * 60 * 1000L;
+    			Long lastChangedTime = vlChangedTimestamp.get(playerId);
+    			if (lastChangedTime != null && now - lastChangedTime > decayIntervalMillis) {
+    				int decayAmount = plugin.getConfig().getInt("xray.decay.amount", 1);
+    				double decayFactor = plugin.getConfig().getDouble("xray.decay.factor", 0.9);
+    				boolean useFactor = plugin.getConfig().getBoolean("xray.decay.use_factor", false);
+
+    				// 选择线性或非线性衰减
+    				int newVL = useFactor
+    						? (int) Math.ceil(currentVL * decayFactor)
+    								: Math.max(0, currentVL - decayAmount);
+
+    				violationLevels.put(playerId, newVL);
+    				vlChangedTimestamp.put(playerId, now);
+
+    				// 如果 VL 归零，记录时间戳
+    				if (newVL == 0) {
+    					vlZeroTimestamp.put(playerId, now);
+    					//plugin.getLogger().info("VL=0 timestamp recorded for player: " + playerId);
+    				}
+    			}
+    		} else {
+    			// VL 已经为 0，无需处理
+    			vlZeroTimestamp.putIfAbsent(playerId, now);
+    		}
+    	}
     }
     
     private void scheduleVLDecayTask(Player player) {
@@ -336,7 +327,11 @@ public class ViolationManager {
             return;
         }
 
-        // 仅登记为活跃的衰减目标，实际 VL 状态在引擎中维护
+        // 初始化 VL 和时间戳
+        violationLevels.putIfAbsent(playerId, 0);
+        vlZeroTimestamp.putIfAbsent(playerId, System.currentTimeMillis());
+
+        // 添加到任务集合中
         vlDecayTasks.put(playerId, playerId);
     }
     
@@ -417,7 +412,7 @@ public class ViolationManager {
 
     public void resetViolationLevel(Player player) {
         UUID playerId = player.getUniqueId();
-        engine.resetViolation(playerId);
+        violationLevels.remove(playerId);
 
         // Also clear tracking data related to this player if the listener is available
         try {
