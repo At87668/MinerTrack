@@ -1,6 +1,6 @@
 name: MinerTrack
 version: ${version}
-main: link.star_dust.MinerTrack.bukkit.BukkitAdapter.java
+main: link.star_dust.MinerTrack.bukkit.BukkitAdapter
 authors: [Author87668]
 contributors: [Author87668, Zhang12334, Thomas, xiaoyueyoqwq]
 website: https://modrinth.com/plugin/minertrack
