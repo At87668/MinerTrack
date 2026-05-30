@@ -9,4 +9,7 @@ public interface LanguageBridge {
     String getPrefix();
     List<String> getHelpMessages();
     String getMessage(String path);
+    String getColoredMessage(String path);
+    boolean isKickBroadcastEnabled();
+    String getKickFormat();
 }

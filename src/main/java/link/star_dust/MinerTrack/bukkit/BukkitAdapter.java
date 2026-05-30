@@ -53,6 +53,16 @@ public class BukkitAdapter implements PluginAdapter {
     }
 
     @Override
+    public java.io.InputStream getResource(String resourcePath) {
+        return plugin.getResource(resourcePath);
+    }
+
+    @Override
+    public void reloadConfig() {
+        plugin.reloadConfig();
+    }
+
+    @Override
     public Object getPlugin() {
         return plugin;
     }

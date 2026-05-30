@@ -4,12 +4,12 @@ import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.CommonPathMetrics;
 
 import java.util.List;
+
 import org.bukkit.util.Vector;
-import org.bukkit.Location;
 
 public class PathAnalyzer {
 
-    public CommonPathMetrics analyzePath(List<CommonLocation> path) {
+    public CommonPathMetrics analyzePath(List<CommonLocation> path, int yChangeThresholdAddRequired) {
         if (path == null || path.size() < 2) return new CommonPathMetrics(0, 0, 0);
 
         int currentTurns = 0;
@@ -32,7 +32,7 @@ public class PathAnalyzer {
                     }
                 }
 
-                if (Math.abs(currentLocation.y - lastLocation.y) > 0) {
+                if (Math.abs(currentLocation.y - lastLocation.y) > yChangeThresholdAddRequired) {
                     currentYChanges++;
                 }
 
@@ -53,6 +53,10 @@ public class PathAnalyzer {
         }
 
         return new CommonPathMetrics(currentTurns, currentBranches, currentYChanges);
+    }
+
+    public CommonPathMetrics analyzePath(List<CommonLocation> path) {
+        return analyzePath(path, 0);
     }
 
     public boolean isSmooth(CommonPathMetrics metrics, int turnThreshold, int branchThreshold, int yChangeThreshold) {

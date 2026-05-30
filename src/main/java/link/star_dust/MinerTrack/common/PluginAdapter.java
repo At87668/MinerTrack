@@ -1,10 +1,13 @@
 package link.star_dust.MinerTrack.common;
 
 import java.io.File;
+import java.io.InputStream;
 
 public interface PluginAdapter {
     File getDataFolder();
     void saveResource(String resourcePath, boolean replace);
+    InputStream getResource(String resourcePath);
+    void reloadConfig();
     String getVersion();
     void info(String msg);
     String applyColors(String message);

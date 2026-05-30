@@ -3,42 +3,68 @@ package link.star_dust.MinerTrack.bukkit;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
-import link.star_dust.MinerTrack.core.detection.DetectionEngine;
+import link.star_dust.MinerTrack.core.detection.MiningCore;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.plugin.Plugin;
 
 import java.util.UUID;
+import java.util.function.Consumer;
 
+/**
+ * Bukkit MiningListener: registers events, tracks placed blocks,
+ * delegates detection to MiningCore, and runs periodic cleanup tasks.
+ */
 public class MiningListener implements Listener {
-    private final DetectionEngine detectionEngine;
-    private final DetectionBridge detectionBridge;
-    private final ViolationManagerBridge vlManager;
+    private final MiningCore miningCore;
+    private final DetectionBridge bridge;
+    private final ViolationManagerBridge vlBridge;
+    private final BukkitDetectionBridge bukkitBridge;
 
-    public MiningListener(DetectionEngine detectionEngine, DetectionBridge detectionBridge, ViolationManagerBridge vlManager) {
-        this.detectionEngine = detectionEngine;
-        this.detectionBridge = detectionBridge;
-        this.vlManager = vlManager;
+    public MiningListener(MiningCore miningCore, DetectionBridge bridge, ViolationManagerBridge vlBridge, BukkitDetectionBridge bukkitBridge) {
+        this.miningCore = miningCore;
+        this.bridge = bridge;
+        this.vlBridge = vlBridge;
+        this.bukkitBridge = bukkitBridge;
     }
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent e) {
         if (e.isCancelled()) return;
-        org.bukkit.block.Block b = e.getBlock();
-        String type = b.getType().name();
-        org.bukkit.entity.Player p = e.getPlayer();
+        Player player = e.getPlayer();
+        UUID playerId = player.getUniqueId();
+        String worldName = e.getBlock().getWorld().getName();
 
-        CommonLocation loc = new CommonLocation(b.getWorld().getName(), b.getX(), b.getY(), b.getZ());
+        miningCore.onBlockBreak(playerId, player.getName(),
+            worldName, e.getBlock().getType().name(),
+            e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
+    }
 
-        // basic vein detection: count connected blocks within max distance (use config default 5)
-        int maxDist = 5;
-        int veinSize = detectionEngine.countVeinBlocks(loc, type, maxDist);
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent e) {
+        if (e.isCancelled()) return;
+        Player player = e.getPlayer();
+        UUID playerId = player.getUniqueId();
+        String worldName = e.getBlock().getWorld().getName();
 
-        // threshold from config: default 3
-        int threshold = 3;
-        if (veinSize >= threshold) {
-            vlManager.increaseViolationLevel(p.getUniqueId(), p.getName(), 1, type, veinSize, veinSize, loc);
+        // Only track rare ores
+        var rareOres = miningCore.getState().getRareOres(worldName);
+        if (rareOres.contains(e.getBlock().getType().name())) {
+            CommonLocation loc = new CommonLocation(worldName, e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
+            bukkitBridge.trackPlacedBlock(playerId, loc);
         }
     }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent e) {
+        UUID playerId = e.getPlayer().getUniqueId();
+        // Remove verbose tracking on join (legacy behavior)
+        vlBridge.getVerbosePlayers().remove(playerId);
+    }
 }
+

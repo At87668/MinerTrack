@@ -1,0 +1,228 @@
+package link.star_dust.MinerTrack.bukkit;
+
+import link.star_dust.MinerTrack.common.CommandBridge;
+import link.star_dust.MinerTrack.common.DetectionBridge;
+import link.star_dust.MinerTrack.common.ViolationManagerBridge;
+import link.star_dust.MinerTrack.core.command.MinerTrackCommandCore;
+import org.bukkit.Bukkit;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Bukkit command executor and tab completer for /minertrack (alias: mt, mtrack).
+ * Delegates all subcommand logic to platform-agnostic MinerTrackCommandCore.
+ */
+public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter {
+
+    private final BukkitAdapter adapter;
+    private final DetectionBridge detectionBridge;
+    private final ViolationManagerBridge vlBridge;
+    private final BukkitLanguageBridge langBridge;
+    private final MinerTrackCommandCore core;
+
+    public MinerTrackCommandExecutor(BukkitAdapter adapter, DetectionBridge detectionBridge, ViolationManagerBridge vlBridge, BukkitLanguageBridge langBridge) {
+        this.adapter = adapter;
+        this.detectionBridge = detectionBridge;
+        this.vlBridge = vlBridge;
+        this.langBridge = langBridge;
+
+        // Build interfaces for core
+        core = new MinerTrackCommandCore(
+            langBridge,
+            vlBridge,
+            new BukkitCommandBridge(null, vlBridge.getVerbosePlayers()),
+            new PlayerLookupImpl(),
+            new KickBridgeImpl(),
+            new ConfigReloadBridgeImpl(langBridge),
+            new UpdateCheckBridgeImpl(),
+            new LogViewerBridgeImpl()
+        );
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player) && !(sender instanceof org.bukkit.command.ConsoleCommandSender)) {
+            return true;
+        }
+
+        CommandBridge cmdBridge = new BukkitCommandBridge(sender, vlBridge.getVerbosePlayers());
+
+        // Rebuild core with fresh bridge for this sender
+        MinerTrackCommandCore currentCore = new MinerTrackCommandCore(
+            langBridge,
+            vlBridge,
+            cmdBridge,
+            new PlayerLookupImpl(),
+            new KickBridgeImpl(),
+            new ConfigReloadBridgeImpl(langBridge),
+            new UpdateCheckBridgeImpl(),
+            new LogViewerBridgeImpl()
+        );
+
+        return currentCore.onCommand(args);
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        CommandBridge cmdBridge = new BukkitCommandBridge(sender, vlBridge.getVerbosePlayers());
+        MinerTrackCommandCore currentCore = new MinerTrackCommandCore(
+            langBridge, vlBridge, cmdBridge,
+            new PlayerLookupImpl(),
+            new KickBridgeImpl(),
+            new ConfigReloadBridgeImpl(langBridge),
+            new UpdateCheckBridgeImpl(),
+            new LogViewerBridgeImpl()
+        );
+        return currentCore.onTabComplete(args);
+    }
+
+    // ─── PlayerLookup ───────────────────────────────────────────────────────
+
+    private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
+        @Override
+        public UUID getPlayerUUID(String name) {
+            Player p = Bukkit.getPlayer(name);
+            return p != null ? p.getUniqueId() : null;
+        }
+
+        @Override
+        public String getPlayerName(UUID uuid) {
+            Player p = Bukkit.getPlayer(uuid);
+            return p != null ? p.getName() : uuid.toString();
+        }
+
+        @Override
+        public boolean isOnline(UUID uuid) {
+            return Bukkit.getPlayer(uuid) != null;
+        }
+
+        @Override
+        public List<String> getOnlinePlayerNames() {
+            List<String> names = new ArrayList<>();
+            for (Player p : Bukkit.getOnlinePlayers()) names.add(p.getName());
+            return names;
+        }
+    }
+
+    // ─── KickBridge ─────────────────────────────────────────────────────────
+
+    private class KickBridgeImpl implements MinerTrackCommandCore.KickBridge {
+        @Override
+        public void kickPlayer(UUID playerId, String reason) {
+            Player p = Bukkit.getPlayer(playerId);
+            if (p != null) p.kickPlayer(reason);
+        }
+
+        @Override
+        public boolean isKickStrikeLightning() {
+            Object cfg = vlBridge.getConfig("kick_strike_lightning");
+            return cfg == null || Boolean.TRUE.equals(cfg);
+        }
+
+        @Override
+        public void strikeLightningEffect(UUID playerId) {
+            Player p = Bukkit.getPlayer(playerId);
+            if (p != null) {
+                if (isFolia()) {
+                    try {
+                        Bukkit.getRegionScheduler().execute((org.bukkit.plugin.Plugin) adapter.getPlugin(), p.getLocation(), () -> {
+                            try { p.getWorld().strikeLightningEffect(p.getLocation()); }
+                            catch (Exception e) { adapter.info("Lightning effect error: " + e.getMessage()); }
+                        });
+                    } catch (Exception e) { e.printStackTrace(); }
+                } else {
+                    try { p.getWorld().strikeLightningEffect(p.getLocation()); }
+                    catch (Exception e) { adapter.info("Lightning effect error: " + e.getMessage()); }
+                }
+            }
+        }
+
+        @Override
+        public void broadcastMessage(String message) {
+            Bukkit.broadcastMessage(message);
+        }
+    }
+
+    // ─── ConfigReloadBridge ────────────────────────────────────────────────
+
+    private class ConfigReloadBridgeImpl implements MinerTrackCommandCore.ConfigReloadBridge {
+        private final BukkitLanguageBridge lang;
+
+        ConfigReloadBridgeImpl(BukkitLanguageBridge lang) { this.lang = lang; }
+
+        @Override
+        public void reloadConfig() {
+            // Re-load the config file from disk (clears config cache in detection bridge)
+            adapter.reloadConfig();
+            detectionBridge.clearConfigCache();
+        }
+
+        @Override
+        public void reloadLanguage() {
+            lang.reloadLanguage();
+        }
+    }
+
+    // ─── UpdateCheckBridge ─────────────────────────────────────────────────
+
+    private class UpdateCheckBridgeImpl implements MinerTrackCommandCore.UpdateCheckBridge {
+        @Override
+        public void checkForUpdates(CommandBridge sender) {
+            // Placeholder: update check requires network access
+            sender.sendMessage("[MinerTrack] Update check not yet implemented in v2.");
+        }
+    }
+
+    // ─── LogViewerBridge ───────────────────────────────────────────────────
+
+    private class LogViewerBridgeImpl implements MinerTrackCommandCore.LogViewerBridge {
+        @Override
+        public List<String> getLogFileNames(int maxFiles) {
+            File logDir = new File(adapter.getDataFolder(), "logs");
+            if (!logDir.exists()) return new ArrayList<>();
+            File[] files = logDir.listFiles((d, n) -> n.endsWith(".log"));
+            if (files == null) return new ArrayList<>();
+            Arrays.sort(files, Comparator.comparing(File::getName).reversed());
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i < Math.min(maxFiles, files.length); i++) names.add(files[i].getName());
+            return names;
+        }
+
+        @Override
+        public byte[] readLogFile(String fileName) {
+            File f = new File(new File(adapter.getDataFolder(), "logs"), fileName);
+            if (!f.exists() || !f.isFile()) return null;
+            try { return Files.readAllBytes(f.toPath()); }
+            catch (IOException e) { return null; }
+        }
+
+        @Override
+        public int getLogViewerLinesPerPage() {
+            Object n = vlBridge.getConfig("log-viewer-lines-per-page");
+            return n instanceof Number ? ((Number) n).intValue() : 10;
+        }
+
+        @Override
+        public String getLogFormat() {
+            return langBridge.getLogFormat();
+        }
+    }
+
+    private boolean isFolia() {
+        try { Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler"); return true; }
+        catch (ClassNotFoundException e) { return false; }
+    }
+}

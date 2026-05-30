@@ -37,6 +37,7 @@ public class CoreWebhookManager {
     private void sendWebhook(UUID playerId, String oreType, int minedVeins, int oreCount, CommonLocation location) {
         String worldName = location != null ? location.world : "unknown";
         int vl = vlBridge.getViolationLevel(playerId);
+        String playerName = vlBridge.getPlayerName(playerId);
 
         // Check custom JSON first
         Object customJsonSection = vlBridge.getConfigSection("DiscordWebHook.custom-json");
@@ -44,7 +45,7 @@ public class CoreWebhookManager {
             String jsonFormat = (String) vlBridge.getConfig("DiscordWebHook.custom-json.format");
             if (jsonFormat != null && !jsonFormat.isEmpty()) {
                 java.util.Map<String, String> placeholders = new java.util.HashMap<>();
-                placeholders.put("player", getPlayerName(playerId));
+                placeholders.put("player", playerName);
                 placeholders.put("player_uuid", playerId.toString());
                 placeholders.put("player_vl", String.valueOf(vl));
                 placeholders.put("ore_type", oreType);
@@ -64,27 +65,33 @@ public class CoreWebhookManager {
 
         // Standard embed format
         String title = (String) vlBridge.getConfig("DiscordWebHook.vl-add-message.title");
-        List<String> textTemplate = (List<String>) vlBridge.getConfig("DiscordWebHook.vl-add-message.text");
-        int color = (int) vlBridge.getConfig("DiscordWebHook.vl-add-message.color");
+        Object textRaw = vlBridge.getConfig("DiscordWebHook.vl-add-message.text");
+        int color = 0xFF5733;
+        Object colorRaw = vlBridge.getConfig("DiscordWebHook.vl-add-message.color");
+        if (colorRaw instanceof Number) color = ((Number) colorRaw).intValue();
 
-        String description = buildDescription(textTemplate, playerId, oreType, minedVeins, oreCount, worldName, location, vl);
+        List<String> textTemplate = null;
+        if (textRaw instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<String> list = (List<String>) textRaw;
+            textTemplate = list;
+        }
+
+        String description = buildDescription(textTemplate, playerId, playerName, oreType, minedVeins, oreCount, worldName, location, vl);
         String payload = buildEmbedPayload(title, description, color);
 
         String url = (String) vlBridge.getConfig("DiscordWebHook.WebHookURL");
         sender.sendAsync(url, payload);
     }
 
-    private String getPlayerName(UUID playerId) {
-        return "Player";
-    }
-
-    private String buildDescription(List<String> textTemplate, UUID playerId, String oreType,
-                                    int minedVeins, int oreCount, String worldName,
+    private String buildDescription(List<String> textTemplate, UUID playerId, String playerName,
+                                    String oreType, int minedVeins, int oreCount, String worldName,
                                     CommonLocation location, int vl) {
         if (textTemplate == null) return "";
         StringBuilder sb = new StringBuilder();
         for (String line : textTemplate) {
-            sb.append(line.replace("%player%", getPlayerName(playerId))
+            sb.append(line
+                .replace("%player%", playerName)
                 .replace("%player_uuid%", playerId.toString())
                 .replace("%player_vl%", String.valueOf(vl))
                 .replace("%ore_type%", oreType)
@@ -101,7 +108,6 @@ public class CoreWebhookManager {
     }
 
     private String buildEmbedPayload(String title, String description, int color) {
-        // Simple JSON building without Gson dependency in core
         StringBuilder sb = new StringBuilder();
         sb.append("{\"embeds\":[{\"title\":");
         sb.append(escapeJson(title));

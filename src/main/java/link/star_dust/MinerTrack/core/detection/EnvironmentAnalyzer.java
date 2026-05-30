@@ -14,18 +14,15 @@ public class EnvironmentAnalyzer {
     }
 
     public boolean isInNaturalEnvironment(String worldName, UUID playerId, CommonLocation location, List<CommonLocation> path) {
-        if (bridge.getConfig("xray.natural.enable") instanceof Boolean) {
-            boolean globalEnable = (Boolean) bridge.getConfig("xray.natural.enable");
-            if (!globalEnable) return false;
-        }
+        if (!bridge.getConfigBoolean("xray.natural-detection.enable", true)) return false;
 
-        int caveAirMultiplier = ((Number) bridge.getConfig("xray.natural.cave_air_multiplier")).intValue();
-        int airThreshold = ((Number) bridge.getConfig("xray.natural.cave_bypass_air_threshold")).intValue();
-        int detectionRange = ((Number) bridge.getConfig("xray.natural.cave_detection_range")).intValue();
+        int caveAirMultiplier = bridge.getConfigForWorld(worldName, "xray.natural-detection.cave.CaveAirMultiplier", 5);
+        int airThreshold = bridge.getConfigForWorld(worldName, "xray.natural-detection.cave.air-threshold", 14);
+        int detectionRange = bridge.getConfigForWorld(worldName, "xray.natural-detection.cave.detection-range", 3);
 
-        int waterThreshold = ((Number) bridge.getConfig("xray.natural.water_threshold")).intValue();
-        int lavaThreshold = ((Number) bridge.getConfig("xray.natural.lava_threshold")).intValue();
-        boolean checkRunningWater = Boolean.TRUE.equals(bridge.getConfig("xray.natural.check_running_water"));
+        int waterThreshold = bridge.getConfigForWorld(worldName, "xray.natural-detection.sea.water-threshold", 14);
+        int lavaThreshold = bridge.getConfigForWorld(worldName, "xray.natural-detection.lava-sea.lava-threshold", 14);
+        boolean checkRunningWater = bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.sea.check-running-water", false);
 
         int airCount = 0;
         int waterCount = 0;
@@ -42,7 +39,8 @@ public class EnvironmentAnalyzer {
                     String type = bridge.getBlockType(checkLoc.world, checkLoc.x, checkLoc.y, checkLoc.z);
 
                     boolean isArtificialAir = false;
-                    if (Boolean.TRUE.equals(bridge.getConfig("xray.natural.ignore_artificial_air")) && ("AIR".equals(type) || "CAVE_AIR".equals(type))) {
+                    if (bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.cave.ignore-artificial-air", true)
+                            && ("AIR".equals(type) || "CAVE_AIR".equals(type))) {
                         if (bridge.isArtificialAir(playerId, checkLoc)) {
                             isArtificialAir = true;
                         }
@@ -72,9 +70,9 @@ public class EnvironmentAnalyzer {
             }
         }
 
-        if (airCount > airThreshold && Boolean.TRUE.equals(bridge.getConfig("xray.natural.cave_skip_vl"))) return true;
-        if (waterCount > waterThreshold && Boolean.TRUE.equals(bridge.getConfig("xray.natural.sea_skip_vl"))) return true;
-        if (lavaCount > lavaThreshold && Boolean.TRUE.equals(bridge.getConfig("xray.natural.lava_sea_skip_vl"))) return true;
+        if (airCount > airThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.cave.check_skip_vl", true)) return true;
+        if (waterCount > waterThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.sea.check_skip_vl", true)) return true;
+        if (lavaCount > lavaThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.lava-sea.check_skip_vl", true)) return true;
 
         return false;
     }

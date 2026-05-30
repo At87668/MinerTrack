@@ -47,11 +47,13 @@ public class ViolationEngine {
                                     if (o != null) {
                                         String cmd = String.valueOf(o).replace("%player%", playerName);
                                         bridge.runConsoleCommand(cmd);
+                                        bridge.appendCommandLog(cmd);
                                     }
                                 }
                             } else if (commandsRaw != null) {
                                 String cmd = String.valueOf(commandsRaw).replace("%player%", playerName);
                                 bridge.runConsoleCommand(cmd);
+                                bridge.appendCommandLog(cmd);
                             }
                         }
                     } catch (NumberFormatException ignored) {}
@@ -112,12 +114,12 @@ public class ViolationEngine {
         for (UUID playerId : keys) {
             int currentVL = violationLevels.getOrDefault(playerId, 0);
             if (currentVL > 0) {
-                long decayIntervalMillis = ((Number)bridge.getConfig("xray.decay.interval")).longValue() * 60 * 1000L;
+                long decayIntervalMillis = bridge.getConfigInt("xray.decay.interval", 3) * 60 * 1000L;
                 Long lastChanged = vlChangedTimestamp.get(playerId);
                 if (lastChanged != null && now - lastChanged > decayIntervalMillis) {
-                    int decayAmount = ((Number)bridge.getConfig("xray.decay.amount")).intValue();
-                    double decayFactor = ((Number)bridge.getConfig("xray.decay.factor")).doubleValue();
-                    boolean useFactor = Boolean.TRUE.equals(bridge.getConfig("xray.decay.use_factor"));
+                    int decayAmount = bridge.getConfigInt("xray.decay.amount", 1);
+                    double decayFactor = bridge.getConfigDouble("xray.decay.factor", 0.9);
+                    boolean useFactor = bridge.getConfigBoolean("xray.decay.use_factor", false);
                     int newVL = useFactor ? (int)Math.ceil(currentVL * decayFactor) : Math.max(0, currentVL - decayAmount);
                     violationLevels.put(playerId, newVL);
                     vlChangedTimestamp.put(playerId, now);
@@ -133,5 +135,6 @@ public class ViolationEngine {
         violationLevels.remove(playerId);
         vlChangedTimestamp.remove(playerId);
         vlZeroTimestamp.remove(playerId);
+        bridge.resetViolation(playerId);
     }
 }
