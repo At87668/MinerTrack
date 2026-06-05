@@ -1,3 +1,20 @@
+#### MinerTrack Anti-Xray Configuration - Configuration/{world}.yml ##############################
+#
+#   Welcome to MinerTrack anti-xray configuration file for worlds.
+#   This file defines world-class settings specifically optimized for anti-xray detection.
+#
+#  Useful Links:
+#  Get Update: https://modrinth.com/plugin/minertrack
+#  View Source: https://github.com/At87668/MinerTrack
+#  Report Issue: https://github.com/At87668/MinerTrack/issues
+#  Pull Requset: https://github.com/At87668/MinerTrack/pulls
+#  Visit Wiki: https://minertrack.pages.dev/wiki/
+#  Join Discord: https://discord.gg/MzTea2W9cb
+#
+#  Anyway, thanks for using MinerTrack anti-xray! ❤
+#
+##################################################################################
+
 #############################################################################################################################
 ##        ##   This plugin in order to capture XRayer quickly, might generate false positives for players who are lucky!   ##
 ##  Warn  ##   Be careful not to set the VL threshold too low!                                                             ##

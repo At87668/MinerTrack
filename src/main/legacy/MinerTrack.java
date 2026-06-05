@@ -27,15 +27,16 @@ import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.Listener;
 
-import link.star_dust.MinerTrack.managers.ConfigManager;
-import link.star_dust.MinerTrack.managers.LanguageManager;
-import link.star_dust.MinerTrack.managers.UpdateManager;
-import link.star_dust.MinerTrack.managers.ViolationManager;
+import link.star_dust.MinerTrack.legacy.managers.ConfigManager;
+import link.star_dust.MinerTrack.legacy.managers.LanguageManager;
+import link.star_dust.MinerTrack.legacy.managers.UpdateManager;
+import link.star_dust.MinerTrack.legacy.managers.ViolationManager;
+import link.star_dust.MinerTrack.legacy.Notifier;
 import net.md_5.bungee.api.chat.BaseComponent;
-import link.star_dust.MinerTrack.listeners.MiningDetectionExtension;
-import link.star_dust.MinerTrack.listeners.MiningListener;
-import link.star_dust.MinerTrack.listeners.LogCacheListener;
-import link.star_dust.MinerTrack.commands.MinerTrackCommand;
+import link.star_dust.MinerTrack.legacy.listeners.MiningDetectionExtension;
+import link.star_dust.MinerTrack.legacy.listeners.MiningListener;
+import link.star_dust.MinerTrack.legacy.listeners.LogCacheListener;
+import link.star_dust.MinerTrack.legacy.commands.MinerTrackCommand;
 
 public class MinerTrack extends JavaPlugin implements Listener {
     private ConfigManager configManager;

@@ -40,4 +40,11 @@ public interface DetectionBridge {
 
     // Invalidate cached config so the next access re-reads from disk
     void clearConfigCache();
+
+    /**
+     * Merge missing keys into all group configuration files under Configuration/.
+     * Called after the main config is reloaded so that group configs are also
+     * kept up-to-date on every config reload cycle.
+     */
+    void mergeGroupConfigs(link.star_dust.MinerTrack.common.PluginAdapter adapter);
 }

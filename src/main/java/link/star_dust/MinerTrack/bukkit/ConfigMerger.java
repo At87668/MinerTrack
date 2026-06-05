@@ -26,7 +26,12 @@ public class ConfigMerger {
         "check_update_channel",
         "kick_strike_lightning",
         "log_file",
+        "delete_time",
+        "disable_bypass_permission",
         "DiscordWebHook",
+        "DiscordWebHook.enable",
+        "DiscordWebHook.WebHookURL",
+        "DiscordWebHook.vl-required",
         "DiscordWebHook.vl-add-message",
         "DiscordWebHook.vl-add-message.color",
         "DiscordWebHook.vl-add-message.title",
@@ -64,7 +69,19 @@ public class ConfigMerger {
         "xray.natural-detection.lava-sea",
         "xray.natural-detection.lava-sea.lava-threshold",
         "xray.natural-detection.lava-sea.detection-range",
-        "xray.natural-detection.lava-sea.check_skip_vl"
+        "xray.natural-detection.lava-sea.check_skip_vl",
+        "xray.small_vein_detection_size",
+        "xray.decay",
+        "xray.decay.interval",
+        "xray.decay.amount",
+        "xray.decay.use_factor",
+        "xray.decay.factor",
+        "explosion",
+        "explosion.entity-explode-check",
+        "explosion.explosion_retention_time",
+        "explosion.base_vl_rate",
+        "explosion.suspicious_hit_rate",
+        "commands"
     );
 
     /**
@@ -76,7 +93,10 @@ public class ConfigMerger {
      * @param adapter    the plugin adapter to access getResource()
      * @return the merged YamlConfiguration
      */
-    public static YamlConfiguration loadAndMerge(File userFile, String resourcePath, link.star_dust.MinerTrack.common.PluginAdapter adapter) {
+    public static YamlConfiguration loadAndMerge(File userFile, String resourcePath, link.star_dust.MinerTrack.common.PluginAdapter adapter) {        // Create from JAR if the file doesn't exist yet (mirrors v1's saveDefaultConfig / saveResource)
+        if (!userFile.exists()) {
+            adapter.saveResource(resourcePath, false);
+        }
         YamlConfiguration defaultsConfig = new YamlConfiguration();
         try (InputStream defaultStream = adapter.getResource(resourcePath)) {
             if (defaultStream != null) {
@@ -105,21 +125,30 @@ public class ConfigMerger {
                                              String currentPath) {
         if (currentConfig == null || defaultConfig == null) return;
 
-        for (String key : defaultConfig.getKeys(true)) {
-            String fullKeyPath = currentPath.isEmpty() ? key : currentPath + "." + key;
+        for (String key : defaultConfig.getKeys(false)) {
+            String fullKeyPath = (currentPath.isEmpty() ? "" : currentPath + ".") + key;
+            if (!WHITELIST_KEYS.contains(fullKeyPath)) {
+                // Skip keys not in whitelist (v1 behavior: only whitelisted keys are merged recursively)
+                // But still ensure missing top-level keys are filled below when absent
+            }
 
             if (currentConfig.contains(key)) {
-                // Key exists in user config — check if we should recurse
-                if (defaultConfig.isConfigurationSection(key) && WHITELIST_KEYS.contains(fullKeyPath)) {
-                    mergeConfigurations(
-                        currentConfig.getConfigurationSection(key),
-                        defaultConfig.getConfigurationSection(key),
-                        fullKeyPath
-                    );
+                Object currentValue = currentConfig.get(key);
+                Object defaultValue = defaultConfig.get(key);
+
+                if (currentValue instanceof ConfigurationSection && defaultValue instanceof ConfigurationSection) {
+                    // Only recurse if this full path is whitelisted
+                    if (WHITELIST_KEYS.contains(fullKeyPath)) {
+                        mergeConfigurations(
+                            (ConfigurationSection) currentValue,
+                            (ConfigurationSection) defaultValue,
+                            fullKeyPath
+                        );
+                    }
                 }
-                // Otherwise: keep user's value as-is (no override)
+                // else: keep user's value
             } else {
-                // Key missing in user config — add from defaults
+                // Add missing key from defaults
                 currentConfig.set(key, defaultConfig.get(key));
             }
         }

@@ -23,12 +23,6 @@ public class BukkitPlatform extends JavaPlugin {
     public void onEnable() {
         adapter = new BukkitAdapter(this);
 
-        // Save default config files if they don't exist (matching v1 behavior)
-        saveResource("config.yml", false);
-        saveResource("Configuration/overworld.yml", false);
-        saveResource("Configuration/nether.yml", false);
-        saveResource("Configuration/end.yml", false);
-
         // Violation manager (creates ViolationEngine + CoreWebhookManager)
         violationManager = new BukkitViolationManager(adapter);
 

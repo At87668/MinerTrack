@@ -96,6 +96,53 @@ public class BukkitDetectionBridge implements DetectionBridge {
         return configCache;
     }
 
+    @Override // DetectionBridge.mergeGroupConfigs
+    public void mergeGroupConfigs(link.star_dust.MinerTrack.common.PluginAdapter adapter) {
+        File configDir = new File(adapter.getDataFolder(), "Configuration");
+        if (!configDir.exists()) configDir.mkdirs();
+
+        // Ensure missing group files referenced in xray.worlds exist
+        try {
+            Object worldsObj = loadConfig().get("xray.worlds");
+            if (worldsObj instanceof org.bukkit.configuration.ConfigurationSection) {
+                org.bukkit.configuration.ConfigurationSection worldsSection =
+                        (org.bukkit.configuration.ConfigurationSection) worldsObj;
+                for (String fileKey : worldsSection.getKeys(false)) {
+                    String groupKey = fileKey;
+                    if (groupKey.toLowerCase().endsWith(".yml")) groupKey = groupKey.substring(0, groupKey.length() - 4);
+                    String filename = groupKey + ".yml";
+                    File out = new File(configDir, filename);
+                    if (!out.exists()) {
+                        try {
+                            adapter.saveResource("Configuration/" + filename, false);
+                        } catch (Exception e) {
+                            // fallback: copy overworld.yml
+                            try (java.io.InputStream is = adapter.getResource("Configuration/overworld.yml")) {
+                                if (is != null) {
+                                    try (java.io.OutputStream os = new java.io.FileOutputStream(out)) {
+                                        byte[] buf = new byte[8192];
+                                        int r;
+                                        while ((r = is.read(buf)) != -1) os.write(buf, 0, r);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // Merge every group file in Configuration/ with its JAR resource default
+        File[] files = configDir.listFiles((d, name) -> name.toLowerCase().endsWith(".yml"));
+        if (files != null) {
+            for (File f : files) {
+                try {
+                    ConfigMerger.loadAndMerge(f, "Configuration/" + f.getName(), adapter);
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
     @Override
     public int getConfigForWorld(String worldName, String path, int def) {
         // Delegate to ConfigEngine when available; for now fall back to config lookup
