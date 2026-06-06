@@ -9,7 +9,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 
 import java.util.UUID;
 
@@ -71,13 +70,6 @@ public class MiningListener implements Listener {
             CommonLocation loc = new CommonLocation(worldFolder, e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
             bukkitBridge.trackPlacedBlock(playerId, loc);
         }
-    }
-
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent e) {
-        UUID playerId = e.getPlayer().getUniqueId();
-        // Remove verbose tracking on join (legacy behavior)
-        vlBridge.getVerbosePlayers().remove(playerId);
     }
 }
 
