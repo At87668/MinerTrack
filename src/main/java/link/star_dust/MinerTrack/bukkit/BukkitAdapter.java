@@ -1,6 +1,7 @@
 package link.star_dust.MinerTrack.bukkit;
 
 import link.star_dust.MinerTrack.common.PluginAdapter;
+import link.star_dust.MinerTrack.common.YamlLoader;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
 import org.bukkit.ChatColor;
@@ -8,6 +9,7 @@ import java.util.UUID;
 
 public class BukkitAdapter implements PluginAdapter {
     private final JavaPlugin plugin;
+    private final YamlLoader yamlLoader = new BukkitYamlLoader();
 
     public BukkitAdapter(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -60,23 +62,33 @@ public class BukkitAdapter implements PluginAdapter {
     @Override
     public void reloadConfig() {
         plugin.reloadConfig();
-        // After Bukkit reloads the config, ensure missing keys are filled from defaults
+        // After Bukkit reloads the config, ensure missing keys are filled
+        // from defaults. We log (not swallow) any I/O / parse failure so
+        // admins can diagnose a broken config instead of silently running
+        // with the previous in-memory copy.
         try {
             java.io.File cfg = new java.io.File(plugin.getDataFolder(), "config.yml");
-            ConfigMerger.loadAndMerge(cfg, "config.yml", this);
-        } catch (Exception ignored) {}
-        // Also merge group configs via DetectionBridge so they are refreshed on every reload.
+            link.star_dust.MinerTrack.core.config.ConfigMerger.loadAndMerge(cfg, "config.yml", this, yamlLoader);
+        } catch (Exception e) {
+            info("Failed to reload config.yml: " + e.getMessage());
+        }
+        // Also reload group configs via the active DetectionBridge so they
+        // are refreshed on every reload.
         try {
-            link.star_dust.MinerTrack.common.DetectionBridge bridge =
-                    (link.star_dust.MinerTrack.common.DetectionBridge)
-                    ((org.bukkit.plugin.java.JavaPlugin) getPlugin()).getServer().getServicesManager()
-                    .load(link.star_dust.MinerTrack.common.DetectionBridge.class);
-            if (bridge != null) bridge.mergeGroupConfigs(this);
-        } catch (Exception ignored) {}
+            BukkitDetectionBridge active = BukkitDetectionBridge.getActive();
+            if (active != null) active.loadGroupConfigs();
+        } catch (Exception e) {
+            info("Failed to reload group configs: " + e.getMessage());
+        }
     }
 
     @Override
     public Object getPlugin() {
         return plugin;
+    }
+
+    /** Platform-specific YAML loader exposed to the core config layer. */
+    public YamlLoader getYamlLoader() {
+        return yamlLoader;
     }
 }

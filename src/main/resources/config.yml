@@ -16,7 +16,7 @@
 ##################################################################################
 
 # ! NOTE: DON'T EDIT CONFIG VERSION !
-_config-version: 2
+_config-version: 3
 
 # Check for updates on startup (recommended for latest optimizations).
 check_update: true
@@ -75,7 +75,7 @@ DiscordWebHook:
             "mined_veins": %mined_veins%
           },
           "location": {
-            "world": %world%',
+            "world": %world%,
             "x": %pos_x%,
             "y": %pos_y%,
             "z": %pos_z%
@@ -85,17 +85,28 @@ DiscordWebHook:
       }
 
 xray:
-  # All worlds not explicitly listed will follow 'all_unnamed_world'
-  # If 'all_unnamed_world' not listed, worlds that are not listed do not have XRay detection.
-  # Configuration will be loaded from 'Configuration/file_name.yml'
+  # World identifiers use the canonical Minecraft namespace format
+  # (minecraft:<key>). The Minecraft dimension keys are:
+  #   minecraft:overworld     — the normal world
+  #   minecraft:the_nether    — the nether
+  #   minecraft:the_end       — the end
+  # World folder names (e.g. "world", "world_nether") are translated to
+  # these ids at runtime, so the same config works regardless of how the
+  # server admin named the on-disk world folders.
+  #
+  # 'all_unnamed_world' is a special wildcard token meaning "any world
+  # not explicitly listed above". Worlds matching it inherit the same
+  # group config (overworld.yml by default).
+  #
+  # Configuration will be loaded from 'Configuration/file_name.yml'.
   worlds:
     'overworld': # It means overworld.yml
-      - world
+      - minecraft:overworld
       - all_unnamed_world
     'nether':
-      - world_nether
+      - minecraft:the_nether
     'end':
-      - world_the_end
+      - minecraft:the_end
 
   # Violation level decay settings (Unit: minute)
   decay:

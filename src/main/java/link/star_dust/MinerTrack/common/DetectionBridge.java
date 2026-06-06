@@ -4,7 +4,12 @@ import java.util.List;
 import java.util.UUID;
 
 public interface DetectionBridge {
-    // Return material name at world,x,y,z (e.g. "DIAMOND_ORE")
+    /**
+     * Return the canonical Minecraft block identifier at {@code (world,x,y,z)}.
+     * The returned value is always normalised to the {@code minecraft:<path>}
+     * form (e.g. {@code minecraft:diamond_ore}, {@code minecraft:water},
+     * {@code minecraft:air}), regardless of the underlying platform.
+     */
     String getBlockType(String world, int x, int y, int z);
 
     // Check whether a block at given location was player-placed (bridge can consult platform data)
@@ -42,9 +47,32 @@ public interface DetectionBridge {
     void clearConfigCache();
 
     /**
-     * Merge missing keys into all group configuration files under Configuration/.
-     * Called after the main config is reloaded so that group configs are also
-     * kept up-to-date on every config reload cycle.
+     * Reload and merge all group configuration files under Configuration/.
+     * Returns a {@link CoreConfig} populated with the latest group mappings.
+     * Called on every config reload so group configs stay up-to-date.
      */
-    void mergeGroupConfigs(link.star_dust.MinerTrack.common.PluginAdapter adapter);
+    CoreConfig loadGroupConfigs();
+
+    /** Direct access to the current CoreConfig instance. */
+    CoreConfig getCoreConfig();
+
+    /**
+     * Resolve a platform-specific world identifier (e.g. a Bukkit world
+     * folder name like {@code world_nether}) to its canonical Minecraft
+     * dimension id ({@code minecraft:the_nether}).
+     *
+     * <p>The {@code core/} layer uses this id as the lookup key for
+     * world-aware config (rare ores, max-height, etc.) so the same config
+     * works on every platform: in Bukkit the bridge maps
+     * {@code World.Environment → minecraft:xxx}; in Fabric the world
+     * already is identified by that id and the bridge is a no-op.
+     *
+     * <p>The default implementation normalises the input via
+     * {@link DimensionId#normalize(String)}; platform bridges should
+     * override it to consult their authoritative source
+     * (e.g. {@code Bukkit.getWorld(folder).getEnvironment()}).
+     */
+    default String resolveDimensionId(String worldName) {
+        return DimensionId.normalize(worldName);
+    }
 }

@@ -224,12 +224,14 @@ public class MiningState {
     public boolean isExposedToAir(CommonLocation location) {
         String world = location.world;
         int x = location.x, y = location.y, z = location.z;
-        return !bridge.getBlockType(world, x, y + 1, z).equals("AIR")
-            || !bridge.getBlockType(world, x, y - 1, z).equals("AIR")
-            || !bridge.getBlockType(world, x - 1, y, z).equals("AIR")
-            || !bridge.getBlockType(world, x + 1, y, z).equals("AIR")
-            || !bridge.getBlockType(world, x, y, z - 1).equals("AIR")
-            || !bridge.getBlockType(world, x, y, z + 1).equals("AIR");
+        // Bridge.getBlockType returns canonical minecraft:xxx ids; compare
+        // against BlockId.AIR for portability across platforms.
+        return !link.star_dust.MinerTrack.common.BlockId.AIR.equals(bridge.getBlockType(world, x, y + 1, z))
+            || !link.star_dust.MinerTrack.common.BlockId.AIR.equals(bridge.getBlockType(world, x, y - 1, z))
+            || !link.star_dust.MinerTrack.common.BlockId.AIR.equals(bridge.getBlockType(world, x - 1, y, z))
+            || !link.star_dust.MinerTrack.common.BlockId.AIR.equals(bridge.getBlockType(world, x + 1, y, z))
+            || !link.star_dust.MinerTrack.common.BlockId.AIR.equals(bridge.getBlockType(world, x, y, z - 1))
+            || !link.star_dust.MinerTrack.common.BlockId.AIR.equals(bridge.getBlockType(world, x, y, z + 1));
     }
 
     // ─── Config shortcuts ──────────────────────────────────────────────────

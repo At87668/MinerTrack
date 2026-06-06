@@ -1,5 +1,6 @@
 package link.star_dust.MinerTrack.core.detection;
 
+import link.star_dust.MinerTrack.common.BlockId;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 
@@ -36,11 +37,12 @@ public class EnvironmentAnalyzer {
             for (int y = -detectionRange; y <= detectionRange; y++) {
                 for (int z = -detectionRange; z <= detectionRange; z++) {
                     CommonLocation checkLoc = new CommonLocation(worldName, baseX + x, baseY + y, baseZ + z);
+                    // Bridge.getBlockType returns canonical minecraft:xxx ids.
                     String type = bridge.getBlockType(checkLoc.world, checkLoc.x, checkLoc.y, checkLoc.z);
 
                     boolean isArtificialAir = false;
                     if (bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.cave.ignore-artificial-air", true)
-                            && ("AIR".equals(type) || "CAVE_AIR".equals(type))) {
+                            && (BlockId.AIR.equals(type) || BlockId.CAVE_AIR.equals(type))) {
                         if (bridge.isArtificialAir(playerId, checkLoc)) {
                             isArtificialAir = true;
                         }
@@ -48,23 +50,17 @@ public class EnvironmentAnalyzer {
 
                     if (isArtificialAir) continue;
 
-                    switch (type) {
-                        case "CAVE_AIR":
-                            airCount += caveAirMultiplier;
-                            break;
-                        case "AIR":
-                            airCount++;
-                            break;
-                        case "WATER":
-                            if (!checkRunningWater || bridge.isWaterStill(checkLoc.world, checkLoc.x, checkLoc.y, checkLoc.z)) {
-                                waterCount++;
-                            }
-                            break;
-                        case "LAVA":
-                            lavaCount++;
-                            break;
-                        default:
-                            break;
+                    // Comparisons use canonical minecraft:xxx ids.
+                    if (BlockId.CAVE_AIR.equals(type)) {
+                        airCount += caveAirMultiplier;
+                    } else if (BlockId.AIR.equals(type)) {
+                        airCount++;
+                    } else if (BlockId.WATER.equals(type)) {
+                        if (!checkRunningWater || bridge.isWaterStill(checkLoc.world, checkLoc.x, checkLoc.y, checkLoc.z)) {
+                            waterCount++;
+                        }
+                    } else if (BlockId.LAVA.equals(type)) {
+                        lavaCount++;
                     }
                 }
             }

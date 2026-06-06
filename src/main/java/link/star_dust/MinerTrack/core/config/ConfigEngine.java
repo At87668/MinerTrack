@@ -29,7 +29,15 @@ public class ConfigEngine {
     }
 
     public List<String> getRareOres() {
-        return bridge.getStringList("xray.rare-ores");
+        // Normalise to canonical minecraft:xxx ids; CoreConfig already does
+        // this for the world-aware overload, mirror that here.
+        List<String> raw = bridge.getStringList("xray.rare-ores");
+        java.util.ArrayList<String> out = new java.util.ArrayList<>(raw.size());
+        for (String s : raw) {
+            String n = link.star_dust.MinerTrack.common.BlockId.normalize(s);
+            out.add(n != null ? n : s);
+        }
+        return out;
     }
 
     public List<String> getRareOres(String worldName) {
@@ -258,16 +266,24 @@ public class ConfigEngine {
     }
 
     public String getCommandForThreshold(int threshold) {
-        // Commands are platform-specific; this is a placeholder for core usage.
+        // Commands are platform-specific (e.g. Bukkit dispatchCommand); the
+        // violation engine resolves them through the active platform
+        // ViolationManagerBridge, not through this config reader. Returning
+        // null here is the contract callers expect.
         return null;
     }
 
     public int getWorldMaxHeight(String worldName) {
-        // World max height is platform-specific; bridge can provide it.
-        return -1;
+        // Look up the per-group `max-height` in the resolved group config;
+        // -1 (sentinel) means "no limit" and lets the caller fall back to
+        // the world's natural build height.
+        return coreConfig.getIntForWorld(worldName, "xray.max-height", -1);
     }
 
     public boolean isWorldDetectionEnabled(String worldName) {
+        // The per-group `xray.enable` flag is the source of truth; the
+        // main xray.worlds mapping only assigns worlds → groups, not
+        // per-world enable states.
         return coreConfig.getBooleanForWorld(worldName, "xray.enable", false);
     }
 

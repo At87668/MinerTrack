@@ -12,7 +12,6 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -165,9 +164,16 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
 
         @Override
         public void reloadConfig() {
-            // Re-load the config file from disk (clears config cache in detection bridge)
+            // Re-load the config file from disk (clears the detection
+            // bridge's 5s cache, re-runs ConfigMerger, reloads group
+            // configs). Also refresh the violation manager's own copy
+            // (it caches a separate CommonYaml field for the violation
+            // engine + command execution).
             adapter.reloadConfig();
             detectionBridge.clearConfigCache();
+            if (vlBridge instanceof BukkitViolationManager) {
+                ((BukkitViolationManager) vlBridge).reloadConfig();
+            }
         }
 
         @Override

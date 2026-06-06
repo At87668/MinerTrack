@@ -1,62 +1,38 @@
 package link.star_dust.MinerTrack.bukkit;
 
+import link.star_dust.MinerTrack.common.CommonYaml;
 import link.star_dust.MinerTrack.common.LanguageBridge;
+import link.star_dust.MinerTrack.core.config.LanguageMerger;
 import org.bukkit.ChatColor;
-import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Bukkit implementation of LanguageBridge.
- * Loads language.yml from the plugin data folder with defaults from JAR resources.
+ *
+ * <p>Loading / completion / persistence of {@code language.yml} is delegated
+ * to {@link LanguageMerger} so the completion strategy for the language file
+ * is kept completely separate from the whitelist-based recursive merge used
+ * for {@code config.yml} (see
+ * {@link link.star_dust.MinerTrack.core.config.ConfigMerger}).
  */
 public class BukkitLanguageBridge implements LanguageBridge {
+    private static final String LANGUAGE_RESOURCE = "language.yml";
+
     private final BukkitAdapter adapter;
-    private YamlConfiguration langConfig;
     private final File languageFile;
+    private CommonYaml langConfig;
 
     public BukkitLanguageBridge(BukkitAdapter adapter) {
         this.adapter = adapter;
-        this.languageFile = new File(adapter.getDataFolder(), "language.yml");
+        this.languageFile = new File(adapter.getDataFolder(), LANGUAGE_RESOURCE);
         loadLanguageFile();
     }
 
     private void loadLanguageFile() {
-        if (!languageFile.exists()) {
-            adapter.saveResource("language.yml", false);
-        }
-
-        // Load defaults from JAR first, then overlay user's file on top.
-        // This ensures all keys (including help header) exist even if the
-        // user's file is missing them.
-        YamlConfiguration defaultsConfig = new YamlConfiguration();
-        try (InputStream defaultStream = adapter.getResource("language.yml")) {
-            if (defaultStream != null) {
-                defaultsConfig.load(new InputStreamReader(defaultStream));
-            }
-        } catch (Exception ignored) {}
-
-        langConfig = new YamlConfiguration();
-        // Start with all defaults
-        for (String key : defaultsConfig.getKeys(true)) {
-            langConfig.set(key, defaultsConfig.get(key));
-        }
-        // Overlay user's values (preserves their customizations)
-        YamlConfiguration userConfig = YamlConfiguration.loadConfiguration(languageFile);
-        for (String key : userConfig.getKeys(true)) {
-            langConfig.set(key, userConfig.get(key));
-        }
-
-        // Save merged config back to disk — this is the key step that matches v1.
-        // After first load the user's file will contain all keys (defaults + customizations),
-        // so subsequent loads always have a complete file even if they deleted entries.
-        try {
-            langConfig.save(languageFile);
-        } catch (Exception ignored) {}
+        langConfig = LanguageMerger.loadAndMerge(languageFile, LANGUAGE_RESOURCE, adapter, adapter.getYamlLoader());
     }
 
     public void reloadLanguage() {
@@ -75,7 +51,8 @@ public class BukkitLanguageBridge implements LanguageBridge {
 
     @Override
     public String getMessage(String path) {
-        return langConfig.getString(path);
+        Object v = langConfig.get(path);
+        return v == null ? null : v.toString();
     }
 
     @Override

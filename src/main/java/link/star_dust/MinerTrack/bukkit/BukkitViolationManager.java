@@ -1,19 +1,17 @@
 package link.star_dust.MinerTrack.bukkit;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
+import link.star_dust.MinerTrack.common.CommonYaml;
 import link.star_dust.MinerTrack.common.PluginAdapter;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.common.CoreWebhookManager;
 import link.star_dust.MinerTrack.core.violation.ViolationEngine;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.HashSet;
@@ -32,7 +30,7 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     private final PluginAdapter adapter;
     private final ViolationEngine engine;
     private final CoreWebhookManager webhookManager;
-    private final YamlConfiguration config;
+    private CommonYaml config;
     private final Set<UUID> verbosePlayers = Collections.synchronizedSet(new HashSet<>());
     private BukkitTask decayTask;
     private String currentLogFileName;
@@ -44,12 +42,11 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         this.webhookManager = new CoreWebhookManager(this, new BukkitWebhookSender(adapter));
         this.currentLogFileName = generateLogFileName();
 
-        YamlConfiguration yc = new YamlConfiguration();
-        try {
-            File f = new File(adapter.getDataFolder(), "config.yml");
-            if (f.exists()) yc.load(f);
-        } catch (Exception ignored) {}
-        this.config = yc;
+        // Use the platform-agnostic merger so missing keys are added and
+        // stale user files are upgraded.
+        File f = new File(adapter.getDataFolder(), "config.yml");
+        this.config = link.star_dust.MinerTrack.core.config.ConfigMerger.loadAndMerge(
+                f, "config.yml", adapter, new BukkitYamlLoader());
     }
 
     /**
@@ -225,7 +222,8 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     @Override
     public void appendLogLine(String line) {
         if (!isLogFileEnabled()) return;
-        try (FileWriter fw = new FileWriter(getLogFile(), true)) {
+        try (FileWriter fw = new FileWriter(getLogFile(),
+                java.nio.charset.StandardCharsets.UTF_8, true)) {
             fw.write(line + "\n");
         } catch (IOException e) {
             adapter.info("Failed to write violation log: " + e.getMessage());
@@ -235,7 +233,8 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     @Override
     public void appendCommandLog(String command) {
         if (!isLogFileEnabled()) return;
-        try (FileWriter fw = new FileWriter(getLogFile(), true)) {
+        try (FileWriter fw = new FileWriter(getLogFile(),
+                java.nio.charset.StandardCharsets.UTF_8, true)) {
             fw.write("Executed Command: " + command + "\n");
         } catch (IOException e) {
             adapter.info("Failed to write command log: " + e.getMessage());
@@ -344,5 +343,23 @@ public class BukkitViolationManager implements ViolationManagerBridge {
             return ((org.bukkit.entity.Player) obj).getName();
         }
         return playerId.toString();
+    }
+
+    /**
+     * Re-read the main config from disk and re-merge it with the JAR
+     * defaults. Called by the {@code /minertrack reload} command so the
+     * violation manager picks up edits to {@code config.yml} without a
+     * server restart. Group configs are refreshed through the active
+     * {@link BukkitDetectionBridge#loadGroupConfigs()} by
+     * {@link BukkitAdapter#reloadConfig()}.
+     */
+    public void reloadConfig() {
+        try {
+            File f = new File(adapter.getDataFolder(), "config.yml");
+            this.config = link.star_dust.MinerTrack.core.config.ConfigMerger.loadAndMerge(
+                    f, "config.yml", adapter, new BukkitYamlLoader());
+        } catch (Exception e) {
+            adapter.info("Failed to reload config.yml in violation manager: " + e.getMessage());
+        }
     }
 }

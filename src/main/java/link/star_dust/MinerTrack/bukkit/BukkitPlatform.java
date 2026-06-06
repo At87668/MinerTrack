@@ -27,7 +27,7 @@ public class BukkitPlatform extends JavaPlugin {
         violationManager = new BukkitViolationManager(adapter);
 
         // Detection bridge (block lookups, config, block tracking)
-        detectionBridge = new BukkitDetectionBridge(adapter);
+        detectionBridge = new BukkitDetectionBridge(adapter, adapter.getYamlLoader());
 
         // Core mining detection orchestrator
         miningCore = new MiningCore(detectionBridge, violationManager);

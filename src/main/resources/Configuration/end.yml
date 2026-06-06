@@ -1,2 +1,5 @@
+# ! NOTE: DON'T EDIT CONFIG VERSION !
+_config-version: 3
+
 xray:
   enable: false
