@@ -61,11 +61,15 @@ public class BukkitAdapter implements PluginAdapter {
 
     @Override
     public void reloadConfig() {
-        plugin.reloadConfig();
-        // After Bukkit reloads the config, ensure missing keys are filled
-        // from defaults. We log (not swallow) any I/O / parse failure so
-        // admins can diagnose a broken config instead of silently running
-        // with the previous in-memory copy.
+        // v2 doesn't use Bukkit's plugin.getConfig() (the platform-agnostic
+        // ConfigMerger reads the file directly), so we deliberately skip
+        // plugin.reloadConfig() here. The /minertrack reload command only
+        // needs the ConfigMerger pass and the group-config refresh below.
+        //
+        // After the merge pass, ensure missing keys are filled from
+        // defaults. We log (not swallow) any I/O / parse failure so admins
+        // can diagnose a broken config instead of silently running with
+        // the previous in-memory copy.
         try {
             java.io.File cfg = new java.io.File(plugin.getDataFolder(), "config.yml");
             link.star_dust.MinerTrack.core.config.ConfigMerger.loadAndMerge(cfg, "config.yml", this, yamlLoader);

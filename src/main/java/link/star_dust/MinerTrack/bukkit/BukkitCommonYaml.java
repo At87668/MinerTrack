@@ -35,7 +35,50 @@ public class BukkitCommonYaml implements CommonYaml {
 
     @Override
     public Object get(String path) {
-        return delegate.get(path);
+        Object v = delegate.get(path);
+        // Bukkit's YamlConfiguration#get(String) returns a
+        // MemorySection (which implements ConfigurationSection but
+        // NOT java.util.Map) for nested section values. The core
+        // config layer relies on the Map contract (instanceof Map
+        // checks in ConfigMerger and GroupConfigLoader) to do
+        // recursive merges, so flatten ConfigurationSection values
+        // into a plain Map<String, Object> here. This keeps the
+        // CommonYaml surface platform-neutral and avoids forcing
+        // the core layer to depend on org.bukkit.
+        //
+        // The conversion is recursive: a section's getValues(false)
+        // result still contains ConfigurationSection references for
+        // grandchildren, so we walk the returned Map and flatten
+        // those too. Without this, the merger would stop descending
+        // at the first nested section because Map vs MemorySection
+        // checks would fail.
+        if (v instanceof org.bukkit.configuration.ConfigurationSection) {
+            org.bukkit.configuration.ConfigurationSection cs = (org.bukkit.configuration.ConfigurationSection) v;
+            return flattenSection(cs);
+        }
+        return v;
+    }
+
+    /**
+     * Recursively flatten a Bukkit {@link
+     * org.bukkit.configuration.ConfigurationSection} into a plain
+     * {@code LinkedHashMap} whose nested section values are also
+     * {@code Map}s (and so on, all the way down). Scalars and lists
+     * are kept as-is.
+     */
+    private static java.util.Map<String, Object> flattenSection(
+            org.bukkit.configuration.ConfigurationSection cs) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (String key : cs.getKeys(false)) {
+            Object child = cs.get(key);
+            if (child instanceof org.bukkit.configuration.ConfigurationSection) {
+                out.put(key, flattenSection(
+                        (org.bukkit.configuration.ConfigurationSection) child));
+            } else {
+                out.put(key, child);
+            }
+        }
+        return out;
     }
 
     @Override
