@@ -84,6 +84,7 @@ DiscordWebHook:
         }
       }
 
+# XRay Settings
 xray:
   # World identifiers use the canonical Minecraft namespace format
   # (minecraft:<key>). The Minecraft dimension keys are:

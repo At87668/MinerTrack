@@ -73,10 +73,15 @@ public class BukkitAdapter implements PluginAdapter {
             info("Failed to reload config.yml: " + e.getMessage());
         }
         // Also reload group configs via the active DetectionBridge so they
-        // are refreshed on every reload.
+        // are refreshed on every reload. Clear the per-bridge config
+        // cache first so the merge step reads the just-saved file from
+        // disk instead of serving the previous 5-second-cached copy.
         try {
             BukkitDetectionBridge active = BukkitDetectionBridge.getActive();
-            if (active != null) active.loadGroupConfigs();
+            if (active != null) {
+                active.clearConfigCache();
+                active.loadGroupConfigs();
+            }
         } catch (Exception e) {
             info("Failed to reload group configs: " + e.getMessage());
         }

@@ -103,6 +103,7 @@ public class ConfigMerger {
         // Create from JAR if the file doesn't exist yet
         if (!userFile.exists()) {
             adapter.saveResource(resourcePath, false);
+            adapter.info("[Merger] Created " + userFile.getName() + " from default");
         }
         CommonYaml defaultsConfig;
         try (InputStream defaultStream = adapter.getResource(resourcePath)) {
@@ -117,7 +118,42 @@ public class ConfigMerger {
 
         CommonYaml userConfig = loader.loadFile(userFile);
 
-        mergeConfigurations(userConfig, defaultsConfig, "");
+        // Version check: if the user's file is missing _config-version or
+        // has an older version than the JAR default, back it up and seed
+        // it with the JAR default. The subsequent merge step will then
+        // top up any keys added between the user's version and the JAR
+        // default (e.g. when a user skipped one or more plugin versions).
+        if (needsUpgrade(userConfig, defaultsConfig)) {
+            int currentVersion = userConfig.getInt("_config-version", 0);
+            int defaultVersion = defaultsConfig.getInt("_config-version", 0);
+            adapter.info("Config " + userFile.getName() + " version " + currentVersion
+                    + " is outdated (latest: " + defaultVersion + "). Backing up and updating.");
+            String stamp = java.time.LocalDate.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            File backupFile = new File(userFile.getParentFile(),
+                    stripExtension(userFile.getName()) + "-" + stamp + ".yml.bak");
+            try {
+                java.nio.file.Files.copy(userFile.toPath(), backupFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                adapter.info("Backed up " + userFile.getName() + " to " + backupFile.getName());
+            } catch (Exception e) {
+                adapter.info("Failed to backup " + userFile.getName() + ": " + e.getMessage());
+            }
+            try {
+                adapter.saveResource(resourcePath, true);
+                adapter.info("Updated " + userFile.getName() + " to version " + defaultVersion);
+                userConfig = loader.loadFile(userFile);
+            } catch (Exception e) {
+                adapter.info("Failed to replace " + userFile.getName() + " with default: " + e.getMessage());
+            }
+        }
+
+        int added = mergeConfigurations(userConfig, defaultsConfig, "");
+
+        if (added > 0) {
+            adapter.info("[Merger] " + userFile.getName() + ": filled " + added
+                    + " missing key(s) from defaults");
+        }
 
         try {
             userConfig.save(userFile);
@@ -135,12 +171,19 @@ public class ConfigMerger {
      * it is a {@link java.util.Map}. This is platform-neutral — Bukkit's
      * {@code YamlConfiguration} returns a Map for sections, and any other
      * YAML loader will do the same.
+     *
+     * @return the number of leaf keys that were filled in from defaults
+     *         during this merge (zero means the user file is already
+     *         complete). Sections recursively merged through a whitelisted
+     *         path are recursed into without contributing to the count
+     *         themselves; only their missing leaf keys are counted.
      */
-    private static void mergeConfigurations(CommonYaml currentConfig,
-                                             CommonYaml defaultConfig,
-                                             String currentPath) {
-        if (currentConfig == null || defaultConfig == null) return;
+    private static int mergeConfigurations(CommonYaml currentConfig,
+                                            CommonYaml defaultConfig,
+                                            String currentPath) {
+        if (currentConfig == null || defaultConfig == null) return 0;
 
+        int added = 0;
         for (String key : defaultConfig.getKeys(false)) {
             String fullKeyPath = (currentPath.isEmpty() ? "" : currentPath + ".") + key;
 
@@ -157,7 +200,7 @@ public class ConfigMerger {
                     java.util.Map<String, Object> defMap = (java.util.Map<String, Object>) defaultValue;
                     MapBackedYaml cur = new MapBackedYaml(curMap);
                     MapBackedYaml def = new MapBackedYaml(defMap);
-                    mergeConfigurations(cur, def, fullKeyPath);
+                    added += mergeConfigurations(cur, def, fullKeyPath);
                     // Write merged map back into parent
                     currentConfig.set(key, curMap);
                 }
@@ -165,12 +208,34 @@ public class ConfigMerger {
             } else {
                 // Add missing key from defaults
                 currentConfig.set(key, defaultConfig.get(key));
+                added++;
             }
         }
+        return added;
     }
 
     private static boolean isSection(Object v) {
         return v instanceof java.util.Map;
+    }
+
+    /**
+     * Return {@code true} if {@code userConfig} is missing
+     * {@code _config-version} or its version is older than the version
+     * embedded in {@code defaultConfig}. Returns {@code false} (no upgrade
+     * needed) if the default has no version key (e.g. an unversioned
+     * resource).
+     */
+    private static boolean needsUpgrade(CommonYaml userConfig, CommonYaml defaultConfig) {
+        if (defaultConfig == null) return false;
+        int defaultVersion = defaultConfig.getInt("_config-version", 0);
+        if (defaultVersion <= 0) return false;
+        if (userConfig == null) return true;
+        int currentVersion = userConfig.getInt("_config-version", 0);
+        return currentVersion < defaultVersion;
+    }
+
+    private static String stripExtension(String name) {
+        return name.toLowerCase().endsWith(".yml") ? name.substring(0, name.length() - 4) : name;
     }
 
     /**

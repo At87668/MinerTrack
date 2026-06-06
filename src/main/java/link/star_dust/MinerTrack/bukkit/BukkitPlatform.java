@@ -29,6 +29,16 @@ public class BukkitPlatform extends JavaPlugin {
         // Detection bridge (block lookups, config, block tracking)
         detectionBridge = new BukkitDetectionBridge(adapter, adapter.getYamlLoader());
 
+        // Eagerly load group configurations (Configuration/<world>.yml) so
+        // the per-world files are copied from the JAR on a fresh install
+        // and any stale version is upgraded before the first mining event.
+        // Without this the group configs only get created lazily on the
+        // first isWorldDetectionEnabled() call, which leaves the plugin
+        // running without the per-world detection settings on a fresh
+        // install and produces no "Loaded group configurations:" log
+        // output at startup.
+        detectionBridge.loadGroupConfigs();
+
         // Core mining detection orchestrator
         miningCore = new MiningCore(detectionBridge, violationManager);
 

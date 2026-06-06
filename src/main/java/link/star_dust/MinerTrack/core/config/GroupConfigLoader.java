@@ -123,7 +123,11 @@ public class GroupConfigLoader {
                     String curKey = stripExtension(f.getName());
                     CommonYaml current = result.groupConfigs.get(curKey);
                     if (current != null) {
-                        mergeGroupConfigurations(current, defaultGroup);
+                        int added = mergeGroupConfigurations(current, defaultGroup);
+                        if (added > 0) {
+                            adapter.info("[Merger] Configuration/" + f.getName() + ": filled "
+                                    + added + " missing key(s) from defaults");
+                        }
                         current.save(f);
                     }
                 }
@@ -294,9 +298,13 @@ public class GroupConfigLoader {
      * Recursive merge for group configs: any missing key in {@code current}
      * is filled from {@code defaults}, sections are recursed into. This
      * mirrors the previous v1 behavior but uses {@link CommonYaml}.
+     *
+     * @return the number of leaf keys that were filled in from defaults
+     *         (zero means the user file is already complete).
      */
-    private void mergeGroupConfigurations(CommonYaml current, CommonYaml defaults) {
-        if (current == null || defaults == null) return;
+    private int mergeGroupConfigurations(CommonYaml current, CommonYaml defaults) {
+        if (current == null || defaults == null) return 0;
+        int added = 0;
         for (String key : defaults.getKeys(false)) {
             if (current.contains(key)) {
                 Object cv = current.get(key);
@@ -307,26 +315,31 @@ public class GroupConfigLoader {
                     // a section handle, so we work directly with the maps.
                     // This is fine because the merger only ever adds missing
                     // keys (no value replacement).
-                    deepMergeInto((Map<String, Object>) cv, (Map<String, Object>) dv);
+                    added += deepMergeInto((Map<String, Object>) cv, (Map<String, Object>) dv);
                     current.set(key, cv);
                 }
             } else {
                 current.set(key, defaults.get(key));
+                added++;
             }
         }
+        return added;
     }
 
     @SuppressWarnings("unchecked")
-    private void deepMergeInto(Map<String, Object> current, Map<String, Object> defaults) {
+    private int deepMergeInto(Map<String, Object> current, Map<String, Object> defaults) {
+        int added = 0;
         for (Map.Entry<String, Object> e : defaults.entrySet()) {
             Object cv = current.get(e.getKey());
             Object dv = e.getValue();
             if (cv instanceof Map && dv instanceof Map) {
-                deepMergeInto((Map<String, Object>) cv, (Map<String, Object>) dv);
+                added += deepMergeInto((Map<String, Object>) cv, (Map<String, Object>) dv);
             } else if (!current.containsKey(e.getKey())) {
                 current.put(e.getKey(), dv);
+                added++;
             }
         }
+        return added;
     }
 
     @SuppressWarnings("unchecked")
