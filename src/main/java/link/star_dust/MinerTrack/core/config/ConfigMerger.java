@@ -119,15 +119,22 @@ public class ConfigMerger {
         CommonYaml userConfig = loader.loadFile(userFile);
 
         // Version check: if the user's file is missing _config-version or
-        // has an older version than the JAR default, back it up and seed
-        // it with the JAR default. The subsequent merge step will then
-        // top up any keys added between the user's version and the JAR
-        // default (e.g. when a user skipped one or more plugin versions).
+        // has an older version than the JAR default, bump the user's
+        // _config-version up to the latest. We do NOT replace the entire
+        // file with the JAR default (that would destroy any custom keys
+        // the user added, e.g. an extra entry in `xray.worlds` like
+        // `dim7`). The subsequent merge step is responsible for filling
+        // in any keys that are missing relative to the JAR default, and
+        // it preserves the user's existing customisations.
+        //
+        // A timestamped backup is still produced before the bump, so
+        // admins can recover the previous layout if they ever need to.
         if (needsUpgrade(userConfig, defaultsConfig)) {
             int currentVersion = userConfig.getInt("_config-version", 0);
             int defaultVersion = defaultsConfig.getInt("_config-version", 0);
             adapter.info("Config " + userFile.getName() + " version " + currentVersion
-                    + " is outdated (latest: " + defaultVersion + "). Backing up and updating.");
+                    + " is outdated (latest: " + defaultVersion + "). Bumping in place; "
+                    + "the merge step will add any keys added since the user's version.");
             String stamp = java.time.LocalDate.now()
                     .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
             File backupFile = new File(userFile.getParentFile(),
@@ -139,13 +146,9 @@ public class ConfigMerger {
             } catch (Exception e) {
                 adapter.info("Failed to backup " + userFile.getName() + ": " + e.getMessage());
             }
-            try {
-                adapter.saveResource(resourcePath, true);
-                adapter.info("Updated " + userFile.getName() + " to version " + defaultVersion);
-                userConfig = loader.loadFile(userFile);
-            } catch (Exception e) {
-                adapter.info("Failed to replace " + userFile.getName() + " with default: " + e.getMessage());
-            }
+            // Bump the version in the in-memory copy. The merge + save
+            // below will persist it to disk alongside any new keys.
+            userConfig.set("_config-version", defaultVersion);
         }
 
         int added = mergeConfigurations(userConfig, defaultsConfig, "");
@@ -159,6 +162,21 @@ public class ConfigMerger {
             userConfig.save(userFile);
         } catch (Exception e) {
             adapter.info("Could not save merged config " + userFile.getName() + ": " + e.getMessage());
+        }
+
+        // Reload from disk so the returned config reflects the just-saved
+        // state. Without this, callers that read nested paths via
+        // Bukkit's `YamlConfiguration#get(String)` would see the in-memory
+        // state left by `set(String, Map)` during the merge (where
+        // Bukkit stores the Map as a single value, breaking subsequent
+        // `get("xray.worlds")` lookups). A save+reload round-trip
+        // forces Bukkit to normalise the structure back into nested
+        // MemorySections that the rest of the plugin can descend into.
+        try {
+            userConfig = loader.loadFile(userFile);
+        } catch (Exception e) {
+            adapter.info("Failed to reload " + userFile.getName()
+                    + " after merge; using the in-memory copy instead: " + e.getMessage());
         }
 
         return userConfig;

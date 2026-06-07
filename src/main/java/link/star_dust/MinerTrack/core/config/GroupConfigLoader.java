@@ -87,7 +87,16 @@ public class GroupConfigLoader {
         // (minecraft:overworld / minecraft:the_nether / minecraft:the_end);
         // we normalise defensively so a stray Bukkit folder name still works.
         Object worldsObj = mainConfig.get("xray.worlds");
-        if (worldsObj instanceof Map) {
+        if (worldsObj == null) {
+            adapter.info("config.yml has no 'xray.worlds' section; no per-world detection will be active. "
+                    + "Add a `xray.worlds` block mapping group file names to dimension ids (e.g. "
+                    + "`'overworld': [minecraft:overworld]`) to enable detection.");
+        } else if (!(worldsObj instanceof Map)) {
+            adapter.info("config.yml 'xray.worlds' is not a map (got "
+                    + worldsObj.getClass().getSimpleName()
+                    + "); expected a map of group name -> [dimension id]. "
+                    + "Check the YAML structure under xray.worlds in config.yml.");
+        } else {
             @SuppressWarnings("unchecked")
             Map<String, Object> worldsSection = (Map<String, Object>) worldsObj;
             for (Map.Entry<String, Object> entry : worldsSection.entrySet()) {
@@ -95,7 +104,12 @@ public class GroupConfigLoader {
                     String fileKey = entry.getKey();
                     Object v = entry.getValue();
                     List<String> list = asStringList(v);
-                    if (list == null) continue;
+                    if (list == null) {
+                        adapter.info("xray.worlds." + fileKey + " is not a list of dimension ids (got "
+                                + (v == null ? "null" : v.getClass().getSimpleName())
+                                + "); expected e.g. `[" + fileKey + ": [minecraft:overworld]]`.");
+                        continue;
+                    }
                     String k = stripExtension(fileKey);
                     for (String w : list) {
                         if (w == null) continue;
@@ -113,6 +127,10 @@ public class GroupConfigLoader {
                     }
                 } catch (Exception ignored) {}
             }
+            adapter.info("Built world-to-group mapping from xray.worlds: " + result.worldToGroup
+                    + (result.defaultUnnamedGroupKey != null
+                        ? " (default unnamed -> " + result.defaultUnnamedGroupKey + ")"
+                        : ""));
         }
 
         for (File f : files) {
@@ -238,11 +256,12 @@ public class GroupConfigLoader {
      * Check the {@code _config-version} of a per-world group config file
      * against the matching JAR default. If the user's file is missing the
      * version key or its version is older than the JAR's, back up the
-     * user's file (e.g. {@code overworld-2026-06-06.yml.bak}) and replace
-     * it with the JAR default. The replacement is then reloaded into the
-     * shared {@link GroupLoadResult#groupConfigs} map so the subsequent
-     * merge step operates on the fresh default rather than the stale
-     * user file.
+     * user's file (e.g. {@code overworld-2026-06-06.yml.bak}) and bump
+     * the in-memory {@code _config-version} up to the latest. We do NOT
+     * replace the entire file with the JAR default — that would destroy
+     * any per-group customisations the admin made. The subsequent merge
+     * step (driven by the same JAR default) will fill in any keys the
+     * user is missing relative to the latest default.
      *
      * <p>Platform-agnostic — all I/O goes through {@link PluginAdapter}
      * and {@link YamlLoader}.
@@ -266,7 +285,8 @@ public class GroupConfigLoader {
             if (currentVersion >= defaultVersion) return;
 
             adapter.info("Group config " + f.getName() + " version " + currentVersion
-                    + " is outdated (latest: " + defaultVersion + "). Backing up and updating.");
+                    + " is outdated (latest: " + defaultVersion + "). Bumping in place; "
+                    + "the merge step will add any new keys.");
 
             // Backup the user's stale file with a timestamped suffix so
             // it sits next to the live file in the Configuration/ folder.
@@ -282,26 +302,9 @@ public class GroupConfigLoader {
                 adapter.info("Failed to backup " + f.getName() + ": " + e.getMessage());
             }
 
-            // Replace with the JAR default. saveResource(..., true) is
-            // platform-agnostic on the Bukkit side and a no-op-then-copy
-            // on Fabric; either way the on-disk file ends up as the JAR
-            // default.
-            try {
-                adapter.saveResource(resourcePath, true);
-                adapter.info("Updated " + f.getName() + " to version " + defaultVersion);
-            } catch (Exception e) {
-                adapter.info("Failed to replace " + f.getName() + " with default: " + e.getMessage());
-                return;
-            }
-
-            // Reload from disk so the in-memory map reflects the new
-            // default contents (the merge step below will fill in any
-            // new keys if the JAR default is later expanded).
-            try {
-                result.groupConfigs.put(curKey, loader.loadFile(f));
-            } catch (Exception e) {
-                adapter.info("Failed to reload " + f.getName() + " after upgrade: " + e.getMessage());
-            }
+            // Bump the in-memory version; the merge + save below will
+            // persist it alongside any newly-added keys.
+            current.set("_config-version", defaultVersion);
         } catch (Exception e) {
             adapter.info("Error checking group config version for " + f.getName() + ": " + e.getMessage());
         }
@@ -357,7 +360,18 @@ public class GroupConfigLoader {
 
     @SuppressWarnings("unchecked")
     private List<String> asStringList(Object v) {
+        // Accept both YAML list values (e.g. `key: [a, b]`) and
+        // single-string values (e.g. `key: a`). A common mistake
+        // when editing config.yml by hand is to drop the `- `
+        // prefix on a single world entry, so we tolerate that here
+        // and wrap the string into a one-element list rather than
+        // silently dropping the mapping.
         if (v instanceof List) return (List<String>) v;
+        if (v instanceof String) {
+            List<String> one = new ArrayList<>(1);
+            one.add((String) v);
+            return one;
+        }
         return null;
     }
 

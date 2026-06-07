@@ -56,6 +56,15 @@ public class BukkitCommonYaml implements CommonYaml {
             org.bukkit.configuration.ConfigurationSection cs = (org.bukkit.configuration.ConfigurationSection) v;
             return flattenSection(cs);
         }
+        // After a ConfigMerger pass the path may now hold a plain Map
+        // (the merger stores the merged section back via
+        // delegate.set("xray", Map), and Bukkit stores the Map as a
+        // single value rather than wrapping it in a new MemorySection).
+        // Descending through such a Map must also yield Maps (not
+        // null) for nested paths, so flatten recursively.
+        if (v instanceof java.util.Map) {
+            return flattenMap((java.util.Map<String, Object>) v);
+        }
         return v;
     }
 
@@ -74,8 +83,36 @@ public class BukkitCommonYaml implements CommonYaml {
             if (child instanceof org.bukkit.configuration.ConfigurationSection) {
                 out.put(key, flattenSection(
                         (org.bukkit.configuration.ConfigurationSection) child));
+            } else if (child instanceof java.util.Map) {
+                out.put(key, flattenMap((java.util.Map<String, Object>) child));
             } else {
                 out.put(key, child);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Recursively walk a plain {@code Map<String, Object>} and rewrite
+     * any nested {@code ConfigurationSection} or {@code Map} values
+     * into plain {@code Map}s. This is the map-side counterpart to
+     * {@link #flattenSection}; needed because {@code ConfigMerger}
+     * round-trips section values as plain Maps (so it can mutate them
+     * with Java collections APIs), and {@code BukkitCommonYaml#get}
+     * must still be able to descend through those Maps afterwards.
+     */
+    private static java.util.Map<String, Object> flattenMap(
+            java.util.Map<String, Object> in) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(in.size());
+        for (java.util.Map.Entry<String, Object> e : in.entrySet()) {
+            Object child = e.getValue();
+            if (child instanceof org.bukkit.configuration.ConfigurationSection) {
+                out.put(e.getKey(), flattenSection(
+                        (org.bukkit.configuration.ConfigurationSection) child));
+            } else if (child instanceof java.util.Map) {
+                out.put(e.getKey(), flattenMap((java.util.Map<String, Object>) child));
+            } else {
+                out.put(e.getKey(), child);
             }
         }
         return out;
