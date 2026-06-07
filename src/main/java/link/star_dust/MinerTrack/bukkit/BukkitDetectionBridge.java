@@ -43,13 +43,83 @@ public class BukkitDetectionBridge implements DetectionBridge {
     @Override
     public String getBlockType(String world, int x, int y, int z) {
         try {
-            org.bukkit.World w = Bukkit.getWorld(world);
+            // The core layer passes canonical dimension ids (e.g.
+            // `minecraft:overworld`) to this method, but Bukkit's
+            // `getWorld` only knows about world folder names (`world`,
+            // `world_nether`, ...). Without the resolveWorld() fallback
+            // below, every lookup against a canonical id would silently
+            // return AIR, breaking:
+            //   - `EnvironmentAnalyzer.isInNaturalEnvironment` (everything
+            //     counted as air → airCount > threshold → "natural" → VL
+            //     increment branch never ran);
+            //   - `DetectionEngine.getVeinLocations` (no ore could be
+            //     found → vein count never increased);
+            //   - `isWaterStill` (the water block couldn't be found).
+            org.bukkit.World w = resolveWorld(world);
             if (w == null) return BlockId.AIR;
             Block b = w.getBlockAt(x, y, z);
             return MaterialMapper.bukkitToMinecraft(b.getType().name());
         } catch (Exception e) {
             return BlockId.AIR;
         }
+    }
+
+    /**
+     * Resolve a world identifier to a live Bukkit {@link org.bukkit.World}.
+     * Accepts both:
+     * <ul>
+     *   <li>Bukkit folder names (e.g. {@code world}, {@code world_nether}) —
+     *       looked up directly via {@link Bukkit#getWorld(String)}.</li>
+     *   <li>Canonical Minecraft dimension ids (e.g.
+     *       {@code minecraft:overworld}, {@code minecraft:the_nether}) —
+     *       matched by iterating {@link Bukkit#getWorlds()} and comparing
+     *       the world's {@link org.bukkit.World.Environment}.</li>
+     * </ul>
+     * Returns {@code null} when no matching world is loaded. This is the
+     * canonical world-resolution helper used by every method in this
+     * bridge that needs a live world (block lookups, water checks, etc.).
+     */
+    private org.bukkit.World resolveWorld(String worldKey) {
+        if (worldKey == null) return null;
+        // Fast path: the caller passed a folder name (the original
+        // Bukkit convention). `Bukkit.getWorld` will resolve it
+        // directly and is the only way to handle server-installed
+        // worlds whose folder names don't match the default vanilla
+        // convention (e.g. a flatland plugin that mounts a custom
+        // dimension with its own folder name).
+        org.bukkit.World direct = Bukkit.getWorld(worldKey);
+        if (direct != null) return direct;
+        // Fallback: the caller passed a canonical dimension id
+        // (`minecraft:overworld` etc.) — translate to a folder-name
+        // match by walking every loaded world's environment.
+        org.bukkit.World.Environment env = environmentForDimensionId(worldKey);
+        if (env == null) return null;
+        for (org.bukkit.World w : Bukkit.getWorlds()) {
+            if (w.getEnvironment() == env) return w;
+        }
+        return null;
+    }
+
+    /**
+     * Inverse of {@link #resolveDimensionId(String)}: map a canonical
+     * Minecraft dimension id to its Bukkit {@link World.Environment}.
+     * Returns {@code null} when the input is not a recognised dimension
+     * id.
+     */
+    private org.bukkit.World.Environment environmentForDimensionId(String dimId) {
+        if (dimId == null) return null;
+        String norm = link.star_dust.MinerTrack.common.DimensionId.normalize(dimId);
+        if (norm == null) return null;
+        if (norm.equals(link.star_dust.MinerTrack.common.DimensionId.OVERWORLD)) {
+            return org.bukkit.World.Environment.NORMAL;
+        }
+        if (norm.equals(link.star_dust.MinerTrack.common.DimensionId.THE_NETHER)) {
+            return org.bukkit.World.Environment.NETHER;
+        }
+        if (norm.equals(link.star_dust.MinerTrack.common.DimensionId.THE_END)) {
+            return org.bukkit.World.Environment.THE_END;
+        }
+        return null;
     }
 
     @Override
@@ -259,7 +329,12 @@ public class BukkitDetectionBridge implements DetectionBridge {
     @Override
     public boolean isWaterStill(String world, int x, int y, int z) {
         try {
-            org.bukkit.World w = Bukkit.getWorld(world);
+            // The core layer passes a canonical dimension id
+            // (`minecraft:xxx`) here as well, so we must use the same
+            // resolveWorld() helper as getBlockType() — otherwise the
+            // check-running-water feature silently does nothing because
+            // Bukkit can never find the world.
+            org.bukkit.World w = resolveWorld(world);
             if (w == null) return false;
             Block b = w.getBlockAt(x, y, z);
             if (b.getType() != Material.WATER) return false;
