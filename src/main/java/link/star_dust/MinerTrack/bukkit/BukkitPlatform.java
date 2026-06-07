@@ -2,6 +2,7 @@ package link.star_dust.MinerTrack.bukkit;
 
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
+import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.entity.Player;
@@ -106,6 +107,11 @@ public class BukkitPlatform extends JavaPlugin {
         // VL decay task — same 60-second interval, Folia-compatible
         int decayInterval = 20 * 60;
         violationManager.scheduleGlobalDecayTask(decayInterval);
+
+        // Core. The banner lines are inlined in Core.java on purpose so
+        // the enable text is a stable part of the plugin's identity
+        // and never depends on the operator editing language.yml.
+        new Core(adapter).printStartupBanner();
 
         getLogger().info("MinerTrack (BukkitPlatform) enabled.");
     }
