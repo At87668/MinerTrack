@@ -2,6 +2,7 @@ package link.star_dust.MinerTrack.common;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Canonical Minecraft dimension identifiers.
@@ -89,5 +90,71 @@ public final class DimensionId {
             default:
                 return null;
         }
+    }
+
+    /**
+     * Holder returned by {@link #parseGroupWorld(String, java.util.Set)}:
+     * a {@code <group_name>:<world_folder_name>} pair. {@code group} is the
+     * `Configuration/<group>.yml` file stem to look up; {@code world} is the
+     * Bukkit world folder name (i.e. what {@code org.bukkit.World#getName()}
+     * returns at runtime).
+     */
+    public static final class GroupWorld {
+        public final String group;
+        public final String world;
+        public GroupWorld(String group, String world) {
+            this.group = group;
+            this.world = world;
+        }
+    }
+
+    /**
+     * Try to parse {@code raw} as the short form {@code <group>:<world>}
+     * where {@code <group>} names a Configuration/<group>.yml group file
+     * already present in {@code knownGroups}, and {@code <world>} is the
+     * Bukkit world folder name.
+     *
+     * <p>Examples the loader wants to recognise:
+     * <ul>
+     *   <li>{@code twilightforest:twilight_forest} → group=twilightforest,
+     *       world=twilight_forest (modded dimension under the
+     *       TwilightForest group's settings)</li>
+     *   <li>{@code aoa3:precasia} → group=aoa3, world=precasia</li>
+     *   <li>{@code aoa3:lunalus} → group=aoa3, world=lunalus</li>
+     * </ul>
+     *
+     * <p>Returns {@code null} when {@code raw} is not of the form, when
+     * the left-hand side is the {@code minecraft} namespace (those
+     * entries are vanilla canonical ids, not group references), or when
+     * the left-hand side is not a known group. Callers should fall back
+     * to {@link #normalize(String)} for the unsupported shapes.
+     *
+     * <p>Note: this deliberately does not inspect the {@code minecraft:}
+     * namespace or the YAML structure of {@code xray.worlds}; it is
+     * called once per list entry, and {@code knownGroups} is the
+     * authoritative list of groups that have a corresponding
+     * {@code Configuration/<name>.yml} file on disk.
+     */
+    public static GroupWorld parseGroupWorld(String raw, Set<String> knownGroups) {
+        if (raw == null || knownGroups == null || knownGroups.isEmpty()) return null;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return null;
+        // `minecraft:<world>` is the vanilla canonical form, never a
+        // group reference. Reject it explicitly so we don't accidentally
+        // treat a vanilla world as belonging to a non-existent
+        // `minecraft` group.
+        if (trimmed.toLowerCase(Locale.ROOT).startsWith("minecraft:")) return null;
+        int colon = trimmed.indexOf(':');
+        if (colon <= 0 || colon >= trimmed.length() - 1) return null;
+        // No second colon: an id with two colons (e.g. `minecraft:foo`)
+        // is a vanilla-style namespace and was already filtered above;
+        // anything beyond two colons is not a valid `<group>:<world>`
+        // form either, so reject it.
+        if (trimmed.indexOf(':', colon + 1) >= 0) return null;
+        String group = trimmed.substring(0, colon).trim();
+        String world = trimmed.substring(colon + 1).trim();
+        if (group.isEmpty() || world.isEmpty()) return null;
+        if (!knownGroups.contains(group)) return null;
+        return new GroupWorld(group, world);
     }
 }

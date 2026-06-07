@@ -62,19 +62,7 @@ public class GroupConfigLoader {
                 List<String> worlds = yc.getStringList("worlds");
                 if (worlds != null && !worlds.isEmpty()) {
                     for (String w : worlds) {
-                        if (w == null || w.isEmpty()) continue;
-                        if (w.contains("*") || w.contains("?")) {
-                            // Wildcards match raw folder names (e.g.
-                            // `world*`); keep the pattern as-is so it
-                            // continues to match against the folder name
-                            // we receive at runtime.
-                            String regex = "^" + w.replace(".", "\\.").replace("*", ".*").replace("?", ".") + "$";
-                            Pattern p = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
-                            result.groupWorldPatterns.computeIfAbsent(key, k -> new ArrayList<>()).add(p);
-                        } else {
-                            String norm = link.star_dust.MinerTrack.common.DimensionId.normalize(w);
-                            result.worldToGroup.put(norm != null ? norm : w, key);
-                        }
+                        applyWorldEntry(w, key, result);
                     }
                 }
             } catch (Exception e) {
@@ -377,5 +365,24 @@ public class GroupConfigLoader {
 
     private static String stripExtension(String name) {
         return name.toLowerCase().endsWith(".yml") ? name.substring(0, name.length() - 4) : name;
+    }
+
+    private void applyWorldEntry(String w, String key, GroupLoadResult result) {
+        if (w == null) return;
+        if (w.equalsIgnoreCase("all_unnamed_world")) {
+            result.defaultUnnamedGroupKey = key;
+            return;
+        }
+        String norm = link.star_dust.MinerTrack.common.DimensionId.normalize(w);
+        if (norm != null) {
+            result.worldToGroup.put(norm, key);
+            return;
+        }
+        try {
+            Pattern p = Pattern.compile(w, Pattern.CASE_INSENSITIVE);
+            result.groupWorldPatterns.computeIfAbsent(key, k -> new ArrayList<>()).add(p);
+        } catch (Exception e) {
+            adapter.info("Invalid world pattern '" + w + "' in group " + key + ": " + e.getMessage());
+        }
     }
 }

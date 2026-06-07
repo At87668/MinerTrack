@@ -65,9 +65,15 @@ public class MiningListener implements Listener {
                 .bukkitToMinecraft(e.getBlock().getType().name());
         var rareOres = miningCore.getState().getRareOres(dimensionId);
         if (rareOres.contains(blockType)) {
-            // The CommonLocation uses the world folder name (preserved for
-            // log/webhook output); config lookups go through dimensionId.
-            CommonLocation loc = new CommonLocation(worldFolder, e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
+            // The CommonLocation's `world` field must be the same
+            // dimension key the MiningCore uses (`dimensionId`),
+            // not the raw folder name, otherwise the placed-block
+            // lookup in `isPlayerPlacedBlock` (which is keyed by
+            // the `dimensionId` set in `onBlockBreak`) would never
+            // match — every player-placed ore would be ignored and
+            // the xray.bypass-placed-ores behaviour would silently
+            // stop working for any custom-named world.
+            CommonLocation loc = new CommonLocation(dimensionId, e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
             bukkitBridge.trackPlacedBlock(playerId, loc);
         }
     }

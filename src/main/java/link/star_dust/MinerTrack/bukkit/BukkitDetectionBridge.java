@@ -81,7 +81,7 @@ public class BukkitDetectionBridge implements DetectionBridge {
      */
     private org.bukkit.World resolveWorld(String worldKey) {
         if (worldKey == null) return null;
-        // Fast path: the caller passed a folder name (the original
+        // Fast path 1: the caller passed a folder name (the original
         // Bukkit convention). `Bukkit.getWorld` will resolve it
         // directly and is the only way to handle server-installed
         // worlds whose folder names don't match the default vanilla
@@ -89,9 +89,27 @@ public class BukkitDetectionBridge implements DetectionBridge {
         // dimension with its own folder name).
         org.bukkit.World direct = Bukkit.getWorld(worldKey);
         if (direct != null) return direct;
-        // Fallback: the caller passed a canonical dimension id
-        // (`minecraft:overworld` etc.) — translate to a folder-name
-        // match by walking every loaded world's environment.
+        // Fast path 2: the caller passed a canonical dimension id
+        // whose `path` part (after `minecraft:`) happens to match a
+        // loaded world's folder name. This is how custom NORMAL
+        // worlds surface after `resolveDimensionId` has namespace-
+        // collapsed the folder name (e.g. `world2` →
+        // `minecraft:world2`); without this path the resolution
+        // would fall through to the Environment-based fallback and
+        // return the FIRST NORMAL world it found, which on multi-
+        // world servers is almost never the one the player is in.
+        int colon = worldKey.indexOf(':');
+        if (colon >= 0 && colon < worldKey.length() - 1) {
+            String pathOnly = worldKey.substring(colon + 1);
+            org.bukkit.World byPath = Bukkit.getWorld(pathOnly);
+            if (byPath != null) return byPath;
+        }
+        // Fallback: translate the dimension id to a Bukkit
+        // Environment and walk every loaded world to find the first
+        // one in that environment. Used for vanilla `minecraft:overworld`
+        // (path `overworld` is not a folder name) and for the
+        // `nether` / `the_end` aliases that map cleanly to the
+        // matching environment.
         org.bukkit.World.Environment env = environmentForDimensionId(worldKey);
         if (env == null) return null;
         for (org.bukkit.World w : Bukkit.getWorlds()) {
@@ -139,10 +157,36 @@ public class BukkitDetectionBridge implements DetectionBridge {
 
     @Override
     public String resolveDimensionId(String worldName) {
-        // Authoritative source: the live Bukkit World's environment. This
-        // works regardless of how the server admin named the world
-        // folders (world / world_nether / world_the_end on vanilla;
-        // custom names on modded servers).
+        // The whole detection pipeline keys on the canonical dimension id
+        // (e.g. `minecraft:overworld`), and the `xray.worlds` mapping in
+        // config.yml also uses that key. We have to translate a Bukkit
+        // world *folder name* (which may be anything — `world`,
+        // `world_nether`, but also a server-admin-chosen `world2`,
+        // `flatland`, or a plugin-installed custom dimension) to that
+        // canonical key.
+        //
+        // Vanilla convention: `world` → `minecraft:overworld`,
+        // `world_nether` → `minecraft:the_nether`,
+        // `world_the_end` → `minecraft:the_end`. These are baked into
+        // `DimensionId.fromBukkitFolder` and are the only folder names
+        // that get collapsed to the vanilla dimension ids.
+        //
+        // Everything else (e.g. `world2` in the user's log) MUST be
+        // namespaced as `minecraft:<folder>` so the lookup
+        // `getGroupConfigForWorld("minecraft:world2")` hits the
+        // `minecraft:world2=dim7` entry the admin wrote into
+        // `xray.worlds`. Collapsing every NORMAL-environment world
+        // to `minecraft:overworld` (the previous behaviour) silently
+        // overrode the admin's mapping and made detection never fire
+        // for any custom-named NORMAL world.
+        String vanilla = link.star_dust.MinerTrack.common.DimensionId.fromBukkitFolder(worldName);
+        if (vanilla != null) return vanilla;
+        // Not a recognised vanilla folder. Fall back to the
+        // loaded World's environment so vanilla `nether` / `the_end`
+        // folder aliases still work, but only for those two — NORMAL
+        // is intentionally skipped because a NORMAL world with a
+        // non-vanilla folder name is by definition a custom world
+        // and should keep its own namespaced id.
         try {
             org.bukkit.World w = Bukkit.getWorld(worldName);
             if (w != null) {
@@ -150,7 +194,10 @@ public class BukkitDetectionBridge implements DetectionBridge {
                     case NETHER:  return link.star_dust.MinerTrack.common.DimensionId.THE_NETHER;
                     case THE_END: return link.star_dust.MinerTrack.common.DimensionId.THE_END;
                     case NORMAL:
-                    default:      return link.star_dust.MinerTrack.common.DimensionId.OVERWORLD;
+                    default:
+                        // NORMAL with a non-vanilla folder: keep the
+                        // folder's identity intact (namespaced).
+                        break;
                 }
             }
         } catch (Throwable ignored) {
