@@ -17,8 +17,10 @@ import java.net.URL;
  * <p>This is the v2 successor to the v1.
  * It owns:
  * <ul>
- *   <li>the Modrinth HTTP fetch (cached at construction, refreshable on
- *       demand via {@link #refresh()});</li>
+ *   <li>the Modrinth HTTP fetch (lazy by default; the first {@link
+ *       #refresh()} call performs the network round-trip — typically
+ *       triggered by the platform layer after {@code ServerLoadEvent}
+ *       so a slow / blocked Modrinth does not delay startup);</li>
  *   <li>the version comparison + pre-release / channel filter
  *       (stable / beta / alpha);</li>
  *   <li>the language-driven message rendering (prefixed, colourised
@@ -104,12 +106,36 @@ public class UpdateManagerCore {
         // current version regardless of the channel filter.
         this.channel = ch == null ? "stable" : ch.toLowerCase();
 
-        if (enabled) {
-            refresh();
-        } else {
-            this.latestVersion = null;
-            this.downloadUrl = null;
-        }
+        // Intentionally do NOT call refresh() here. v1's
+        // legacy.UpdateManager constructor performed a synchronous
+        // Modrinth HTTP GET inside onEnable(), which on a slow /
+        // blocked network could delay the server's enable phase (and
+        // showed up as the red-vs-green version colouring in the
+        // startup banner). v2 decouples: this class only reads the
+        // config eagerly, then leaves the cache empty. The platform
+        // layer is expected to call {@link #refresh()} once the server
+        // has finished loading (e.g. from a ServerLoadEvent handler)
+        // and to skip the call entirely when {@code check_update} is
+        // disabled. isHasNewerVersion() / shouldNotifyOnJoin() return
+        // false until the first successful refresh, which is the
+        // correct behaviour for a not-yet-fetched state.
+        this.latestVersion = null;
+        this.downloadUrl = null;
+    }
+
+    /**
+     * @return {@code true} when the platform layer should trigger the
+     *         first {@link #refresh()} once the server has finished
+     *         loading. Returns {@code false} when {@code check_update}
+     *         is disabled (so the platform can skip the listener /
+     *         scheduled task entirely). A {@code null} config source
+     *         is treated as "enabled" to keep the default behaviour
+     *         safe.
+     */
+    public boolean shouldScheduleStartupRefresh() {
+        if (configSource == null) return true;
+        try { return configSource.isUpdateCheckEnabled(); }
+        catch (Exception e) { return true; }
     }
 
     // ─── Queries ──────────────────────────────────────────────────────────

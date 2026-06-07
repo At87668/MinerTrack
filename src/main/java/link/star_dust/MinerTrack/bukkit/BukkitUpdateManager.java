@@ -80,6 +80,28 @@ public class BukkitUpdateManager {
     }
 
     /**
+     * @return {@code true} when the platform should trigger the first
+     *         Modrinth fetch once the server has finished loading.
+     *         Returns {@code false} when {@code check_update} is
+     *         disabled, so the platform can skip registering its
+     *         deferred-refresh listener entirely.
+     */
+    public boolean shouldScheduleStartupRefresh() {
+        return core.shouldScheduleStartupRefresh();
+    }
+
+    /**
+     * Re-fetch the latest version from Modrinth. Safe to call from any
+     * thread, but is typically called from the platform's
+     * {@code ServerLoadEvent} listener (or, for the manual
+     * {@code /mtrack update} command path, from inside
+     * {@link #checkForUpdates(CommandSender, LanguageBridge)}).
+     */
+    public void refresh() {
+        core.refresh();
+    }
+
+    /**
      * Console-driven or command-driven update check. Sends a localised
      * message to {@code sender} (or to the console if {@code sender} is
      * {@code null}) describing the result.
