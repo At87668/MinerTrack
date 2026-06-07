@@ -3,6 +3,12 @@ package link.star_dust.MinerTrack.bukkit;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
+import org.bstats.bukkit.Metrics;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -17,6 +23,9 @@ public class BukkitPlatform extends JavaPlugin {
     private BukkitDetectionBridge detectionBridge;
     private BukkitViolationManager violationManager;
     private MiningCore miningCore;
+    private BukkitUpdateManager updateManager;
+    private Listener updateNotifyListener;
+    private Metrics bStatsMetrics;
     private BukkitTask cleanupTask;
 
     @Override
@@ -49,8 +58,40 @@ public class BukkitPlatform extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
             new MiningListener(miningCore, detectionBridge, violationManager, detectionBridge), this);
 
+        // Update checker + PlayerJoin notification (mirrors v1's
+        // MinerTrack#onPlayerJoin behaviour). Constructed AFTER the
+        // detection bridge is up so the update manager can read
+        // check_update / check_update_channel from the merged config.
+        updateManager = new BukkitUpdateManager(adapter, detectionBridge);
+        updateNotifyListener = new Listener() {
+            @EventHandler
+            public void onPlayerJoin(PlayerJoinEvent event) {
+                Player player = event.getPlayer();
+                if (!player.hasPermission("minertrack.checkupdate")) return;
+                if (!updateManager.shouldNotifyOnJoin()) return;
+                net.md_5.bungee.api.chat.BaseComponent[] components =
+                    updateManager.getUpdateMessageComponent(langBridge);
+                if (components != null) {
+                    player.spigot().sendMessage(components);
+                }
+            }
+        };
+        getServer().getPluginManager().registerEvents(updateNotifyListener, this);
+
+        // bStats — same pluginId as v1 (project id 23790 on bStats.org).
+        // The bstats-bukkit:3.0.0 constructor takes (JavaPlugin, int).
+        // Failing to construct bStats is non-fatal (it's a telemetry
+        // service); wrap the call so a transport error at startup does
+        // not abort the rest of onEnable().
+        try {
+            bStatsMetrics = new Metrics(this, 23790);
+        } catch (Throwable t) {
+            getLogger().warning("Failed to initialise bStats metrics: " + t.getMessage());
+        }
+
         // Register command executor
-        MinerTrackCommandExecutor commandExecutor = new MinerTrackCommandExecutor(adapter, detectionBridge, violationManager, langBridge);
+        MinerTrackCommandExecutor commandExecutor = new MinerTrackCommandExecutor(
+            adapter, detectionBridge, violationManager, langBridge, updateManager);
         getCommand("minertrack").setExecutor(commandExecutor);
         getCommand("minertrack").setTabCompleter(commandExecutor);
         // Aliases mt and mtrack
@@ -76,6 +117,14 @@ public class BukkitPlatform extends JavaPlugin {
             violationManager.cancelAllVLDecayTasks();
             violationManager.cancelGlobalDecayTask();
         }
+        if (updateNotifyListener != null) {
+            HandlerList.unregisterAll(updateNotifyListener);
+            updateNotifyListener = null;
+        }
+        // bStats has no explicit shutdown hook in 3.0.0 (the scheduler is
+        // owned by Bukkit's task scheduler and is cancelled automatically
+        // when the plugin disables). We just drop the reference.
+        bStatsMetrics = null;
         getLogger().info("MinerTrack (BukkitPlatform) disabled.");
     }
 

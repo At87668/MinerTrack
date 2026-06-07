@@ -41,7 +41,10 @@ public class GroupConfigLoader {
         ensureGroupFilesExist(configDir);
 
         File[] files = configDir.listFiles((d, name) -> name.toLowerCase().endsWith(".yml"));
-        if (files == null) return new GroupLoadResult();
+        if (files == null) {
+            adapter.info("No group configurations found in " + configDir.getAbsolutePath());
+            return new GroupLoadResult();
+        }
 
         GroupLoadResult result = new GroupLoadResult();
 
@@ -50,6 +53,7 @@ public class GroupConfigLoader {
                 CommonYaml yc = loader.loadFile(f);
                 String key = stripExtension(f.getName());
                 result.groupConfigs.put(key, yc);
+                adapter.info("Loaded group configuration: " + key + " (" + f.getName() + ")");
 
                 // Per-group `worlds` list (legacy feature). Values are
                 // normalised to canonical Minecraft dimension ids so a
@@ -159,9 +163,15 @@ public class GroupConfigLoader {
             if (!result.groupConfigs.containsKey(e.getValue())) it.remove();
         }
 
-        // Log mapping relationships
+        // Log mapping relationships. The header line shows the count of
+        // groups that survived the cleanup (the ones the rest of the
+        // plugin will actually use). The body lists each surviving
+        // group with its world-to-group mapping. Any group that the
+        // cleanup loop unloaded (no world mapping at all) is reported
+        // separately at the end so admins can see why a file they
+        // dropped into Configuration/ ended up being ignored.
         try {
-            adapter.info("Loaded group configurations:");
+            adapter.info("Loaded group configurations (" + result.groupConfigs.size() + " active):");
             for (String key : result.groupConfigs.keySet()) {
                 List<String> exactWorlds = new ArrayList<>();
                 for (Map.Entry<String, String> e : result.worldToGroup.entrySet()) {
@@ -176,6 +186,9 @@ public class GroupConfigLoader {
             }
             if (result.defaultUnnamedGroupKey != null) {
                 adapter.info("Default unnamed group (all_unnamed_world): " + result.defaultUnnamedGroupKey);
+            }
+            if (!toUnload.isEmpty()) {
+                adapter.info("Unloaded group configs (no world mapping): " + toUnload);
             }
         } catch (Exception ignored) {}
 

@@ -30,13 +30,17 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
     private final DetectionBridge detectionBridge;
     private final ViolationManagerBridge vlBridge;
     private final BukkitLanguageBridge langBridge;
+    private final BukkitUpdateManager updateManager;
     private final MinerTrackCommandCore core;
 
-    public MinerTrackCommandExecutor(BukkitAdapter adapter, DetectionBridge detectionBridge, ViolationManagerBridge vlBridge, BukkitLanguageBridge langBridge) {
+    public MinerTrackCommandExecutor(BukkitAdapter adapter, DetectionBridge detectionBridge,
+                                     ViolationManagerBridge vlBridge, BukkitLanguageBridge langBridge,
+                                     BukkitUpdateManager updateManager) {
         this.adapter = adapter;
         this.detectionBridge = detectionBridge;
         this.vlBridge = vlBridge;
         this.langBridge = langBridge;
+        this.updateManager = updateManager;
 
         // Build interfaces for core
         core = new MinerTrackCommandCore(
@@ -46,7 +50,7 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
             new PlayerLookupImpl(),
             new KickBridgeImpl(),
             new ConfigReloadBridgeImpl(langBridge),
-            new UpdateCheckBridgeImpl(),
+            new UpdateCheckBridgeImpl(updateManager, langBridge),
             new LogViewerBridgeImpl()
         );
     }
@@ -67,7 +71,7 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
             new PlayerLookupImpl(),
             new KickBridgeImpl(),
             new ConfigReloadBridgeImpl(langBridge),
-            new UpdateCheckBridgeImpl(),
+            new UpdateCheckBridgeImpl(updateManager, langBridge),
             new LogViewerBridgeImpl()
         );
 
@@ -82,7 +86,7 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
             new PlayerLookupImpl(),
             new KickBridgeImpl(),
             new ConfigReloadBridgeImpl(langBridge),
-            new UpdateCheckBridgeImpl(),
+            new UpdateCheckBridgeImpl(updateManager, langBridge),
             new LogViewerBridgeImpl()
         );
         return currentCore.onTabComplete(args);
@@ -185,10 +189,26 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
     // ─── UpdateCheckBridge ─────────────────────────────────────────────────
 
     private class UpdateCheckBridgeImpl implements MinerTrackCommandCore.UpdateCheckBridge {
+        private final BukkitUpdateManager updateManager;
+        private final BukkitLanguageBridge lang;
+
+        UpdateCheckBridgeImpl(BukkitUpdateManager updateManager, BukkitLanguageBridge lang) {
+            this.updateManager = updateManager;
+            this.lang = lang;
+        }
+
         @Override
         public void checkForUpdates(CommandBridge sender) {
-            // Placeholder: update check requires network access
-            sender.sendMessage("[MinerTrack] Update check not yet implemented in v2.");
+            // Resolve the underlying Bukkit CommandSender (the
+            // CommandBridge wraps it in a platform-neutral shell). The
+            // sender may be a Player (spigot().sendMessage) or the
+            // console (we still want the clickable link for parity with
+            // v1's behaviour, so we route through the same component
+            // builder).
+            Object raw = sender.getSender();
+            org.bukkit.command.CommandSender bukkitSender =
+                raw instanceof org.bukkit.command.CommandSender ? (org.bukkit.command.CommandSender) raw : null;
+            updateManager.checkForUpdates(bukkitSender, lang);
         }
     }
 
