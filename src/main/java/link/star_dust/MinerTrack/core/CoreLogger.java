@@ -63,10 +63,21 @@ public final class CoreLogger {
      * require either varargs boxing or a {@code Supplier<String>} at
      * every call site, which makes the call site uglier than just
      * gating with {@code if (CoreLogger.isDebug()) CoreLogger.debug(...)}.
+     *
+     * <p><b>Log level:</b> the call uses
+     * {@link Level#INFO}, not {@link Level#FINE}, on purpose. Bukkit's
+     * default per-plugin log level is {@code INFO}, and any
+     * {@code FINE} / {@code FINER} / {@code FINEST} line is silently
+     * dropped by the server log handler before it reaches the
+     * operator's console — which is exactly what an earlier version
+     * of this class did, leading to reports of "no debug lines
+     * visible even with debug: true". {@code INFO} is also what the
+     * project's own enable / reload banners use, so the operator
+     * sees a consistent level in their console.
      */
     public static void debug(String message) {
         if (!isDebug()) return;
-        logger.log(Level.FINE, DEBUG_PREFIX + message);
+        logger.log(Level.INFO, DEBUG_PREFIX + message);
     }
 
     /**
