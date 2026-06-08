@@ -10,7 +10,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -27,7 +26,6 @@ public class BukkitPlatform extends JavaPlugin {
     private MiningCore miningCore;
     private BukkitUpdateManager updateManager;
     private Listener updateNotifyListener;
-    private Listener updateStartupRefreshListener;
     private Metrics bStatsMetrics;
     private BukkitTask cleanupTask;
 
@@ -81,42 +79,6 @@ public class BukkitPlatform extends JavaPlugin {
         };
         getServer().getPluginManager().registerEvents(updateNotifyListener, this);
 
-        // Deferred first refresh: v2 deliberately does NOT call
-        // Modrinth during onEnable(). v1's legacy.UpdateManager
-        // constructor performed a synchronous HTTP GET inline, which
-        // (a) blocked the server's enable phase on a slow / blocked
-        // Modrinth endpoint, and (b) gated the red-vs-green version
-        // colouring of the startup banner on the network round-trip.
-        // The core class instead exposes shouldScheduleStartupRefresh()
-        // and lets the platform trigger refresh() from a non-blocking
-        // point later in startup. We use ServerLoadEvent because it
-        // fires once the server has fully started (every plugin is
-        // enabled, worlds are loaded) and matches v1's
-        // @EventHandler(onServerLoad) call site. When
-        // check_update=false the core returns false and we skip the
-        // listener registration entirely.
-        if (updateManager.shouldScheduleStartupRefresh()) {
-            updateStartupRefreshListener = new Listener() {
-                @EventHandler
-                public void onServerLoad(ServerLoadEvent event) {
-                    // Run off the main enable path; the listener
-                    // method body itself is already on the server
-                    // thread, but the actual HTTP I/O inside refresh()
-                    // is synchronous — that is fine because the server
-                    // is now fully started, so a 5-second connect / 5-
-                    // second read timeout cannot delay any user-visible
-                    // startup phase. We log via the adapter so the
-                    // failure mode is consistent with the rest of v2.
-                    try {
-                        updateManager.refresh();
-                    } catch (Throwable t) {
-                        getLogger().warning("Deferred update refresh failed: " + t.getMessage());
-                    }
-                }
-            };
-            getServer().getPluginManager().registerEvents(updateStartupRefreshListener, this);
-        }
-
         // bStats — same pluginId as v1 (project id 23790 on bStats.org).
         // The bstats-bukkit:3.0.0 constructor takes (JavaPlugin, int).
         // Failing to construct bStats is non-fatal (it's a telemetry
@@ -164,10 +126,6 @@ public class BukkitPlatform extends JavaPlugin {
         if (updateNotifyListener != null) {
             HandlerList.unregisterAll(updateNotifyListener);
             updateNotifyListener = null;
-        }
-        if (updateStartupRefreshListener != null) {
-            HandlerList.unregisterAll(updateStartupRefreshListener);
-            updateStartupRefreshListener = null;
         }
         // bStats has no explicit shutdown hook in 3.0.0 (the scheduler is
         // owned by Bukkit's task scheduler and is cancelled automatically
