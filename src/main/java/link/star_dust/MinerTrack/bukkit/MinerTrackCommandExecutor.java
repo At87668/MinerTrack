@@ -185,7 +185,7 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
             // BukkitPlatform.onEnable warning so the same hint is
             // visible from both startup and reload.
             if (adapter.isDebugEnabled()) {
-                adapter.info("[MinerTrack:DEBUG] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
+                adapter.warning("[MinerTrack:DEBUG] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
             }
         }
 

@@ -104,6 +104,11 @@ public class BukkitAdapter implements PluginAdapter {
     }
 
     @Override
+    public void warning(String msg) {
+        plugin.getLogger().warning(msg);
+    }
+
+    @Override
     public String applyColors(String message) {
         return ChatColor.translateAlternateColorCodes('&', message);
     }

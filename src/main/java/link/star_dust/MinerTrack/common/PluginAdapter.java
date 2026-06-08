@@ -10,6 +10,7 @@ public interface PluginAdapter {
     void reloadConfig();
     String getVersion();
     void info(String msg);
+    void warning(String msg);
     String applyColors(String message);
     void sendConsoleMessage(String message);
     Object getPlayer(java.util.UUID uuid);
