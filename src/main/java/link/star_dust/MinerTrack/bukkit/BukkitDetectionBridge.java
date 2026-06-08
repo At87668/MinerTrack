@@ -351,12 +351,11 @@ public class BukkitDetectionBridge implements DetectionBridge {
 
     @Override
     public int getArtificialAirRemoveTime(String worldName) {
-        int def = loadConfig().getInt("xray.natural-detection.cave.air-monitor.remove-time", 20);
         CoreConfig cc = getCoreConfig();
         if (cc != null) {
-            return cc.getIntForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", def);
+            return cc.getIntForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", 20);
         }
-        return loadConfig().getInt("xray.natural-detection.cave.artificial-air-remove-time", def);
+        return loadConfig().getInt("xray.natural-detection.cave.artificial-air-remove-time", 20);
     }
 
     @Override

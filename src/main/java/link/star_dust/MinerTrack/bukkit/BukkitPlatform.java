@@ -52,8 +52,14 @@ public class BukkitPlatform extends JavaPlugin {
         // Core mining detection orchestrator
         miningCore = new MiningCore(detectionBridge, violationManager);
 
-        // Language bridge
+        // Language bridge — built after the violation manager so the
+        // manager can use it for prefix / log-format / verbose-format
+        // rendering. We attach the bridge to the violation manager
+        // right after both are constructed; until then the manager
+        // falls back to key-literal / hard-coded defaults (which is
+        // safe because no detection can have fired yet).
         BukkitLanguageBridge langBridge = new BukkitLanguageBridge(adapter);
+        violationManager.setLanguageBridge(langBridge);
 
         // Register event listeners
         getServer().getPluginManager().registerEvents(

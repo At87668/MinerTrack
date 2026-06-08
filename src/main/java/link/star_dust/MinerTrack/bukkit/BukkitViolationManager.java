@@ -2,6 +2,7 @@ package link.star_dust.MinerTrack.bukkit;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.CommonYaml;
+import link.star_dust.MinerTrack.common.LanguageBridge;
 import link.star_dust.MinerTrack.common.PluginAdapter;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.common.CoreWebhookManager;
@@ -31,6 +32,17 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     private final ViolationEngine engine;
     private final CoreWebhookManager webhookManager;
     private CommonYaml config;
+    /**
+     * The platform attaches its language bridge after construction
+     * (the violation manager is created before the language bridge in
+     * {@link BukkitPlatform#onEnable()} so we can't take it in the
+     * constructor). All message rendering — verbose format, log
+     * format, prefixed messages — delegates to this bridge once it
+     * has been set. {@code null} before {@link #setLanguageBridge} is
+     * called; the engine still functions in that window but rendering
+     * of user-visible strings falls back to the YAML-key default.
+     */
+    private volatile LanguageBridge languageBridge;
     private final Set<UUID> verbosePlayers = Collections.synchronizedSet(new HashSet<>());
     private BukkitTask decayTask;
     private String currentLogFileName;
@@ -215,8 +227,43 @@ public class BukkitViolationManager implements ViolationManagerBridge {
 
     @Override
     public String getLogFormat() {
-        return config.getString("language.log-format",
-            "%year%-%month%-%day% %hour%:%minute%:%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%");
+        // The log format lives in `language.yml` under the top-level
+        // `log-format` key, NOT under `config.yml` → `language.log-format`
+        // (which was a v1 quirk; v2 reads everything from the
+        // LanguageBridge). Delegate to the bridge so admins editing
+        // the language file see their changes take effect.
+        if (languageBridge != null) {
+            // BukkitLanguageBridge.getLogFormat() already applies
+            // getString("log-format", <default>) so we don't need to
+            // pass a default here.
+            return languageBridge.getLogFormat();
+        }
+        return "%year%-%month%-%day% %hour%:%minute%:%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%";
+    }
+
+    @Override
+    public String getPrefixedMessage(String key) {
+        // v2 stores every user-visible string under its top-level
+        // `language.yml` key (e.g. `verbose-format`, `kick-format`,
+        // `no-permission`). The previous implementation read
+        // `messages.<key>` from `config.yml`, which doesn't exist in
+        // v2 and silently returned the key literal. Route the call
+        // through the LanguageBridge so the prefix + colour pipeline
+        // is consistent with the /mtrack command path.
+        if (languageBridge != null) {
+            return languageBridge.getPrefixedMessage(key);
+        }
+        return key;
+    }
+
+    /**
+     * Inject the platform's language bridge. Called by
+     * {@link BukkitPlatform} after the bridge has been constructed so
+     * this class can delegate message rendering to it. Subsequent
+     * calls replace the previous bridge (used during /mtrack reload).
+     */
+    public void setLanguageBridge(LanguageBridge languageBridge) {
+        this.languageBridge = languageBridge;
     }
 
     @Override
@@ -259,7 +306,12 @@ public class BukkitViolationManager implements ViolationManagerBridge {
 
     @Override
     public boolean isVerboseConsoleEnabled() {
-        return config.getBoolean("verbose.console", false);
+        // v1 stored a `verbose.console` boolean in config.yml. v2
+        // dropped this setting: verbose output is now opt-in per
+        // player via the `minertrack.verbose` permission (toggleable
+        // with `/mtrack verbose`). Always return false here so the
+        // engine never spams the console, matching the new behaviour.
+        return false;
     }
 
     @Override
@@ -311,12 +363,6 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     @Override
     public double getConfigDouble(String path, double def) {
         return config.getDouble(path, def);
-    }
-
-    @Override
-    public String getPrefixedMessage(String key) {
-        String prefix = config.getString("messages.prefix", "[MinerTrack] ");
-        return prefix + config.getString("messages." + key, key);
     }
 
     @Override

@@ -80,13 +80,7 @@ public class ConfigMerger {
         "xray.decay.interval",
         "xray.decay.amount",
         "xray.decay.use_factor",
-        "xray.decay.factor",
-        "explosion",
-        "explosion.entity-explode-check",
-        "explosion.explosion_retention_time",
-        "explosion.base_vl_rate",
-        "explosion.suspicious_hit_rate",
-        "commands"
+        "xray.decay.factor"
     );
 
     /**

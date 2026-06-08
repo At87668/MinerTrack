@@ -224,10 +224,6 @@ public class ConfigEngine {
         return bridge.get("check_update_channel") != null ? bridge.get("check_update_channel").toString() : "stable";
     }
 
-    public int getSuspicionThreshold() {
-        return bridge.getInt("xray.mine.suspicionThreshold", 100);
-    }
-
     public String webHookURL() {
         return bridge.get("DiscordWebHook.WebHookURL") != null ? bridge.get("DiscordWebHook.WebHookURL").toString() : null;
     }
@@ -261,15 +257,15 @@ public class ConfigEngine {
     }
 
     public int getArtificialAirRemoveTime(String worldName) {
-        int def = bridge.getInt("xray.natural-detection.cave.air-monitor.remove-time", 20);
-        return coreConfig.getIntForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", def);
+        return coreConfig.getIntForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", 20);
     }
 
     public String getCommandForThreshold(int threshold) {
-        // Commands are platform-specific (e.g. Bukkit dispatchCommand); the
-        // violation engine resolves them through the active platform
-        // ViolationManagerBridge, not through this config reader. Returning
-        // null here is the contract callers expect.
+        // Commands are platform-specific (e.g. Bukkit dispatchCommand);
+        // the violation engine resolves them through the active platform
+        // ViolationManagerBridge (see ViolationEngine.increaseViolation),
+        // not through this config reader. Returning null here is the
+        // contract callers expect.
         return null;
     }
 
