@@ -2,6 +2,7 @@ package link.star_dust.MinerTrack.core.detection;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
+import link.star_dust.MinerTrack.core.CoreLogger;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,11 +100,20 @@ public class MiningState {
         Map<String, CommonLocation> lastLocs = lastVeinLocation.get(playerId);
         CommonLocation lastLocation = lastLocs.get(worldName);
 
+        // Debug: surface the inputs that drive every decision below.
+        // (When debug mode is off CoreLogger.debug is a single
+        // volatile read, so this does not affect normal gameplay.)
+        CoreLogger.debug("  isNewVein: max_vein_distance=" + maxDistance
+            + " smallVeinThreshold=" + smallVeinThreshold
+            + " currentClusterSize=" + currentCluster.size()
+            + " lastClusterSize=" + (lastCluster == null ? 0 : lastCluster.size()));
+
         if (lastCluster == null || lastCluster.isEmpty()) {
             playerClusters.put(worldName, new HashSet<>(currentCluster));
             lastLocs.put(worldName, location);
             lastVeinType.putIfAbsent(playerId, new ConcurrentHashMap<>());
             lastVeinType.get(playerId).put(worldName, oreType);
+            CoreLogger.debug("    -> newVein=true (no previous cluster recorded)");
             return true;
         }
 
@@ -112,6 +122,7 @@ public class MiningState {
                 && lastLocation.y == location.y
                 && lastLocation.z == location.z
                 && lastLocation.world.equals(location.world)) {
+            CoreLogger.debug("    -> newVein=false (same block as last vein; max_vein_distance=" + maxDistance + " skipped)");
             return false;
         }
 
@@ -119,6 +130,7 @@ public class MiningState {
             if (lastCluster.contains(l)) {
                 lastCluster.addAll(currentCluster);
                 playerClusters.put(worldName, lastCluster);
+                CoreLogger.debug("    -> newVein=false (cluster overlaps last vein; max_vein_distance=" + maxDistance + " skipped)");
                 return false;
             }
         }
@@ -134,6 +146,8 @@ public class MiningState {
         if (minDist <= maxDistance) {
             lastCluster.addAll(currentCluster);
             playerClusters.put(worldName, lastCluster);
+            CoreLogger.debug("    -> newVein=false (minDist=" + String.format("%.2f", minDist)
+                + " <= max_vein_distance=" + maxDistance + "; clusters merged)");
             return false;
         }
 
@@ -144,6 +158,9 @@ public class MiningState {
             lastLocs.put(worldName, location);
             lastVeinType.putIfAbsent(playerId, new ConcurrentHashMap<>());
             lastVeinType.get(playerId).put(worldName, oreType);
+            CoreLogger.debug("    -> newVein=true (both clusters are small: currentSize=" + currentSize
+                + " lastSize=" + lastSize + " <= smallVeinThreshold=" + smallVeinThreshold
+                + "; minDist=" + String.format("%.2f", minDist) + " > max_vein_distance=" + maxDistance + ")");
             return true;
         }
 
@@ -152,9 +169,13 @@ public class MiningState {
             lastLocs.put(worldName, location);
             lastVeinType.putIfAbsent(playerId, new ConcurrentHashMap<>());
             lastVeinType.get(playerId).put(worldName, oreType);
+            CoreLogger.debug("    -> newVein=true (minDist=" + String.format("%.2f", minDist)
+                + " > max_vein_distance=" + maxDistance + ")");
             return true;
         }
 
+        CoreLogger.debug("    -> newVein=false (no rule matched; minDist=" + String.format("%.2f", minDist)
+            + " max_vein_distance=" + maxDistance + ")");
         return false;
     }
 

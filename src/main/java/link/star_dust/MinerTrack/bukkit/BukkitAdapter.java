@@ -89,6 +89,7 @@ public class BukkitAdapter implements PluginAdapter {
         plugin.saveResource(resourcePath, replace);
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public String getVersion() {
         try {
@@ -108,6 +109,7 @@ public class BukkitAdapter implements PluginAdapter {
         plugin.getLogger().warning(msg);
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public String applyColors(String message) {
         return ChatColor.translateAlternateColorCodes('&', message);

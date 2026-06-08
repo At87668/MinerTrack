@@ -60,6 +60,7 @@ public class BukkitLanguageBridge implements LanguageBridge {
         return applyColors(langConfig.getString(path, ""));
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public String applyColors(String message) {
         if (message == null) return "";

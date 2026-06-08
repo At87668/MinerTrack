@@ -105,13 +105,27 @@ public class MiningCore {
 
                 int veinCount = state.getMinedVeinCount(playerId);
                 int threshold = state.getVeinCountThreshold(worldName);
-                CoreLogger.debug("  new vein: veinCount=" + veinCount + " threshold=" + threshold);
+                int maxVeinDist = state.getMaxVeinDistance(worldName);
+                CoreLogger.debug("  new vein: veinCount=" + veinCount + " threshold=" + threshold
+                    + " max_vein_distance=" + maxVeinDist);
 
                 if (veinCount >= threshold) {
                     int veinSize = countVeinBlocks(loc, blockType, worldName);
-                    CoreLogger.debug("  threshold reached: veinSize=" + veinSize);
+                    CoreLogger.debug("  threshold reached: veinSize=" + veinSize
+                        + " max_vein_distance=" + maxVeinDist);
                     analyzeAndIncreaseVL(playerId, playerName, worldName, blockType, veinSize, loc);
                 }
+            } else {
+                // isNewVein returned false: this block is in the same
+                // cluster as (or too close to) the previously recorded
+                // vein, so veinCount is NOT incremented. The detailed
+                // reason was already logged inside MiningState.isNewVein;
+                // here we just surface the high-level outcome so the
+                // operator can correlate it with the earlier "smooth=false
+                // natural=false" line above.
+                int maxVeinDist = state.getMaxVeinDistance(worldName);
+                CoreLogger.debug("  same/close vein: not counting toward VL"
+                    + " (max_vein_distance=" + maxVeinDist + "); see isNewVein log above");
             }
         }
 
