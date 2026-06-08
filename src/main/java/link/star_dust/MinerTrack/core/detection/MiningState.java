@@ -80,6 +80,26 @@ public class MiningState {
         vlZeroTimestamp.remove(playerId);
     }
 
+    /**
+     * Return the set of world names that still have any tracked data
+     * (mining path, last vein location, etc.) for {@code playerId}.
+     * Used by {@link MiningCore#cleanupExpiredPaths()} to determine
+     * the longest {@code xray.trace_remove} window across the worlds
+     * the player touched.
+     */
+    public Set<String> getWorldsWithPlayer(UUID playerId) {
+        Set<String> worlds = new HashSet<>();
+        for (Map.Entry<String, Map<UUID, List<CommonLocation>>> e : miningPath.entrySet()) {
+            Map<UUID, List<CommonLocation>> p = e.getValue();
+            if (p != null && p.containsKey(playerId)) worlds.add(e.getKey());
+        }
+        Map<String, CommonLocation> lv = lastVeinLocation.get(playerId);
+        if (lv != null) worlds.addAll(lv.keySet());
+        Map<String, Set<CommonLocation>> lc = lastVeinClusters.get(playerId);
+        if (lc != null) worlds.addAll(lc.keySet());
+        return worlds;
+    }
+
     // ─── Vein cluster helpers ───────────────────────────────────────────────
 
     public boolean isNewVein(UUID playerId, String worldName, CommonLocation location, String oreType) {
@@ -211,6 +231,18 @@ public class MiningState {
 
     public void removeVLZeroTimestamp(UUID playerId) {
         vlZeroTimestamp.remove(playerId);
+    }
+
+    /**
+     * Snapshot of the players that have an outstanding VL=0 timestamp
+     * so the {@link MiningCore} periodic cleanup can ask the
+     * {@link link.star_dust.MinerTrack.common.ViolationManagerBridge} for
+     * their current VL and decide whether the trace has been quiet long
+     * enough to discard. The set is defensive: callers may iterate and
+     * remove entries without affecting the live map.
+     */
+    public Set<UUID> getPlayersWithVLZeroTimestamp() {
+        return new HashSet<>(vlZeroTimestamp.keySet());
     }
 
     // ─── Cleanup helpers ────────────────────────────────────────────────────

@@ -178,6 +178,36 @@ public class MiningCore {
 
     public void cleanupExpiredPaths() {
         state.cleanupExpiredPaths();
+
+        long now = System.currentTimeMillis();
+        for (UUID playerId : state.getPlayersWithVLZeroTimestamp()) {
+            Long lastZero = state.getVLZeroTimestamp(playerId);
+            if (lastZero == null) continue;
+            if (vlBridge.getViolationLevel(playerId) != 0) {
+                // VL went back up since the timestamp was recorded; the
+                // decay scheduler should clear the timestamp itself.
+                // Just make sure we don't keep a stale entry.
+                state.removeVLZeroTimestamp(playerId);
+                continue;
+            }
+            
+            long maxTraceRemoveMs = 0;
+            for (String worldName : state.getWorldsWithPlayer(playerId)) {
+                long ms = state.getTraceRemoveTime(worldName) * 60L * 1000L;
+                if (ms > maxTraceRemoveMs) maxTraceRemoveMs = ms;
+            }
+            if (maxTraceRemoveMs <= 0) {
+                // No worlds tracked; the timestamp is dangling.
+                state.removeVLZeroTimestamp(playerId);
+                continue;
+            }
+            if (now - lastZero > maxTraceRemoveMs) {
+                CoreLogger.debug("  cleanupExpiredPaths: resetting trace for "
+                    + playerId + " (VL=0 for " + ((now - lastZero) / 1000)
+                    + "s, threshold=" + (maxTraceRemoveMs / 1000) + "s)");
+                resetPlayer(playerId);
+            }
+        }
     }
 
     public void cleanupExpiredPlacedBlocks() {

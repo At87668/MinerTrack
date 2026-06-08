@@ -18,6 +18,30 @@ public class PathAnalyzer {
         CommonLocation lastLocation = null;
         Dir3d lastDirection = null;
 
+        // Pending y-change accumulator. A "yChange event" is defined as a
+        // cumulative y-axis movement of at least
+        // {@code yChangeThresholdAddRequired} blocks (in either direction)
+        // measured since the previous event. This makes the metric match
+        // its name: instead of counting only the rare single steps that
+        // happen to jump further than the threshold (the previous
+        // implementation), small per-step y deltas now sum up and every
+        // completed threshold worth of y travel registers as one event.
+        //
+        // Why this matters in practice: the path is built from rare-ore
+        // break positions, which can be many blocks apart. A player
+        // tunneling monotonically down will produce dozens of 1-2 block
+        // y deltas — the previous code reported yChanges≈1 for such a
+        // path even when the player travelled 30 blocks straight down,
+        // so the metric failed to flag obvious staircases. With the
+        // accumulator, 30 blocks of vertical travel now registers as
+        // ~30/threshold events and the yChangeThreshold starts to do
+        // its job.
+        int pendingY = 0;
+        // Treat a non-positive threshold as "any y movement counts".
+        // This also keeps the legacy zero-arg overload (default 0)
+        // meaningful: every single block of y change is one event.
+        int yAdd = Math.max(1, yChangeThresholdAddRequired);
+
         for (int i = 0; i < path.size(); i++) {
             CommonLocation currentLocation = path.get(i);
             if (lastLocation != null) {
@@ -35,8 +59,16 @@ public class PathAnalyzer {
                     }
                 }
 
-                if (Math.abs(currentLocation.y - lastLocation.y) > yChangeThresholdAddRequired) {
-                    currentYChanges++;
+                int dy = Math.abs(currentLocation.y - lastLocation.y);
+                if (dy > 0) {
+                    pendingY += dy;
+                    // Drain as many events as this step can produce, then
+                    // keep the leftover (≤ yAdd-1) in pendingY so the
+                    // next small step can finish the next event.
+                    while (pendingY >= yAdd) {
+                        currentYChanges++;
+                        pendingY -= yAdd;
+                    }
                 }
 
                 if (i > 1 && currentDirection.lengthSquared() > 0) {
