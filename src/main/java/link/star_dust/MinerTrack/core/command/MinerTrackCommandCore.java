@@ -99,7 +99,18 @@ public class MinerTrackCommandCore {
 
             case "verbose": {
                 if (!hasPermission("minertrack.verbose")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
-                cmd.toggleVerbose();
+                // toggleVerbose returns the new state so we can pick
+                // the correct language-file key for the feedback
+                // message (verbose-enable / verbose-disable). This
+                // keeps the wording in language.yml where admins can
+                // localise it, instead of being hard-coded in the
+                // platform CommandBridge.
+                boolean nowEnabled = cmd.toggleVerbose();
+                if (nowEnabled) {
+                    cmd.sendMessage(lang.getPrefixedMessage("verbose-enable"));
+                } else {
+                    cmd.sendMessage(lang.getPrefixedMessage("verbose-disable"));
+                }
                 break;
             }
 

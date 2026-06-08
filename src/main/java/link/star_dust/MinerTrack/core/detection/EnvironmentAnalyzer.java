@@ -3,6 +3,7 @@ package link.star_dust.MinerTrack.core.detection;
 import link.star_dust.MinerTrack.common.BlockId;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
+import link.star_dust.MinerTrack.core.CoreLogger;
 
 import java.util.List;
 import java.util.UUID;
@@ -66,10 +67,20 @@ public class EnvironmentAnalyzer {
             }
         }
 
-        if (airCount > airThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.cave.check_skip_vl", true)) return true;
-        if (waterCount > waterThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.sea.check_skip_vl", true)) return true;
-        if (lavaCount > lavaThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.lava-sea.check_skip_vl", true)) return true;
+        if (airCount > airThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.cave.check_skip_vl", true)) {
+            CoreLogger.debug("    EnvironmentAnalyzer: cave-air natural (air=" + airCount + " threshold=" + airThreshold + ")");
+            return true;
+        }
+        if (waterCount > waterThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.sea.check_skip_vl", true)) {
+            CoreLogger.debug("    EnvironmentAnalyzer: sea natural (water=" + waterCount + " threshold=" + waterThreshold + ")");
+            return true;
+        }
+        if (lavaCount > lavaThreshold && bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.lava-sea.check_skip_vl", true)) {
+            CoreLogger.debug("    EnvironmentAnalyzer: lava-sea natural (lava=" + lavaCount + " threshold=" + lavaThreshold + ")");
+            return true;
+        }
 
+        CoreLogger.debug("    EnvironmentAnalyzer: NOT natural (air=" + airCount + " water=" + waterCount + " lava=" + lavaCount + ")");
         return false;
     }
 }

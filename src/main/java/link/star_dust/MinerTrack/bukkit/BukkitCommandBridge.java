@@ -57,20 +57,24 @@ public class BukkitCommandBridge implements CommandBridge {
     }
 
     @Override
-    public void toggleVerbose() {
+    public boolean toggleVerbose() {
         if (sender instanceof Player player) {
             UUID playerId = player.getUniqueId();
             if (verbosePlayers.contains(playerId)) {
                 verbosePlayers.remove(playerId);
-                sender.sendMessage("[MinerTrack] Verbose mode disabled.");
+                return false;
             } else {
                 verbosePlayers.add(playerId);
-                sender.sendMessage("[MinerTrack] Verbose mode enabled.");
+                return true;
             }
         } else if (sender instanceof ConsoleCommandSender) {
             verboseConsole = !verboseConsole;
-            sender.sendMessage("[MinerTrack] Console verbose " + (verboseConsole ? "enabled" : "disabled") + ".");
+            return verboseConsole;
         }
+        // Unknown sender type — leave state untouched, report
+        // "disabled" as a safe default so the core layer can still
+        // print the (also safe) `verbose-disable` message.
+        return false;
     }
 
     @Override

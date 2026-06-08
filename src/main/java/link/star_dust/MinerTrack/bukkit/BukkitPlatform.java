@@ -3,6 +3,8 @@ package link.star_dust.MinerTrack.bukkit;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.Core;
+import link.star_dust.MinerTrack.core.CoreLogger;
+import link.star_dust.MinerTrack.common.DebugConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.entity.Player;
@@ -32,6 +34,23 @@ public class BukkitPlatform extends JavaPlugin {
     @Override
     public void onEnable() {
         adapter = new BukkitAdapter(this);
+
+        // Wire the core/ debug logger to the Bukkit platform. The
+        // init call is the earliest thing we do after the adapter is
+        // up so every subsequent CoreLogger.debug() call in the
+        // detection code path (MiningCore, PathAnalyzer,
+        // EnvironmentAnalyzer, …) sees the operator's debug flag.
+        // We wrap adapter.isDebugEnabled() in a tiny lambda so the
+        // core/ layer only depends on the common.DebugConfig
+        // interface, never on a Bukkit-specific API.
+        DebugConfig debugConfig = () -> adapter.isDebugEnabled();
+        CoreLogger.init(debugConfig, getLogger());
+        if (adapter.isDebugEnabled()) {
+            // Remind the operator that debug mode is on; this
+            // produces a per-block-break stream of [DEBUG] lines that
+            // is very noisy and meant for development only.
+            getLogger().warning("[MinerTrack] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
+        }
 
         // Violation manager (creates ViolationEngine + CoreWebhookManager)
         violationManager = new BukkitViolationManager(adapter);

@@ -123,3 +123,6 @@ xray:
     5:
       - 'minertrack kick %player% X-Ray'
       - 'minertrack notify &f%player% &7was kicked for &fX-Ray'
+
+# ONLY DEVELOPER SHOULD OPEN THE DEBUG MODE
+debug: false

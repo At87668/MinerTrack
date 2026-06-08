@@ -3,6 +3,7 @@ package link.star_dust.MinerTrack.core.detection;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
+import link.star_dust.MinerTrack.core.CoreLogger;
 
 import java.util.List;
 import java.util.UUID;
@@ -43,15 +44,27 @@ public class MiningCore {
                                 String worldName, String blockType,
                                 int blockX, int blockY, int blockZ) {
         CommonLocation loc = new CommonLocation(worldName, blockX, blockY, blockZ);
+        CoreLogger.debug("MiningCore.onBlockBreak: player=" + playerName
+            + " world=" + worldName + " block=" + blockType
+            + " pos=" + blockX + "," + blockY + "," + blockZ);
 
-        if (!state.isWorldDetectionEnabled(worldName)) return false;
+        if (!state.isWorldDetectionEnabled(worldName)) {
+            CoreLogger.debug("  skip: world detection disabled for " + worldName);
+            return false;
+        }
 
         // Check max height
         int maxHeight = state.getWorldMaxHeight(worldName);
-        if (maxHeight != -1 && blockY > maxHeight) return false;
+        if (maxHeight != -1 && blockY > maxHeight) {
+            CoreLogger.debug("  skip: y=" + blockY + " exceeds maxHeight=" + maxHeight);
+            return false;
+        }
 
         // Check player-placed block
-        if (bridge.isPlayerPlacedBlock(playerId, loc)) return false;
+        if (bridge.isPlayerPlacedBlock(playerId, loc)) {
+            CoreLogger.debug("  skip: block is player-placed");
+            return false;
+        }
 
         // Track artificial air
         bridge.trackBrokenAir(playerId, loc);
@@ -62,7 +75,10 @@ public class MiningCore {
         }
 
         List<String> rareOres = state.getRareOres(worldName);
-        if (!rareOres.contains(blockType)) return false;
+        if (!rareOres.contains(blockType)) {
+            CoreLogger.debug("  skip: " + blockType + " is not a rare ore for " + worldName);
+            return false;
+        }
 
         // Record VL=0 timestamp if VL is currently 0
         if (vlBridge.getViolationLevel(playerId) == 0) {
@@ -74,10 +90,13 @@ public class MiningCore {
         state.appendToPath(worldName, playerId, loc, exposedToAir);
 
         List<CommonLocation> path = state.getPath(worldName, playerId);
+        CoreLogger.debug("  path length: " + (path == null ? 0 : path.size())
+            + " exposedToAir=" + exposedToAir);
 
         // Path quality checks
         boolean smooth = isSmoothPath(playerId, worldName, path);
         boolean natural = envAnalyzer.isInNaturalEnvironment(worldName, playerId, loc, path);
+        CoreLogger.debug("  smooth=" + smooth + " natural=" + natural);
 
         if (!natural && !smooth) {
             if (state.isNewVein(playerId, worldName, loc, blockType)) {
@@ -86,9 +105,11 @@ public class MiningCore {
 
                 int veinCount = state.getMinedVeinCount(playerId);
                 int threshold = state.getVeinCountThreshold(worldName);
+                CoreLogger.debug("  new vein: veinCount=" + veinCount + " threshold=" + threshold);
 
                 if (veinCount >= threshold) {
                     int veinSize = countVeinBlocks(loc, blockType, worldName);
+                    CoreLogger.debug("  threshold reached: veinSize=" + veinSize);
                     analyzeAndIncreaseVL(playerId, playerName, worldName, blockType, veinSize, loc);
                 }
             }
@@ -128,11 +149,14 @@ public class MiningCore {
 
         MiningProfiler.Result result = profiler.analyzeAndDecide(path, veinCount, loc);
         int increaseAmount = result.increaseAmount;
+        CoreLogger.debug("  profiler: increaseAmount=" + increaseAmount
+            + " reason=" + result.reason);
 
         if (increaseAmount > 0) {
             vlBridge.increaseViolationLevel(playerId, playerName, increaseAmount,
                 blockType, veinSize, veinCount, loc);
             state.removeVLZeroTimestamp(playerId);
+            CoreLogger.debug("  VL increased by " + increaseAmount + " for " + playerName);
         }
     }
 

@@ -2,6 +2,7 @@ package link.star_dust.MinerTrack.core.detection;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.CommonPathMetrics;
+import link.star_dust.MinerTrack.core.CoreLogger;
 
 import java.util.List;
 
@@ -61,12 +62,17 @@ public class PathAnalyzer {
         return new CommonPathMetrics(currentTurns, currentBranches, currentYChanges);
     }
 
-    public CommonPathMetrics analyzePath(List<CommonLocation> path) {
-        return analyzePath(path, 0);
+    public boolean isSmooth(CommonPathMetrics metrics, int turnThreshold, int branchThreshold, int yChangeThreshold) {
+        boolean smooth = metrics.turns < turnThreshold && metrics.branches < branchThreshold && metrics.yChanges < yChangeThreshold;
+        CoreLogger.debug("    PathAnalyzer.isSmooth: turns=" + metrics.turns
+            + " branches=" + metrics.branches + " yChanges=" + metrics.yChanges
+            + " | thresholds turns<" + turnThreshold + " branches<" + branchThreshold
+            + " yChanges<" + yChangeThreshold + " -> smooth=" + smooth);
+        return smooth;
     }
 
-    public boolean isSmooth(CommonPathMetrics metrics, int turnThreshold, int branchThreshold, int yChangeThreshold) {
-        return metrics.turns < turnThreshold && metrics.branches < branchThreshold && metrics.yChanges < yChangeThreshold;
+    public CommonPathMetrics analyzePath(List<CommonLocation> path) {
+        return analyzePath(path, 0);
     }
 
     /**

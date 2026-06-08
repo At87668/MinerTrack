@@ -10,9 +10,52 @@ import java.util.UUID;
 public class BukkitAdapter implements PluginAdapter {
     private final JavaPlugin plugin;
     private final YamlLoader yamlLoader = new BukkitYamlLoader();
+    // Cached value of the `debug` config flag. Populated lazily by
+    // isDebugEnabled() on first call; refreshed by reloadConfig() so a
+    // /minertrack reload picks up an operator's debug toggle without a
+    // server restart. Default false (most restrictive option).
+    private volatile Boolean debugCached = null;
 
     public BukkitAdapter(JavaPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /**
+     * Platform-specific debug-flag reader used by the {@code core/}
+     * layer's {@code CoreLogger} initialisation. Reads the merged
+     * {@code config.yml}'s {@code debug} key, defaulting to
+     * {@code false} when the key is missing or unreadable.
+     *
+     * <p>This is intentionally not on the {@code PluginAdapter}
+     * interface: debug logging is a developer-only feature and we
+     * don't want to force every platform (Fabric, …) to implement
+     * it. The platform-specific init code in {@code BukkitPlatform}
+     * reads this method directly and adapts it into a
+     * {@code DebugConfig} for the core.
+     */
+    public boolean isDebugEnabled() {
+        Boolean cached = debugCached;
+        if (cached != null) return cached;
+        try {
+            java.io.File cfg = new java.io.File(plugin.getDataFolder(), "config.yml");
+            link.star_dust.MinerTrack.common.CommonYaml merged =
+                link.star_dust.MinerTrack.core.config.ConfigMerger.loadAndMerge(
+                    cfg, "config.yml", this, yamlLoader);
+            boolean value = merged.getBoolean("debug", false);
+            debugCached = value;
+            return value;
+        } catch (Exception e) {
+            // If we can't read the config, stay debug-disabled. Don't
+            // bubble the error — the operator has bigger problems.
+            debugCached = Boolean.FALSE;
+            return false;
+        }
+    }
+
+    /** Drop the cached debug flag so the next isDebugEnabled() call
+     *  re-reads from disk. Called by reloadConfig(). */
+    public void clearDebugCache() {
+        debugCached = null;
     }
 
     @Override
@@ -76,6 +119,11 @@ public class BukkitAdapter implements PluginAdapter {
         } catch (Exception e) {
             info("Failed to reload config.yml: " + e.getMessage());
         }
+        // Invalidate the cached debug flag so a /minertrack reload
+        // immediately picks up the operator's debug toggle change
+        // instead of waiting for the boolean to be re-read on the
+        // next isDebugEnabled() call from a different code path.
+        clearDebugCache();
         // Also reload group configs via the active DetectionBridge so they
         // are refreshed on every reload. Clear the per-bridge config
         // cache first so the merge step reads the just-saved file from

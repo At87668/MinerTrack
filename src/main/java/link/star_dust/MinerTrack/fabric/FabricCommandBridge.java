@@ -47,8 +47,11 @@ public class FabricCommandBridge implements CommandBridge {
     }
 
     @Override
-    public void toggleVerbose() {
-        // TODO: implement via Fabric API
+    public boolean toggleVerbose() {
+        // TODO: implement via Fabric API. Return false (= "now
+        // disabled") as a safe default so the caller's
+        // `verbose-disable` message is still produced.
+        return false;
     }
 
     @Override
