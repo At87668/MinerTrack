@@ -22,9 +22,24 @@ public class BukkitAdapter implements PluginAdapter {
 
     /**
      * Platform-specific debug-flag reader used by the {@code core/}
-     * layer's {@code CoreLogger} initialisation. Reads the merged
-     * {@code config.yml}'s {@code debug} key, defaulting to
-     * {@code false} when the key is missing or unreadable.
+     * layer's {@code CoreLogger} initialisation. Reads the {@code
+     * debug} key directly from the user's {@code config.yml},
+     * defaulting to {@code false} when the key is missing or
+     * unreadable.
+     *
+     * <p>Implementation note: this deliberately bypasses
+     * {@link link.star_dust.MinerTrack.core.config.ConfigMerger}.
+     * The merger is a write-back pass (it normalises the file, fills
+     * missing keys, and saves the result), which is the wrong tool
+     * for a per-event hot-path boolean read. A previous
+     * implementation routed through the merger and was prone to
+     * stale-cache issues after a {@code /minertrack reload} (the
+     * cache invalidation worked, but the next read would re-run the
+     * whole merge+save cycle, which is slow and could swallow the
+     * operator's edit if the save side-effect collided with a
+     * concurrent reload). Reading the file directly via
+     * {@link YamlLoader#loadFile} gives the same answer without any
+     * side effects.
      *
      * <p>This is intentionally not on the {@code PluginAdapter}
      * interface: debug logging is a developer-only feature and we
@@ -38,15 +53,21 @@ public class BukkitAdapter implements PluginAdapter {
         if (cached != null) return cached;
         try {
             java.io.File cfg = new java.io.File(plugin.getDataFolder(), "config.yml");
-            link.star_dust.MinerTrack.common.CommonYaml merged =
-                link.star_dust.MinerTrack.core.config.ConfigMerger.loadAndMerge(
-                    cfg, "config.yml", this, yamlLoader);
-            boolean value = merged.getBoolean("debug", false);
+            // loadFile (not loadStream) is the right call here: it
+            // reads the user's disk file directly and never touches
+            // the JAR-shipped default. We do NOT want to merge with
+            // defaults — the operator's edit has authority, and the
+            // merger would clobber the disk with the default's
+            // `debug: false` if the merge step ever tried to
+            // re-write the key.
+            link.star_dust.MinerTrack.common.CommonYaml userConfig = yamlLoader.loadFile(cfg);
+            boolean value = userConfig.getBoolean("debug", false);
             debugCached = value;
             return value;
         } catch (Exception e) {
             // If we can't read the config, stay debug-disabled. Don't
             // bubble the error — the operator has bigger problems.
+            plugin.getLogger().warning("Could not read debug flag from config.yml: " + e.getMessage());
             debugCached = Boolean.FALSE;
             return false;
         }

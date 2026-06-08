@@ -178,6 +178,15 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
             if (vlBridge instanceof BukkitViolationManager) {
                 ((BukkitViolationManager) vlBridge).reloadConfig();
             }
+            // Surface the current debug-flag state on every reload so
+            // the operator can confirm the toggle took effect without
+            // waiting for a [MinerTrack:DEBUG] line to appear (or fail
+            // to appear) on the next block break. Mirrors the
+            // BukkitPlatform.onEnable warning so the same hint is
+            // visible from both startup and reload.
+            if (adapter.isDebugEnabled()) {
+                adapter.info("[MinerTrack:DEBUG] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
+            }
         }
 
         @Override

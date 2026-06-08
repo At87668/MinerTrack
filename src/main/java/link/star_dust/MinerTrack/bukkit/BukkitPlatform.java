@@ -49,7 +49,7 @@ public class BukkitPlatform extends JavaPlugin {
             // Remind the operator that debug mode is on; this
             // produces a per-block-break stream of [DEBUG] lines that
             // is very noisy and meant for development only.
-            getLogger().warning("[MinerTrack] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
+            getLogger().warning("[MinerTrack:DEBUG] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
         }
 
         // Violation manager (creates ViolationEngine + CoreWebhookManager)
