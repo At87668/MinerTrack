@@ -22,9 +22,6 @@ public interface ViolationManagerBridge {
     Set<UUID> getVerbosePlayers();
     boolean isVerboseConsoleEnabled();
     void sendMessageToPlayer(UUID playerId, String message);
-    boolean isWebHookEnabled();
-    int getWebHookVLRequired();
-    void sendWebhook(UUID playerId, String oreType, int minedVeins, int oreCount, CommonLocation location);
     Object getConfigSection(String path);
     Object getConfig(String path);
     String getPrefixedMessage(String key);

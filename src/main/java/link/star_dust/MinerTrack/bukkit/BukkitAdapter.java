@@ -165,6 +165,23 @@ public class BukkitAdapter implements PluginAdapter {
         } catch (Exception e) {
             info("Failed to reload group configs: " + e.getMessage());
         }
+        // Refresh the webhook engine against the just-merged main
+        // config so edits to DiscordWebHook.* (URL, threshold,
+        // embed text, custom-JSON body) take effect on /minertrack
+        // reload without a server restart. The violation manager
+        // holds the freshly-merged CommonYaml; the refresher hook
+        // rebuilds the engine and pushes it back into the engine
+        // owned by the violation manager. See BukkitWebhookRefresher
+        // for the platform wiring.
+        try {
+            BukkitViolationManager vm = BukkitViolationManager.getActive();
+            if (vm != null) {
+                vm.reloadConfig();
+                BukkitWebhookRefresher.refresh(vm, new BukkitWebhookSender(this));
+            }
+        } catch (Exception e) {
+            info("Failed to refresh webhook engine on reload: " + e.getMessage());
+        }
     }
 
     @Override

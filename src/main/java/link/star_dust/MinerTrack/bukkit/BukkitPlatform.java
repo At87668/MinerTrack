@@ -5,7 +5,9 @@ import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
 import link.star_dust.MinerTrack.common.DebugConfig;
+import link.star_dust.MinerTrack.core.config.WebhookConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
+import link.star_dust.MinerTrack.core.violation.WebhookEngine;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -70,6 +72,31 @@ public class BukkitPlatform extends JavaPlugin {
 
         // Core mining detection orchestrator
         miningCore = new MiningCore(detectionBridge, violationManager);
+
+        // Webhook engine — built from the (already merged) main config
+        // snapshot held by the violation manager. The platform-specific
+        // HTTP sender is injected here; everything else (config reads,
+        // placeholder substitution, embed / custom-JSON rendering)
+        // lives in core/violation. Wire it into the violation engine
+        // BEFORE any listener can fire, so the very first /vl add has
+        // webhook dispatch available.
+        BukkitWebhookSender webhookSender = new BukkitWebhookSender(adapter);
+        WebhookConfig webhookConfig = WebhookConfig.from(violationManager.getMainConfig());
+        WebhookEngine webhookEngine = new WebhookEngine(webhookConfig, webhookSender);
+        // The ViolationEngine lives inside BukkitViolationManager; expose
+        // it via a small helper so the platform can inject the webhook
+        // engine without leaking the rest of the manager's internals.
+        violationManager.setWebhookEngine(webhookEngine);
+        // Register the reload-path refresher so /minertrack reload
+        // rebuilds the engine against the just-merged config. We share
+        // a single sender instance between startup and reload: the
+        // sender is stateless (just owns an HTTP client per call), so
+        // re-creating it on every reload would burn connections for
+        // no benefit.
+        BukkitWebhookRefresher.set((vm, sender) -> {
+            WebhookConfig freshConfig = WebhookConfig.from(vm.getMainConfig());
+            vm.setWebhookEngine(new WebhookEngine(freshConfig, sender));
+        });
 
         // Language bridge — built after the violation manager so the
         // manager can use it for prefix / log-format / verbose-format

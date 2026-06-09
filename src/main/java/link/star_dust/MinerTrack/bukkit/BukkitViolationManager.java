@@ -5,7 +5,6 @@ import link.star_dust.MinerTrack.common.CommonYaml;
 import link.star_dust.MinerTrack.common.LanguageBridge;
 import link.star_dust.MinerTrack.common.PluginAdapter;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
-import link.star_dust.MinerTrack.common.CoreWebhookManager;
 import link.star_dust.MinerTrack.core.violation.ViolationEngine;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -28,9 +27,16 @@ import java.util.function.Consumer;
  * Delegates core logic to ViolationEngine; handles platform-specific I/O and scheduling.
  */
 public class BukkitViolationManager implements ViolationManagerBridge {
+    // Static reference so the PluginAdapter can call back into the active
+    // manager during reloadConfig() (e.g. to refresh the webhook engine
+    // against the freshly-merged config) without depending on
+    // ServicesManager ceremony. Mirrors the pattern used by
+    // BukkitDetectionBridge#getActive().
+    private static volatile BukkitViolationManager active;
+    public static BukkitViolationManager getActive() { return active; }
+
     private final PluginAdapter adapter;
     private final ViolationEngine engine;
-    private final CoreWebhookManager webhookManager;
     private CommonYaml config;
     /**
      * The platform attaches its language bridge after construction
@@ -51,7 +57,7 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     public BukkitViolationManager(PluginAdapter adapter) {
         this.adapter = adapter;
         this.engine = new ViolationEngine(this);
-        this.webhookManager = new CoreWebhookManager(this, new BukkitWebhookSender(adapter));
+        active = this;
         this.currentLogFileName = generateLogFileName();
 
         // Use the platform-agnostic merger so missing keys are added and
@@ -266,6 +272,30 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         this.languageBridge = languageBridge;
     }
 
+    /**
+     * Wire (or replace) the webhook engine that
+     * {@link link.star_dust.MinerTrack.core.violation.ViolationEngine}
+     * dispatches to after every VL increase. Called by
+     * {@link BukkitPlatform} at startup with the platform's
+     * {@link BukkitWebhookSender} and a freshly-built
+     * {@link WebhookConfig}, and again on every {@code /minertrack
+     * reload} so the engine picks up edits to {@code DiscordWebHook.*}
+     * without a server restart.
+     */
+    public void setWebhookEngine(link.star_dust.MinerTrack.core.violation.WebhookEngine webhookEngine) {
+        this.engine.setWebhookEngine(webhookEngine);
+    }
+
+    /**
+     * Direct read-only access to the merged main config snapshot.
+     * Used by the platform at startup (and on every reload) to build
+     * a fresh {@link WebhookConfig} without round-tripping through the
+     * private {@code config} field.
+     */
+    public CommonYaml getMainConfig() {
+        return config;
+    }
+
     @Override
     public void appendLogLine(String line) {
         if (!isLogFileEnabled()) return;
@@ -321,21 +351,6 @@ public class BukkitViolationManager implements ViolationManagerBridge {
             org.bukkit.entity.Player p = (org.bukkit.entity.Player) obj;
             p.sendMessage(adapter.applyColors(message));
         }
-    }
-
-    @Override
-    public boolean isWebHookEnabled() {
-        return config.getBoolean("DiscordWebHook.enable", false);
-    }
-
-    @Override
-    public int getWebHookVLRequired() {
-        return config.getInt("DiscordWebHook.vl-required", Integer.MAX_VALUE);
-    }
-
-    @Override
-    public void sendWebhook(UUID playerId, String oreType, int minedVeins, int oreCount, CommonLocation location) {
-        webhookManager.onViolationIncrease(playerId, oreType, minedVeins, oreCount, location);
     }
 
     @Override

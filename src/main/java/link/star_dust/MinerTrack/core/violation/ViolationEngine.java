@@ -15,9 +15,28 @@ public class ViolationEngine {
     private final Map<UUID, Integer> violationLevels = new HashMap<>();
     private final Map<UUID, Long> vlChangedTimestamp = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
+    /**
+     * Optional webhook engine injected by the platform during
+     * {@code onEnable}. When non-null, the engine is queried with the
+     * new VL after every increment and a Discord payload is dispatched
+     * if the configured threshold is met. Held via a setter (rather
+     * than via the constructor) so the violation engine can be built
+     * before the platform finishes wiring its webhook config + sender.
+     */
+    private WebhookEngine webhookEngine;
 
     public ViolationEngine(ViolationManagerBridge bridge) {
         this.bridge = bridge;
+    }
+
+    /**
+     * Wire the platform's webhook engine. Called once at startup,
+     * after both the violation engine and the webhook engine have
+     * been constructed. A {@code null} argument is tolerated and
+     * treated as "no webhook configured" — useful for unit tests.
+     */
+    public void setWebhookEngine(WebhookEngine webhookEngine) {
+        this.webhookEngine = webhookEngine;
     }
 
     public int getViolationLevel(UUID playerId) {
@@ -117,8 +136,12 @@ public class ViolationEngine {
                 bridge.appendLogLine(line);
             }
 
-            if (bridge.isWebHookEnabled() && newLevel >= bridge.getWebHookVLRequired()) {
-                bridge.sendWebhook(playerId, blockType, vein, count, location);
+            if (webhookEngine != null) {
+                // The webhook engine reads its own enabled / vl-required
+                // thresholds from WebhookConfig, so a simple dispatch is
+                // enough. Engine decides whether to actually POST.
+                webhookEngine.onViolationIncrease(playerId, playerName, newLevel,
+                        blockType, vein, count, location);
             }
         }
     }
