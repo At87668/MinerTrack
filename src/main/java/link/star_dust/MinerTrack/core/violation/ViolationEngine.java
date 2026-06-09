@@ -3,6 +3,7 @@ package link.star_dust.MinerTrack.core.violation;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -62,6 +63,14 @@ public class ViolationEngine {
         }
 
         if (newLevel >= 1) {
+            LocalDateTime nowDateTime = LocalDateTime.now();
+            String year = String.valueOf(nowDateTime.getYear());
+            String month = String.format("%02d", nowDateTime.getMonthValue());
+            String day = String.format("%02d", nowDateTime.getDayOfMonth());
+            String hour = String.format("%02d", nowDateTime.getHour());
+            String minute = String.format("%02d", nowDateTime.getMinute());
+            String second = String.format("%02d", nowDateTime.getSecond());
+
             // Build verbose message
             String verboseFormat = bridge.getPrefixedMessage("verbose-format");
             String worldName = (location != null) ? location.world : "unknown";
@@ -89,6 +98,12 @@ public class ViolationEngine {
             if (bridge.isLogFileEnabled()) {
                 String logFormat = bridge.getLogFormat();
                 String line = logFormat
+                    .replace("%year%", year)
+                    .replace("%month%", month)
+                    .replace("%day%", day)
+                    .replace("%hour%", hour)
+                    .replace("%minute%", minute)
+                    .replace("%second%", second)
                     .replace("%player%", playerName)
                     .replace("%vl%", String.valueOf(newLevel))
                     .replace("%add_vl%", String.valueOf(increment))
