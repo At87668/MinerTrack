@@ -69,14 +69,75 @@ public class BukkitWebhookSender implements WebhookEngine.Sender {
     private void executeAsync(Runnable task) {
         // Use the adapter's plugin context when scheduling async tasks.
         Object p = adapter.getPlugin();
-        if (p instanceof org.bukkit.plugin.Plugin) {
-            Bukkit.getScheduler().runTaskAsynchronously((org.bukkit.plugin.Plugin) p, task);
-        } else {
-            // Folia / non-Bukkit fallback: run on a plain daemon thread.
-            Thread t = new Thread(task, "MinerTrack-Webhook");
-            t.setDaemon(true);
-            t.start();
+        if (p instanceof org.bukkit.plugin.Plugin plugin) {
+            // Folia removed Bukkit.getScheduler().runTaskAsynchronously
+            // (it throws UnsupportedOperationException) but ships
+            // Bukkit.getAsyncScheduler() (a Paper async scheduler
+            // available on both Paper and Folia). Use it when the
+            // server is Folia; otherwise fall back to the classic
+            // BukkitScheduler.runTaskAsynchronously on Paper/Spigot.
+            if (isFoliaServer()) {
+                try {
+                    // Bukkit.getAsyncScheduler().runNow(Plugin, Consumer)
+                    // The method is on the async-scheduler interface
+                    // returned by Bukkit#getAsyncScheduler(). We
+                    // resolve the scheduler reflectively so we don't
+                    // have to bump the compileOnly Folia/Paper
+                    // dependency set just for one call.
+                    Object asyncScheduler = Bukkit.class
+                        .getMethod("getAsyncScheduler")
+                        .invoke(null);
+                    Class<?> consumerCls = Class.forName("java.util.function.Consumer");
+                    asyncScheduler.getClass()
+                        .getMethod("runNow", org.bukkit.plugin.Plugin.class, consumerCls)
+                        .invoke(asyncScheduler, plugin, (java.util.function.Consumer<Object>) t -> task.run());
+                    return;
+                } catch (Throwable reflectionFailure) {
+                    // Async scheduler is missing on this server build
+                    // (e.g. a Paper fork that pre-dates the
+                    // Bukkit#getAsyncScheduler addition). Drop through
+                    // to the daemon-thread fallback so the HTTP POST
+                    // still happens off the main thread.
+                }
+            }
+            try {
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, task);
+                return;
+            } catch (Throwable unsupported) {
+                // Folia / server that disabled the legacy async
+                // scheduler. Fall through to the daemon-thread path.
+            }
         }
+        // Non-Bukkit or unsupported-server fallback: run on a plain
+        // daemon thread. We deliberately use a fresh thread per
+        // dispatch (not a shared executor) because the task is rare
+        // (only fires on a VL increase) and a shared executor would
+        // keep a non-daemon worker alive past plugin shutdown.
+        Thread t = new Thread(task, "MinerTrack-Webhook");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /**
+     * Cached Folia detection result. The check is the same one
+     * {@code FoliaCheck} / {@code BukkitPlatform#isFolia} use: if the
+     * Paper Folia region scheduler class is on the classpath, this is
+     * a Folia server. Cached so we don't pay the reflection cost on
+     * every webhook dispatch.
+     */
+    private static volatile Boolean foliaCached;
+    private static boolean isFoliaServer() {
+        Boolean cached = foliaCached;
+        if (cached != null) return cached;
+        boolean result;
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
+            result = true;
+        } catch (ClassNotFoundException e) {
+            result = false;
+        }
+        foliaCached = result;
+        return result;
     }
 
     /**
