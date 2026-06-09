@@ -86,14 +86,21 @@ public class MinerTrackCommandCore {
                 if (!hasPermission("minertrack.sendnotify")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
                 if (args.length < 2) { cmd.sendMessage(lang.getPrefixedMessage("usage-notify")); return true; }
                 String msg = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+                // Translate the &-color codes in the user-supplied message
+                // (e.g. "&cVL: 2" coming from the xray.commands config)
+                // so the formatted notify actually renders colors in chat,
+                // matching v1 behaviour (where Notifier.sendNotifyMessage
+                // ran ChatColor.translateAlternateColorCodes on both the
+                // prefix and the body).
+                String coloredMsg = lang.applyColors(msg);
                 // Send to all players with notify permission and console
                 for (String pName : playerLookup.getOnlinePlayerNames()) {
                     UUID pu = playerLookup.getPlayerUUID(pName);
                     if (pu != null && hasPermissionForPlayer(pu, "minertrack.notify")) {
-                        cmd.sendMessageToPlayer(pu, lang.getPrefix() + " " + msg);
+                        cmd.sendMessageToPlayer(pu, lang.getPrefix() + " " + coloredMsg);
                     }
                 }
-                cmd.sendMessageToConsole(lang.getPrefix() + " " + msg);
+                cmd.sendMessageToConsole(lang.getPrefix() + " " + coloredMsg);
                 break;
             }
 
