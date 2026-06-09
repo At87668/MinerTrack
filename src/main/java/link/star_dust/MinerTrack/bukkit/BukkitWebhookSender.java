@@ -5,7 +5,6 @@ import link.star_dust.MinerTrack.core.violation.WebhookEngine;
 import org.bukkit.Bukkit;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 /**
  * Bukkit platform implementation of {@link WebhookEngine.Sender}.
@@ -34,17 +33,6 @@ public class BukkitWebhookSender implements WebhookEngine.Sender {
         executeAsync(() -> doPost(url, payload));
     }
 
-    @Override
-    public void sendAsync(String url, Map<String, String> placeholders, String jsonFormat) {
-        if (url == null || url.isEmpty()) return;
-        if (jsonFormat == null || jsonFormat.isEmpty()) return;
-        // Inlined placeholder substitution matching WebhookEngine.substitute.
-        // Kept here so the sender does not depend on the engine instance
-        // (and so the engine stays a pure formatter with no I/O knowledge).
-        String payload = substitute(jsonFormat, placeholders);
-        executeAsync(() -> doPost(url, payload));
-    }
-
     private void doPost(String url, String payload) {
         try {
             org.apache.hc.client5.http.classic.methods.HttpPost post =
@@ -58,11 +46,47 @@ public class BukkitWebhookSender implements WebhookEngine.Sender {
                  var response = client.execute(post)) {
                 int code = response.getCode();
                 if (code != 200 && code != 204) {
-                    adapter.info("Webhook response code: " + code);
+                    // Read Discord's response body so the operator can
+                    // see WHY the webhook was rejected. Discord returns
+                    // a JSON body with a {code, message} field on every
+                    // 4xx; printing it makes a 400 "title too long" or
+                    // "invalid JSON" diagnosable from the server log
+                    // alone. We cap the read to 1 KiB so a misbehaving
+                    // proxy cannot stall the worker thread.
+                    String body = readBodyCapped(response, 1024);
+                    if (body.isEmpty()) {
+                        adapter.info("Webhook response code: " + code);
+                    } else {
+                        adapter.info("Webhook response code: " + code + " body: " + body);
+                    }
                 }
             }
         } catch (Exception e) {
             adapter.info("Webhook error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Read up to {@code maxBytes} from {@code response}'s entity and
+     * return it as a UTF-8 string. Returns an empty string when the
+     * response has no body or the read fails for any reason — the
+     * caller treats "no body" and "real failure" the same way (just
+     * log the status code).
+     */
+    private static String readBodyCapped(org.apache.hc.core5.http.ClassicHttpResponse response, int maxBytes) {
+        var entity = response.getEntity();
+        if (entity == null) return "";
+        try (var in = entity.getContent()) {
+            byte[] buf = new byte[maxBytes];
+            int total = 0;
+            int n;
+            while (total < maxBytes && (n = in.read(buf, total, maxBytes - total)) != -1) {
+                total += n;
+            }
+            if (total == 0) return "";
+            return new String(buf, 0, total, StandardCharsets.UTF_8).trim();
+        } catch (Exception e) {
+            return "";
         }
     }
 
@@ -138,37 +162,5 @@ public class BukkitWebhookSender implements WebhookEngine.Sender {
         }
         foliaCached = result;
         return result;
-    }
-
-    /**
-     * Mirrors {@code WebhookEngine.substitute} — kept in sync by
-     * comment so the sender does not need a back-reference to the
-     * engine instance.
-     */
-    static String substitute(String template, Map<String, String> placeholders) {
-        if (template == null || template.isEmpty() || placeholders == null || placeholders.isEmpty()) {
-            return template;
-        }
-        StringBuilder out = new StringBuilder(template.length());
-        int i = 0;
-        int n = template.length();
-        while (i < n) {
-            char c = template.charAt(i);
-            if (c == '%' && i + 1 < n) {
-                int end = template.indexOf('%', i + 1);
-                if (end > i + 1) {
-                    String key = template.substring(i + 1, end);
-                    String value = placeholders.get(key);
-                    if (value != null) {
-                        out.append(value);
-                        i = end + 1;
-                        continue;
-                    }
-                }
-            }
-            out.append(c);
-            i++;
-        }
-        return out.toString();
     }
 }

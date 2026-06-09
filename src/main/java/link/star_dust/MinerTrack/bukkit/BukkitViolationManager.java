@@ -323,7 +323,38 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         Object p = adapter.getPlugin();
         if (p instanceof org.bukkit.plugin.Plugin) {
             org.bukkit.plugin.Plugin plugin = (org.bukkit.plugin.Plugin) p;
-            plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command);
+            if (isFolia()) {
+                // On Folia, the global console sender must be invoked
+                // from a global-region thread; otherwise
+                // Server#dispatchCommand either throws
+                // IllegalStateException ("dispatchCommand can only be
+                // called from a global region task") or silently
+                // no-ops. Detection events arrive on a region thread
+                // (the thread owning the broken block's chunk), so we
+                // must hop to the global region scheduler before
+                // dispatching. Mirrors v1's
+                // `Bukkit.getGlobalRegionScheduler().execute(...)`
+                // wrapper in
+                // `legacy/managers/ViolationManager.java`.
+                try {
+                    Class<?> schedulerClass = Class.forName("org.bukkit.Bukkit");
+                    Object scheduler = schedulerClass.getMethod("getGlobalRegionScheduler").invoke(null);
+                    scheduler.getClass().getMethod("execute", org.bukkit.plugin.Plugin.class, java.lang.Runnable.class)
+                        .invoke(scheduler, plugin, (java.lang.Runnable) () ->
+                            plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command));
+                } catch (Exception e) {
+                    // Fall through to the direct dispatch below if the
+                    // reflective GlobalRegionScheduler lookup fails
+                    // (e.g. on a server that has Bukkit but not Folia
+                    // shaded in the same classpath). The direct call
+                    // is what non-Folia servers do anyway.
+                    adapter.info("Folia GlobalRegionScheduler execute failed for `"
+                        + command + "`: " + e.getMessage());
+                    plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command);
+                }
+            } else {
+                plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command);
+            }
         } else {
             adapter.info("Console command (fallback): " + command);
         }
