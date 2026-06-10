@@ -54,14 +54,31 @@ public class ViolationEngine {
 
         // Run configured commands if thresholds passed
         Object raw = bridge.getConfig("xray.commands");
-        if (raw instanceof Map<?, ?>) {
+        // The v2 design returns either a `Map` (Map-backed
+        // configs) or a Bukkit `ConfigurationSection` (the
+        // live delegate the v1-style in-place merger
+        // produced). Normalise to a `Map<String, Object>`
+        // view: ConfigurationSection's `getKeys(false)`
+        // returns the section's direct keys, which we
+        // re-fetch via `get(key)`.
+        java.util.Map<String, Object> section = null;
+        if (raw instanceof Map) {
+            section = (java.util.Map<String, Object>) raw;
+        } else if (raw instanceof org.bukkit.configuration.ConfigurationSection) {
+            org.bukkit.configuration.ConfigurationSection cs =
+                    (org.bukkit.configuration.ConfigurationSection) raw;
+            section = new java.util.LinkedHashMap<>();
+            for (String k : cs.getKeys(false)) {
+                section.put(k, cs.get(k));
+            }
+        }
+        if (section != null) {
             try {
-                Map<?,?> section = (Map<?,?>) raw;
-                for (Object keyObj : section.keySet()) {
+                for (java.util.Map.Entry<String, Object> entry : section.entrySet()) {
                     try {
-                        int threshold = Integer.parseInt(String.valueOf(keyObj));
+                        int threshold = Integer.parseInt(entry.getKey());
                         if (threshold > oldLevel && threshold <= newLevel) {
-                            Object commandsRaw = section.get(keyObj);
+                            Object commandsRaw = entry.getValue();
                             if (commandsRaw instanceof Iterable<?>) {
                                 for (Object o : (Iterable<?>) commandsRaw) {
                                     if (o != null) {
