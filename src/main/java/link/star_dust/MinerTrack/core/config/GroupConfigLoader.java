@@ -79,14 +79,31 @@ public class GroupConfigLoader {
             adapter.info("config.yml has no 'xray.worlds' section; no per-world detection will be active. "
                     + "Add a `xray.worlds` block mapping group file names to dimension ids (e.g. "
                     + "`'overworld': [minecraft:overworld]`) to enable detection.");
-        } else if (!(worldsObj instanceof Map)) {
+        } else if (!(worldsObj instanceof Map)
+                && !(worldsObj instanceof org.bukkit.configuration.ConfigurationSection)) {
             adapter.info("config.yml 'xray.worlds' is not a map (got "
                     + worldsObj.getClass().getSimpleName()
                     + "); expected a map of group name -> [dimension id]. "
                     + "Check the YAML structure under xray.worlds in config.yml.");
         } else {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> worldsSection = (Map<String, Object>) worldsObj;
+            // The v2 design lets `mainConfig.get("xray.worlds")`
+            // return either a `Map` (Map-backed configs / the
+            // flat default-stream view) or a Bukkit
+            // `ConfigurationSection` (the live delegate the
+            // v1-style in-place merger produced). Normalise
+            // both to a `Map<String, Object>` view via
+            // `getValues(false)` (Bukkit) or a direct cast
+            // (Map) so the rest of this loop can stay
+            // platform-neutral.
+            java.util.Map<String, Object> worldsSection;
+            if (worldsObj instanceof java.util.Map) {
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, Object> raw = (java.util.Map<String, Object>) worldsObj;
+                worldsSection = raw;
+            } else {
+                worldsSection = ((org.bukkit.configuration.ConfigurationSection) worldsObj)
+                        .getValues(false);
+            }
             for (Map.Entry<String, Object> entry : worldsSection.entrySet()) {
                 try {
                     String fileKey = entry.getKey();
@@ -123,8 +140,8 @@ public class GroupConfigLoader {
 
         for (File f : files) {
             // Version check: if the user file's _config-version is older
-            // than the JAR default's, back it up and replace with the JAR
-            // default (mirrors v1's main-config checkAndUpgradeConfig()).
+            // than the JAR default's, back it up and bump in place.
+            // Mirrors v1's main-config `checkAndUpgradeConfig()`.
             checkAndUpgradeGroupConfig(f, result);
 
             try (InputStream defaultStream = adapter.getResource("Configuration/" + f.getName())) {
@@ -136,9 +153,25 @@ public class GroupConfigLoader {
                         int added = mergeGroupConfigurations(current, defaultGroup);
                         if (added > 0) {
                             adapter.info("[Merger] Configuration/" + f.getName() + ": filled "
-                                    + added + " missing key(s) from defaults");
+                                    + added + " missing key(s) from defaults.");
                         }
-                        current.save(f);
+                        // Save back. v1-equivalent: the merge's
+                        // in-place recursion (via
+                        // `CommonYaml.getChild`) preserved the
+                        // live `ConfigurationSection` tree, so
+                        // the YAML serializer sees the same
+                        // structure the runtime reads from.
+                        // SnakeYAML will still re-serialise the
+                        // file (stripping comments, reordering
+                        // keys), but unlike the v2
+                        // `set(path, Map)`-based merger it will
+                        // NOT flip scalar values into Maps.
+                        try {
+                            current.save(f);
+                        } catch (Exception e) {
+                            adapter.info("Failed to save merged group config "
+                                    + f.getName() + ": " + e.getMessage());
+                        }
                     }
                 }
             } catch (Exception ignored) {}
@@ -207,11 +240,21 @@ public class GroupConfigLoader {
      */
     private void ensureGroupFilesExist(File configDir) {
         Object worldsObj = mainConfig.get("xray.worlds");
-        if (!(worldsObj instanceof Map)) return;
-        @SuppressWarnings("unchecked")
-        Map<String, Object> worldsSection = (Map<String, Object>) worldsObj;
+        // v2 returns either a `Map` (Map-backed configs) or a
+        // Bukkit `ConfigurationSection` (live delegate). Handle
+        // both: we only need to iterate the keys here.
+        java.util.Set<String> fileKeys;
+        if (worldsObj instanceof java.util.Map) {
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> raw = (java.util.Map<String, Object>) worldsObj;
+            fileKeys = raw.keySet();
+        } else if (worldsObj instanceof org.bukkit.configuration.ConfigurationSection) {
+            fileKeys = ((org.bukkit.configuration.ConfigurationSection) worldsObj).getKeys(false);
+        } else {
+            return;
+        }
 
-        for (String fileKey : worldsSection.keySet()) {
+        for (String fileKey : fileKeys) {
             String groupKey = stripExtension(fileKey);
             String filename = groupKey + ".yml";
             File out = new File(configDir, filename);
@@ -299,12 +342,19 @@ public class GroupConfigLoader {
     }
 
     /**
-     * Recursive merge for group configs: any missing key in {@code current}
-     * is filled from {@code defaults}, sections are recursed into. This
-     * mirrors the previous v1 behavior but uses {@link CommonYaml}.
+     * Recursive merge for group configs. Mirrors the v1 legacy
+     * {@code ConfigManager.mergeConfigurations} pattern: for
+     * each key in defaults, add the missing leaf value via
+     * {@code set} (Bukkit handles leaf values correctly), or
+     * recurse into the live nested section via
+     * {@link CommonYaml#getChild(String)} when both sides have
+     * a section for the key. No {@code set(path, Map)} is
+     * ever called, which is what was breaking the
+     * save round-trip in the previous v2 implementation.
      *
-     * @return the number of leaf keys that were filled in from defaults
-     *         (zero means the user file is already complete).
+     * @return the number of leaf keys that were filled in from
+     *         defaults (zero means the user file is already
+     *         complete).
      */
     private int mergeGroupConfigurations(CommonYaml current, CommonYaml defaults) {
         if (current == null || defaults == null) return 0;
@@ -313,14 +363,37 @@ public class GroupConfigLoader {
             if (current.contains(key)) {
                 Object cv = current.get(key);
                 Object dv = defaults.get(key);
-                if (cv instanceof Map && dv instanceof Map) {
-                    // Both are sections; recurse via in-memory map views.
-                    // The current platform (BukkitCommonYaml) does not expose
-                    // a section handle, so we work directly with the maps.
-                    // This is fine because the merger only ever adds missing
-                    // keys (no value replacement).
-                    added += deepMergeInto((Map<String, Object>) cv, (Map<String, Object>) dv);
-                    current.set(key, cv);
+                // "Section" here means anything that can hold
+                // nested keys: a `Map` (Map-backed configs /
+                // fabric configs) or a Bukkit
+                // `ConfigurationSection` (live delegate). The
+                // merger recurses via `getChild` which the
+                // platform implementations handle correctly.
+                if (isSection(cv) && isSection(dv)) {
+                    CommonYaml curChild = current.getChild(key);
+                    CommonYaml defChild = defaults.getChild(key);
+                    if (curChild != null && defChild != null) {
+                        added += mergeGroupConfigurations(curChild, defChild);
+                    } else {
+                        // Fallback for sections that don't
+                        // expose `getChild` (Map-backed configs
+                        // where the section is stored as a
+                        // plain Map value rather than a live
+                        // nested wrapper). Mutate the Map in
+                        // place and write it back so the
+                        // parent's in-memory state stays in
+                        // sync. The legacy `set(path, Map)`
+                        // corruption is avoided because the
+                        // fallback only fires for non-Bukkit
+                        // backends; on Bukkit, `getChild` always
+                        // returns a live wrapper.
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> curMap = (java.util.Map<String, Object>) cv;
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> defMap = (java.util.Map<String, Object>) dv;
+                        added += deepMergeInto(curMap, defMap);
+                        current.set(key, curMap);
+                    }
                 }
             } else {
                 current.set(key, defaults.get(key));
@@ -328,6 +401,11 @@ public class GroupConfigLoader {
             }
         }
         return added;
+    }
+
+    private static boolean isSection(Object v) {
+        return v instanceof java.util.Map
+                || v instanceof org.bukkit.configuration.ConfigurationSection;
     }
 
     @SuppressWarnings("unchecked")

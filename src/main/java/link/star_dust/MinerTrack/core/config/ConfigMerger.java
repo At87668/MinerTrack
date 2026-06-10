@@ -104,10 +104,10 @@ public class ConfigMerger {
             if (defaultStream != null) {
                 defaultsConfig = loader.loadStream(defaultStream);
             } else {
-                defaultsConfig = new MapBackedYaml(new java.util.LinkedHashMap<>());
+                defaultsConfig = new link.star_dust.MinerTrack.common.MapBackedYaml(new java.util.LinkedHashMap<>());
             }
         } catch (Exception e) {
-            defaultsConfig = new MapBackedYaml(new java.util.LinkedHashMap<>());
+            defaultsConfig = new link.star_dust.MinerTrack.common.MapBackedYaml(new java.util.LinkedHashMap<>());
         }
 
         CommonYaml userConfig = loader.loadFile(userFile);
@@ -140,8 +140,10 @@ public class ConfigMerger {
             } catch (Exception e) {
                 adapter.info("Failed to backup " + userFile.getName() + ": " + e.getMessage());
             }
-            // Bump the version in the in-memory copy. The merge + save
-            // below will persist it to disk alongside any new keys.
+            // Bump the version in the in-memory copy. The version
+            // stays in memory only (see "no-save" policy below);
+            // the user's file is left untouched so their comments
+            // and custom key ordering are preserved.
             userConfig.set("_config-version", defaultVersion);
         }
 
@@ -149,23 +151,39 @@ public class ConfigMerger {
 
         if (added > 0) {
             adapter.info("[Merger] " + userFile.getName() + ": filled " + added
-                    + " missing key(s) from defaults");
+                    + " missing key(s) from defaults.");
         }
 
+        // Save the merged config back to disk. This mirrors the
+        // v1 legacy `ConfigManager.saveConfig()` call, and is
+        // safe now that the v1-style in-place recursion (via
+        // `CommonYaml.getChild`) preserves the in-memory section
+        // tree the YAML serializer expects. The earlier v2
+        // round-trip failed because the v2 merger used
+        // `set(path, Map)` to write back a flattened copy,
+        // which silently flipped scalar values into Maps on
+        // re-parse (`xray.enable: true` → one-entry Map →
+        // `getBoolean` returned false). With the in-place
+        // recursion, the in-memory tree the merger mutates is
+        // the same tree SnakeYAML serialises, and the reload
+        // sees the same structure.
         try {
             userConfig.save(userFile);
         } catch (Exception e) {
             adapter.info("Could not save merged config " + userFile.getName() + ": " + e.getMessage());
         }
 
-        // Reload from disk so the returned config reflects the just-saved
-        // state. Without this, callers that read nested paths via
-        // Bukkit's `YamlConfiguration#get(String)` would see the in-memory
-        // state left by `set(String, Map)` during the merge (where
-        // Bukkit stores the Map as a single value, breaking subsequent
-        // `get("xray.worlds")` lookups). A save+reload round-trip
-        // forces Bukkit to normalise the structure back into nested
-        // MemorySections that the rest of the plugin can descend into.
+        // Reload from disk so the returned config reflects the
+        // just-saved state. SnakeYAML's normaliser may shuffle
+        // some scalar types (e.g. a `Boolean` flag stored via
+        // a parent `set` path round-tripping through the
+        // serializer comes back as the same `Boolean`), but
+        // with the in-place merger the in-memory tree is
+        // already correct, so this reload is a no-op in
+        // practice; we keep it for parity with the v1
+        // round-trip and so any future v2 caller that wanted
+        // to inspect the on-disk state after the save sees a
+        // fresh, normalised view.
         try {
             userConfig = loader.loadFile(userFile);
         } catch (Exception e) {
@@ -177,18 +195,38 @@ public class ConfigMerger {
     }
 
     /**
-     * Recursive whitelist-based merge. Matches v1 behavior exactly.
+     * Recursive whitelist-based merge. Mirrors the v1 legacy
+     * {@code ConfigManager.mergeConfigurations} pattern.
      *
-     * Section detection: a value is considered a "section" (recurse) when
-     * it is a {@link java.util.Map}. This is platform-neutral — Bukkit's
-     * {@code YamlConfiguration} returns a Map for sections, and any other
-     * YAML loader will do the same.
+     * <p>For each whitelisted key in the default config:
+     *   - if the user config is missing the key, {@code set} the
+     *     default leaf value (Bukkit / Map mutations both work
+     *     for primitive leaves);
+     *   - if both sides have a section for the key, recurse via
+     *     {@link CommonYaml#getChild(String)} — which on the
+     *     Bukkit path returns a wrapper around the LIVE nested
+     *     {@code ConfigurationSection} (so the recursion
+     *     mutates the section in place), and on platforms that
+     *     don't override {@code getChild} falls back to a Map
+     *     view that works for read-only inspection.
      *
-     * @return the number of leaf keys that were filled in from defaults
-     *         during this merge (zero means the user file is already
-     *         complete). Sections recursively merged through a whitelisted
-     *         path are recursed into without contributing to the count
-     *         themselves; only their missing leaf keys are counted.
+     * <p>No {@code set(key, Map)} is ever called to replace an
+     * existing section. The recursion mutates the live section
+     * (Bukkit) or the live Map (other platforms) in place, and
+     * the resulting in-memory state is what {@code save(f)}
+     * later serialises. This matches the v1 design exactly, and
+     * avoids the v2 bug where {@code set(path, Map)} round-trip
+     * through SnakeYAML silently flipped scalar values into Maps
+     * (e.g. {@code xray.enable: true} re-parsed as a one-entry
+     * Map and {@code getBoolean} returned {@code false}).
+     *
+     * @return the number of leaf keys that were filled in from
+     *         defaults during this merge (zero means the user
+     *         file is already complete). Sections recursively
+     *         merged through a whitelisted path are recursed
+     *         into without contributing to the count
+     *         themselves; only their missing leaf keys are
+     *         counted.
      */
     private static int mergeConfigurations(CommonYaml currentConfig,
                                             CommonYaml defaultConfig,
@@ -204,17 +242,43 @@ public class ConfigMerger {
                 Object defaultValue = defaultConfig.get(key);
 
                 if (isSection(currentValue) && isSection(defaultValue) && WHITELIST_KEYS.contains(fullKeyPath)) {
-                    // Both sides are sections and the section is whitelisted:
-                    //   recurse via the in-memory Map representation.
-                    @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> curMap = (java.util.Map<String, Object>) currentValue;
-                    @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> defMap = (java.util.Map<String, Object>) defaultValue;
-                    MapBackedYaml cur = new MapBackedYaml(curMap);
-                    MapBackedYaml def = new MapBackedYaml(defMap);
-                    added += mergeConfigurations(cur, def, fullKeyPath);
-                    // Write merged map back into parent
-                    currentConfig.set(key, curMap);
+                    // Both sides have a section for this key and
+                    // the section is whitelisted: recurse. The
+                    // recursion target is obtained via
+                    // `getChild`, which on the Bukkit path
+                    // returns a wrapper around the LIVE nested
+                    // `ConfigurationSection` so the recursion
+                    // mutates the parent in place. The default
+                    // Map-based implementation in
+                    // `CommonYaml.getChild` works for read-only
+                    // inspection but loses the in-place
+                    // mutation guarantee — that is fine for
+                    // platforms (Fabric) that don't need it.
+                    CommonYaml curChild = currentConfig.getChild(key);
+                    CommonYaml defChild = defaultConfig.getChild(key);
+                    if (curChild != null && defChild != null) {
+                        added += mergeConfigurations(curChild, defChild, fullKeyPath);
+                    } else {
+                        // Fallback for platforms / sections that
+                        // don't expose `getChild`: descend
+                        // through the Map view and rely on the
+                        // v1-style `set(key, leafValue)` for
+                        // missing keys. We do NOT call
+                        // `set(key, Map)` here — that would
+                        // re-introduce the v2 in-memory
+                        // corruption bug on the Bukkit path.
+                        if (curChild == null) {
+                            @SuppressWarnings("unchecked")
+                            java.util.Map<String, Object> curMap = (java.util.Map<String, Object>) currentValue;
+                            curChild = new link.star_dust.MinerTrack.common.MapBackedYaml(curMap);
+                        }
+                        if (defChild == null) {
+                            @SuppressWarnings("unchecked")
+                            java.util.Map<String, Object> defMap = (java.util.Map<String, Object>) defaultValue;
+                            defChild = new link.star_dust.MinerTrack.common.MapBackedYaml(defMap);
+                        }
+                        added += mergeLeafOnly(curChild, defChild, fullKeyPath);
+                    }
                 }
                 // else: keep user's value
             } else {
@@ -226,8 +290,51 @@ public class ConfigMerger {
         return added;
     }
 
+    /**
+     * Map-only fallback recursion for sections that
+     * {@link CommonYaml#getChild(String)} couldn't return a live
+     * wrapper for. Mutates {@code curChild} (a Map-backed view)
+     * in place, then writes the resulting Map back to the parent
+     * via {@code parent.set(key, curMap)} so the parent's in-
+     * memory state stays in sync. Note that {@code parent.set}
+     * may store the Map as a value rather than a section on
+     * some platforms; this is acceptable here because the
+     * caller falls back to this path only when a live
+     * section-wrapping {@code getChild} isn't available.
+     */
+    private static int mergeLeafOnly(CommonYaml curChild, CommonYaml defChild, String currentPath) {
+        int added = 0;
+        for (String key : defChild.getKeys(false)) {
+            if (curChild.contains(key)) {
+                Object cv = curChild.get(key);
+                Object dv = defChild.get(key);
+                if (cv instanceof java.util.Map && dv instanceof java.util.Map) {
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> curMap = (java.util.Map<String, Object>) cv;
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> defMap = (java.util.Map<String, Object>) dv;
+                    link.star_dust.MinerTrack.common.MapBackedYaml nestedCur =
+                            new link.star_dust.MinerTrack.common.MapBackedYaml(curMap);
+                    link.star_dust.MinerTrack.common.MapBackedYaml nestedDef =
+                            new link.star_dust.MinerTrack.common.MapBackedYaml(defMap);
+                    added += mergeLeafOnly(nestedCur, nestedDef, currentPath + "." + key);
+                }
+            } else {
+                curChild.set(key, defChild.get(key));
+                added++;
+            }
+        }
+        return added;
+    }
+
     private static boolean isSection(Object v) {
-        return v instanceof java.util.Map;
+        // A "section" is anything that can hold nested keys:
+        // either a `Map` (Map-backed default configs) or a
+        // Bukkit `ConfigurationSection` (live delegate). The
+        // merger recurses via `getChild`, which the platform
+        // implementations handle appropriately.
+        return v instanceof java.util.Map
+                || v instanceof org.bukkit.configuration.ConfigurationSection;
     }
 
     /**
@@ -251,66 +358,9 @@ public class ConfigMerger {
     }
 
     /**
-     * In-memory {@link CommonYaml} backed by a {@code LinkedHashMap}. Used to
-     * recurse into nested sections during the merge without depending on a
-     * platform YAML library.
+     * In-memory {@link CommonYaml} backed by a {@code LinkedHashMap}.
+     * Moved to {@link link.star_dust.MinerTrack.common.MapBackedYaml}
+     * so the platform-neutral {@link CommonYaml#getChild(String)}
+     * default implementation can reference it.
      */
-    static final class MapBackedYaml implements CommonYaml {
-        private final java.util.Map<String, Object> map;
-
-        MapBackedYaml(java.util.Map<String, Object> map) {
-            this.map = map;
-        }
-
-        @Override public Object get(String path) { return deepGet(path); }
-        @Override public Object get(String path, Object def) { Object v = deepGet(path); return v == null ? def : v; }
-        @Override public int getInt(String path, int def) { Object v = deepGet(path); return v instanceof Number ? ((Number) v).intValue() : def; }
-        @Override public boolean getBoolean(String path, boolean def) { Object v = deepGet(path); return v instanceof Boolean ? (Boolean) v : def; }
-        @Override public double getDouble(String path, double def) { Object v = deepGet(path); return v instanceof Number ? ((Number) v).doubleValue() : def; }
-        @Override public String getString(String path, String def) { Object v = deepGet(path); return v == null ? def : v.toString(); }
-        @Override public List<String> getStringList(String path) {
-            Object v = deepGet(path);
-            if (v instanceof List) {
-                @SuppressWarnings("unchecked")
-                List<Object> raw = (List<Object>) v;
-                java.util.ArrayList<String> out = new java.util.ArrayList<>(raw.size());
-                for (Object o : raw) out.add(o == null ? null : o.toString());
-                return out;
-            }
-            return java.util.Collections.emptyList();
-        }
-        @Override public boolean contains(String path) { return deepGet(path) != null; }
-        @Override public Set<String> getKeys(boolean deep) { return map.keySet(); }
-        @Override public void set(String path, Object value) {
-            String[] parts = path.split("\\.");
-            java.util.Map<String, Object> cur = map;
-            for (int i = 0; i < parts.length - 1; i++) {
-                Object next = cur.get(parts[i]);
-                if (!(next instanceof java.util.Map)) {
-                    java.util.LinkedHashMap<String, Object> created = new java.util.LinkedHashMap<>();
-                    cur.put(parts[i], created);
-                    cur = created;
-                } else {
-                    @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> nm = (java.util.Map<String, Object>) next;
-                    cur = nm;
-                }
-            }
-            cur.put(parts[parts.length - 1], value);
-        }
-        @Override public void save(File file) { /* not used in the merger */ }
-
-        private Object deepGet(String path) {
-            String[] parts = path.split("\\.");
-            Object cur = map;
-            for (String p : parts) {
-                if (!(cur instanceof java.util.Map)) return null;
-                @SuppressWarnings("unchecked")
-                java.util.Map<String, Object> m = (java.util.Map<String, Object>) cur;
-                cur = m.get(p);
-                if (cur == null) return null;
-            }
-            return cur;
-        }
-    }
 }

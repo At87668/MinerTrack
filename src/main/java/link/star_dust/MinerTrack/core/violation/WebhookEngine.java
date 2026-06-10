@@ -96,6 +96,7 @@ public final class WebhookEngine {
             // the escape-for-JSON work to the sender: the engine owns
             // JSON correctness, the sender owns transport.
             String customPayload = substitute(custom.getFormat(), placeholders, true);
+            customPayload = ensureWebhookEnvelope(customPayload);
             sender.sendAsync(config.getUrl(), customPayload);
             return;
         }
@@ -204,33 +205,29 @@ public final class WebhookEngine {
      * their config instead of getting silent blanks.
      *
      * <p>When {@code escapeForJson} is {@code true}, every replaced
-     * value is JSON-escaped. The result is dropped into the template
-     * <em>without</em> added quotes, but the operator is expected to
-     * write the placeholder <em>inside</em> an existing JSON string
-     * literal:
+     * value is JSON-escaped (contents of a JSON string — quotes,
+     * backslashes, control characters) but the template's surrounding
+     * characters are kept verbatim. This matches the v1 behaviour
+     * where the engine ran a plain {@code String.replace("%key%", value)}
+     * — the operator writes the placeholder in exactly the position
+     * where the value should land, including any surrounding quotes:
      * <pre>
      *   "name": "%player%"     ->  "name": "Steve"
-     *   "x":    %pos_x%        ->  "x": "100"   (Discord accepts the
-     *                                            string form, the
-     *                                            original `100` had
-     *                                            no quotes and would
-     *                                            have produced a 400
-     *                                            because
-     *                                            {@code minecraft:overworld}
-     *                                            was emitted unquoted)
+     *   "x":    %pos_x%        ->  "x": 100
+     *   "world": %world%       ->  "world": minecraft:overworld
      * </pre>
-     * To handle both styles — value-in-quotes and bare-value — the
-     * placeholder substitution <em>always</em> emits a JSON string
-     * literal regardless of what surrounds it in the template. If the
-     * template already supplied a pair of double quotes around the
-     * placeholder ({@code "%player%"}), we strip them on the way
-     * through, so the final wire body is well-formed JSON in every
-     * case:
-     * <pre>
-     *   "name": "%player%"     template  ->  "name": "Steve"
-     *   "x":    %pos_x%        template  ->  "x":    "100"
-     * </pre>
-     * Use {@code false} for the standard embed path, where the
+     * The third case (bare value with no surrounding quotes) only
+     * produces a valid JSON token when the value is purely numeric or
+     * boolean; for string values it produces malformed JSON. The
+     * custom-json path therefore runs the rendered body through
+     * {@link #ensureWebhookEnvelope(String)} after substitution, which
+     * detects the missing {@code embeds}/{@code content} situation
+     * and wraps the body into a single-embed envelope. The v1 default
+     * template shipped in this repo is intentionally a {@code content}-
+     * only body, so it round-trips through this code path without
+     * modification.
+     *
+     * <p>Use {@code false} for the standard embed path, where the
      * value is later wrapped in our own JSON string and escaped by
      * {@link #escapeJson(String)} — the placeholder replacement here
      * must not add a second pair of quotes and must not strip
@@ -251,32 +248,7 @@ public final class WebhookEngine {
                     String key = template.substring(i + 1, end);
                     String value = placeholders.get(key);
                     if (value != null) {
-                        if (escapeForJson) {
-                            // Peek at the character immediately before
-                            // the `%` and the character immediately
-                            // after the closing `%`. If the template
-                            // already wrapped the placeholder in a
-                            // pair of double quotes (the convention in
-                            // the default config.yml), strip those
-                            // surrounding quotes so we don't emit
-                            // double-quoted output. Otherwise leave
-                            // the template characters alone.
-                            boolean leftIsQuote = i > 0 && out.length() > 0
-                                && out.charAt(out.length() - 1) == '"';
-                            boolean rightIsQuote = end + 1 < n
-                                && template.charAt(end + 1) == '"';
-                            if (leftIsQuote) {
-                                out.setLength(out.length() - 1);
-                            }
-                            out.append('"').append(escapeJsonStringContent(value)).append('"');
-                            if (rightIsQuote) {
-                                // skip the template's closing quote
-                                i = end + 2;
-                                continue;
-                            }
-                        } else {
-                            out.append(value);
-                        }
+                        out.append(escapeForJson ? escapeJsonStringContent(value) : value);
                         i = end + 1;
                         continue;
                     }
@@ -374,5 +346,181 @@ public final class WebhookEngine {
      */
     public String renderCustomJson(String jsonFormat, Map<String, String> placeholders) {
         return substitute(jsonFormat, placeholders);
+    }
+
+    /**
+     * Discord rejects webhook payloads that contain neither
+     * {@code embeds} (with at least one entry) nor a non-empty
+     * {@code content} string — the response is HTTP 400
+     * {@code {"code": 50006, "message": "Cannot send an empty message"}}.
+     *
+     * <p>v1 shipped a default {@code custom-json} template whose top
+     * level was a bare {@code { "title": ..., "data": {...} }} object.
+     * Operators who flipped {@code custom-json.enable} to {@code true}
+     * (the default config has it disabled) would send that bare object
+     * to Discord and hit the 50006 error. v2 keeps the same template
+     * shape, so without a defensive wrapper here every operator who
+     * edits their config to enable custom-json would reproduce the
+     * same bug.
+     *
+     * <p>This helper does a lightweight scan of the rendered payload
+     * to detect that case. The scan is intentionally cheap (no JSON
+     * parser, just a brace/bracket-aware walk that tracks string
+     * literals) so it can run on every webhook send without a real
+     * performance cost. When the scan finds a body with neither an
+     * {@code embeds} key nor a {@code content} key, the body is
+     * wrapped into a single-element {@code embeds} array whose only
+     * embed carries the original body verbatim as its
+     * {@code description}. Discord renders a raw JSON object inside
+     * an embed description as a code block, which is the same visual
+     * outcome the operator's template was reaching for.
+     *
+     * <p>When the body already satisfies Discord's "non-empty" rule
+     * (has either {@code embeds} or {@code content}), the original
+     * payload is returned unchanged — the wrapper is only there for
+     * forward/backward compatibility with templates that pre-date
+     * the {@code embeds} requirement.
+     */
+    static String ensureWebhookEnvelope(String payload) {
+        if (payload == null || payload.isEmpty()) {
+            // No template at all — emit a minimal valid payload so
+            // the operator sees a webhook in Discord (and so Discord
+            // has something non-empty to reject if it wants to).
+            return "{\"embeds\":[{\"description\":\"(empty webhook)\"}]}";
+        }
+        if (hasTopLevelKey(payload, "embeds") || hasTopLevelKey(payload, "content")) {
+            return payload;
+        }
+        // Wrap the entire body as the description of a single embed.
+        // The body is already a (rendered) JSON object, so we treat it
+        // as opaque and stuff it inside escapeJson() to make sure the
+        // surrounding embed stays well-formed no matter what the
+        // body contains.
+        return "{\"embeds\":[{\"description\":"
+                + escapeJson(payload)
+                + "}]}";
+    }
+
+    /**
+     * Brace/bracket-aware top-level key scan. Returns {@code true} if
+     * the JSON object at the root of {@code payload} contains a key
+     * named {@code key}. Tolerant of leading whitespace; ignores
+     * anything after the root object's closing brace (e.g. an
+     * accidentally-appended newline or null byte).
+     *
+     * <p>This is deliberately not a real JSON parser. A real parser
+     * would pull in another library and slow every webhook send by
+     * several hundred microseconds; the custom-json template is
+     * operator-controlled and short, so a single-pass scan that
+     * correctly handles string literals (and the {@code \"} escape
+     * inside them) is more than enough to decide which branch to
+     * take.
+     */
+    private static boolean hasTopLevelKey(String payload, String key) {
+        int n = payload.length();
+        int i = 0;
+        // Skip leading whitespace.
+        while (i < n && Character.isWhitespace(payload.charAt(i))) i++;
+        if (i >= n || payload.charAt(i) != '{') return false;
+        i++; // consume '{'
+        int depth = 1;
+        boolean inString = false;
+        boolean escape = false;
+        while (i < n && depth > 0) {
+            char c = payload.charAt(i);
+            if (inString) {
+                if (escape) { escape = false; }
+                else if (c == '\\') { escape = true; }
+                else if (c == '"') { inString = false; }
+                i++;
+                continue;
+            }
+            if (c == '"') {
+                // Read the key as a string literal.
+                int keyStart = ++i;
+                while (i < n) {
+                    char kc = payload.charAt(i);
+                    if (kc == '\\' && i + 1 < n) { i += 2; continue; }
+                    if (kc == '"') break;
+                    i++;
+                }
+                if (i >= n) return false;
+                String actualKey = payload.substring(keyStart, i);
+                i++; // consume closing '"'
+                // Skip whitespace and ':'.
+                while (i < n && Character.isWhitespace(payload.charAt(i))) i++;
+                if (i >= n || payload.charAt(i) != ':') return false;
+                i++;
+                if (actualKey.equals(key)) {
+                    // Confirm this is a top-level key (not nested).
+                    return depth == 1;
+                }
+                // Otherwise skip over the value: an object recurses
+                // by depth++, an array stays at depth but we still
+                // need to track brackets, a string literal is one
+                // blob, anything else is one token.
+                i = skipValue(payload, i);
+                continue;
+            }
+            if (c == '{') depth++;
+            else if (c == '}') depth--;
+            i++;
+        }
+        return false;
+    }
+
+    /**
+     * Starting just after the {@code :} that ended a key, skip over
+     * the value associated with that key. Returns the index of the
+     * first character after the value (i.e. the position from which
+     * the next top-level token would resume). Handles nested
+     * objects, arrays, and string literals; any other scalar value
+     * is treated as a single token terminated by {@code ,}, {@code ]}
+     * or {@code }} at the current depth.
+     */
+    private static int skipValue(String payload, int i) {
+        int n = payload.length();
+        while (i < n && Character.isWhitespace(payload.charAt(i))) i++;
+        if (i >= n) return i;
+        char c = payload.charAt(i);
+        if (c == '"') {
+            i++;
+            while (i < n) {
+                char vc = payload.charAt(i);
+                if (vc == '\\' && i + 1 < n) { i += 2; continue; }
+                if (vc == '"') { i++; break; }
+                i++;
+            }
+            return i;
+        }
+        if (c == '{' || c == '[') {
+            char open = c, close = c == '{' ? '}' : ']';
+            int depth = 1;
+            boolean inStr = false;
+            boolean esc = false;
+            i++;
+            while (i < n && depth > 0) {
+                char vc = payload.charAt(i);
+                if (inStr) {
+                    if (esc) esc = false;
+                    else if (vc == '\\') esc = true;
+                    else if (vc == '"') inStr = false;
+                    i++;
+                    continue;
+                }
+                if (vc == '"') { inStr = true; i++; continue; }
+                if (vc == open) depth++;
+                else if (vc == close) depth--;
+                i++;
+            }
+            return i;
+        }
+        // Scalar: read up to the next , ] } at depth 0.
+        while (i < n) {
+            char vc = payload.charAt(i);
+            if (vc == ',' || vc == '}' || vc == ']') return i;
+            i++;
+        }
+        return i;
     }
 }

@@ -54,4 +54,35 @@ public interface CommonYaml {
 
     /** Persist to the given file. */
     void save(File file);
+
+    /**
+     * Return a {@link CommonYaml} that represents the nested
+     * section at {@code path} and whose {@link #set(String, Object)}
+     * / {@link #getKeys(boolean)} / {@link #get(String)} calls
+     * mutate the parent in place. This mirrors the v1 legacy
+     * {@code ConfigManager.mergeConfigurations} pattern, which
+     * recursed directly on the platform's
+     * {@code ConfigurationSection} so that {@code set} for missing
+     * keys landed in the live section the runtime reads from.
+     *
+     * <p>The default implementation returns a flat Map view, which
+     * is fine for read-only inspection but breaks the v1 save
+     * round-trip on platforms whose YAML serializer (SnakeYAML
+     * for Bukkit) silently flips scalar values into Maps when
+     * the in-memory tree is a mix of {@code ConfigurationSection}
+     * and bare {@code Map}. Platform implementations that
+     * preserve section identity on assignment (Bukkit,
+     * Paper) override this to return a wrapper around the live
+     * nested section.
+     *
+     * <p>Returns {@code null} when {@code path} does not point at
+     * a section in this config.
+     */
+    default CommonYaml getChild(String path) {
+        Object v = get(path);
+        if (v instanceof java.util.Map) {
+            return new MapBackedYaml((java.util.Map<String, Object>) v);
+        }
+        return null;
+    }
 }

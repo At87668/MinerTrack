@@ -59,11 +59,22 @@ public final class WebhookConfig {
         }
 
         Object root = main.get(ROOT);
-        if (!(root instanceof Map)) {
+        // The v2 design returns either a `Map` (Map-backed
+        // configs) or a Bukkit `ConfigurationSection` (the
+        // live delegate the v1-style in-place merger
+        // produced). Normalise both to a
+        // `Map<String, Object>` view: ConfigurationSection's
+        // `getValues(false)` returns a Map, which is what
+        // the rest of this builder expects.
+        Map<String, Object> section;
+        if (root instanceof Map) {
+            section = (Map<String, Object>) root;
+        } else if (root instanceof org.bukkit.configuration.ConfigurationSection) {
+            section = ((org.bukkit.configuration.ConfigurationSection) root).getValues(false);
+        } else {
             return new WebhookConfig(false, "", Integer.MAX_VALUE,
                     Embed.defaults(), CustomJson.disabled());
         }
-        Map<String, Object> section = (Map<String, Object>) root;
 
         boolean enabled = readBoolean(section, "enable", false);
         String url = readString(section, "WebHookURL", "");
@@ -73,10 +84,31 @@ public final class WebhookConfig {
                 readInt(section, "vlRequired",
                 readInt(section, "vl_required", Integer.MAX_VALUE)));
 
-        Embed embed = Embed.fromSection((Map<String, Object>) section.get("vl-add-message"));
-        CustomJson customJson = CustomJson.fromSection((Map<String, Object>) section.get("custom-json"));
+        // The nested `vl-add-message` and `custom-json`
+        // sections may also be Map-backed or
+        // ConfigurationSection-backed. Resolve them with
+        // the same normaliser.
+        Embed embed = Embed.fromSection(normaliseSection(section.get("vl-add-message")));
+        CustomJson customJson = CustomJson.fromSection(normaliseSection(section.get("custom-json")));
 
         return new WebhookConfig(enabled, url, vlRequired, embed, customJson);
+    }
+
+    /**
+     * Coerce a possibly-`ConfigurationSection` value into a
+     * `Map<String, Object>` for the typed `readBoolean` /
+     * `readInt` / `readString` accessors below. Returns an
+     * empty map for null / unknown shapes so the read
+     * helpers fall through to their default values.
+     */
+    private static Map<String, Object> normaliseSection(Object raw) {
+        if (raw instanceof Map) {
+            return (Map<String, Object>) raw;
+        }
+        if (raw instanceof org.bukkit.configuration.ConfigurationSection) {
+            return ((org.bukkit.configuration.ConfigurationSection) raw).getValues(false);
+        }
+        return java.util.Collections.emptyMap();
     }
 
     public boolean isEnabled() {

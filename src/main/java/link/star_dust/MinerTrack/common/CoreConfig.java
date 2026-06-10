@@ -94,25 +94,39 @@ public class CoreConfig {
         // check is correct.
         if (mainConfig != null) {
             Object worldsSection = mainConfig.get("xray.worlds");
+            // The v2 design uses a platform-neutral `CommonYaml`
+            // wrapper that on the Bukkit path returns a live
+            // `ConfigurationSection` (or, on Map-backed configs,
+            // a plain `Map`). Both are iterable as key→value
+            // pairs: ConfigurationSection via `getKeys(false)`
+            // and `get(key)`, Map via `entrySet()`. We
+            // normalise both to the same loop by walking
+            // `getKeys(false)` and calling `get(key)` for the
+            // value.
+            java.util.Set<String> worldKeys;
             if (worldsSection instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> worlds = (Map<String, Object>) worldsSection;
-                for (Map.Entry<String, Object> entry : worlds.entrySet()) {
-                    String fileKey = entry.getKey();
-                    Object v = entry.getValue();
-                    if (v instanceof List) {
-                        @SuppressWarnings("unchecked")
-                        List<Object> list = (List<Object>) v;
-                        String k = fileKey;
-                        if (k.toLowerCase().endsWith(".yml")) k = k.substring(0, k.length() - 4);
-                        for (Object wo : list) {
-                            if (wo == null) continue;
-                            String w = wo.toString();
-                            if (w.equalsIgnoreCase("all_unnamed_world")) {
-                                // handled below
-                            } else if (w.equals(worldName) || w.equals(normalisedName)) {
-                                if (groupConfigs.containsKey(k)) return groupConfigs.get(k);
-                            }
+                worldKeys = ((Map<String, Object>) worldsSection).keySet();
+            } else if (worldsSection instanceof org.bukkit.configuration.ConfigurationSection) {
+                worldKeys = ((org.bukkit.configuration.ConfigurationSection) worldsSection).getKeys(false);
+            } else {
+                worldKeys = java.util.Collections.emptySet();
+            }
+            for (String fileKey : worldKeys) {
+                Object v = (worldsSection instanceof Map)
+                        ? ((Map<String, Object>) worldsSection).get(fileKey)
+                        : ((org.bukkit.configuration.ConfigurationSection) worldsSection).get(fileKey);
+                if (v instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> list = (List<Object>) v;
+                    String k = fileKey;
+                    if (k.toLowerCase().endsWith(".yml")) k = k.substring(0, k.length() - 4);
+                    for (Object wo : list) {
+                        if (wo == null) continue;
+                        String w = wo.toString();
+                        if (w.equalsIgnoreCase("all_unnamed_world")) {
+                            // handled below
+                        } else if (w.equals(worldName) || w.equals(normalisedName)) {
+                            if (groupConfigs.containsKey(k)) return groupConfigs.get(k);
                         }
                     }
                 }
