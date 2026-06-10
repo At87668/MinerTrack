@@ -34,9 +34,34 @@ public class MiningListener implements Listener {
         if (e.isCancelled()) return;
         Player player = e.getPlayer();
         UUID playerId = player.getUniqueId();
-        // Resolve to canonical minecraft:xxx dimension id (minecraft:overworld
-        // / minecraft:the_nether / minecraft:the_end) for the core layer.
-        // The folder name is preserved on the location for log output.
+        // World identity: translate the Bukkit folder name to the
+        // canonical Minecraft dimension id (`minecraft:overworld`,
+        // `minecraft:the_nether`, `minecraft:the_end`, or
+        // `minecraft:<folder>` for non-vanilla worlds) using the
+        // layered rules in
+        // `BukkitDetectionBridge.resolveDimensionId`. The
+        // dimension id is what the core layer keys all of its
+        // data structures on (placedBlocks, brokenAir, path
+        // history, vein clusters) and what the
+        // `xray.worlds` config mapping uses. Storing the
+        // dimension id here means:
+        //   1. Debug logs and the "World:" field of the X-Ray
+        //      log show the canonical id the operator expects
+        //      (`minecraft:overworld`, not `world2`).
+        //   2. `CoreConfig.getGroupConfigForWorld` does a
+        //      single `Map.get` against the same keys the
+        //      `xray.worlds` mapping built at startup — no
+        //      per-call normalisation, no accidental misses.
+        //   3. On a multi-NORMAL-world server (e.g. a
+        //      `level-name=world2` main world plus a Multiverse
+        //      `flatland`), the two worlds map to DIFFERENT
+        //      canonical ids (`minecraft:overworld` vs
+        //      `minecraft:flatland`) because the layered rule
+        //      namespaces non-level-name NORMAL worlds. Their
+        //      `placedBlocks` entries are therefore keyed
+        //      differently and never cross-pollinate, even
+        //      though they live in the same `Map<CommonLocation,
+        //      Long>`.
         String worldFolder = e.getBlock().getWorld().getName();
         String dimensionId = bridge.resolveDimensionId(worldFolder);
 
@@ -56,6 +81,13 @@ public class MiningListener implements Listener {
         if (e.isCancelled()) return;
         Player player = e.getPlayer();
         UUID playerId = player.getUniqueId();
+        // World identity: must match the key used in
+        // `onBlockBreak` exactly. Both call sites resolve
+        // the folder name through
+        // `BukkitDetectionBridge.resolveDimensionId` so the
+        // `trackPlacedBlock` map and the `onBlockBreak`
+        // `isPlayerPlacedBlock` lookup see the same key for
+        // the same physical block.
         String worldFolder = e.getBlock().getWorld().getName();
         String dimensionId = bridge.resolveDimensionId(worldFolder);
 
@@ -65,14 +97,6 @@ public class MiningListener implements Listener {
                 .bukkitToMinecraft(e.getBlock().getType().name());
         var rareOres = miningCore.getState().getRareOres(dimensionId);
         if (rareOres.contains(blockType)) {
-            // The CommonLocation's `world` field must be the same
-            // dimension key the MiningCore uses (`dimensionId`),
-            // not the raw folder name, otherwise the placed-block
-            // lookup in `isPlayerPlacedBlock` (which is keyed by
-            // the `dimensionId` set in `onBlockBreak`) would never
-            // match — every player-placed ore would be ignored and
-            // the xray.bypass-placed-ores behaviour would silently
-            // stop working for any custom-named world.
             CommonLocation loc = new CommonLocation(dimensionId, e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
             bukkitBridge.trackPlacedBlock(playerId, loc);
         }

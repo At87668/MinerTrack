@@ -37,4 +37,27 @@ public interface ViolationManagerBridge {
     int getConfigInt(String path, int def);
     boolean getConfigBoolean(String path, boolean def);
     double getConfigDouble(String path, double def);
+
+    /**
+     * Translate the world identifier stored on {@code CommonLocation}
+     * into the display string used in the on-screen
+     * {@code World: %world%} field of the X-Ray log and the
+     * webhook payload. The core layer keys everything by a
+     * platform-internal world id (a Bukkit folder name on the
+     * Bukkit path) — this method gives the platform a chance to
+     * expose a more user-friendly id (a vanilla canonical id
+     * like {@code minecraft:overworld}, or a namespaced
+     * {@code minecraft:<folder>} for non-vanilla worlds) for log
+     * output.
+     *
+     * <p>The default implementation returns {@code worldKey}
+     * unchanged, which is the right behaviour for platforms
+     * (Fabric) where the world identifier IS already the
+     * canonical id. The Bukkit platform overrides this to apply
+     * the layered fallback rules from
+     * {@code BukkitDetectionBridge.getDisplayDimensionId}.
+     */
+    default String getDisplayWorldName(String worldKey) {
+        return worldKey;
+    }
 }

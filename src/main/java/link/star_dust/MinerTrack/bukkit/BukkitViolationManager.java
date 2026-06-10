@@ -248,6 +248,34 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     }
 
     @Override
+    public String getDisplayWorldName(String worldKey) {
+        // The world key is already a canonical Minecraft
+        // dimension id at this point (the Bukkit listener
+        // resolves folder names through
+        // `BukkitDetectionBridge.resolveDimensionId` BEFORE
+        // they reach the core layer). We forward to the
+        // detection bridge anyway for the rare case where a
+        // platform-level transformation is wanted (e.g. a
+        // localised display name); the current Bukkit
+        // implementation is idempotent — it returns the
+        // canonical id unchanged.
+        //
+        // Static `BukkitDetectionBridge.getActive()` handle
+        // rather than constructor injection to avoid a
+        // chicken-and-egg ordering issue: this class is
+        // constructed BEFORE the detection bridge in
+        // `BukkitPlatform.onEnable`, and we want the
+        // `getActive` lookup to happen lazily on the first VL
+        // increase, when the bridge has already registered
+        // itself.
+        BukkitDetectionBridge bridge = BukkitDetectionBridge.getActive();
+        if (bridge == null) {
+            return worldKey;
+        }
+        return bridge.getDisplayDimensionId(worldKey);
+    }
+
+    @Override
     public String getPrefixedMessage(String key) {
         // v2 stores every user-visible string under its top-level
         // `language.yml` key (e.g. `verbose-format`, `kick-format`,

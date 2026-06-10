@@ -92,7 +92,19 @@ public class ViolationEngine {
 
             // Build verbose message
             String verboseFormat = bridge.getPrefixedMessage("verbose-format");
-            String worldName = (location != null) ? location.world : "unknown";
+            // `location.world` is the canonical Minecraft
+            // dimension id (`minecraft:overworld`,
+            // `minecraft:the_nether`, `minecraft:the_end`, or
+            // `minecraft:<folder>` for non-vanilla worlds),
+            // resolved from the Bukkit folder name at the
+            // listener boundary. The platform's
+            // `getDisplayWorldName` indirection is preserved
+            // for future platforms that might want a different
+            // display format (e.g. a localised name), but on
+            // the current Bukkit path it returns the canonical
+            // id unchanged.
+            String worldKey = (location != null) ? location.world : "unknown";
+            String worldName = bridge.getDisplayWorldName(worldKey);
             String formattedMessage = verboseFormat
                 .replace("%player%", playerName)
                 .replace("%vl%", String.valueOf(newLevel))
