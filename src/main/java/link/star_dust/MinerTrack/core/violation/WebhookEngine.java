@@ -204,20 +204,37 @@ public final class WebhookEngine {
      * their config instead of getting silent blanks.
      *
      * <p>When {@code escapeForJson} is {@code true}, every replaced
-     * value is run through {@link #escapeJsonStringContent(String)} so
-     * the resulting payload is still valid JSON no matter what
-     * characters the player name / world name / ore type / coordinates
-     * contain. Use {@code false} for the standard embed path, where
-     * the value is later wrapped in our own JSON string and escaped
-     * by {@link #escapeJson(String)}.
-     *
-     * <p>Escaping only <em>contents</em> (no surrounding quotes) lets
-     * the placeholder be dropped into either a string context
-     * ({@code "%player%"}) or a bare value context ({@code %pos_x%}).
-     * In both cases the substituted result is valid JSON: the string
-     * context already supplies the surrounding quotes and the bare
-     * context ends up as a JSON string (which Discord accepts wherever
-     * a number was originally declared).
+     * value is JSON-escaped. The result is dropped into the template
+     * <em>without</em> added quotes, but the operator is expected to
+     * write the placeholder <em>inside</em> an existing JSON string
+     * literal:
+     * <pre>
+     *   "name": "%player%"     ->  "name": "Steve"
+     *   "x":    %pos_x%        ->  "x": "100"   (Discord accepts the
+     *                                            string form, the
+     *                                            original `100` had
+     *                                            no quotes and would
+     *                                            have produced a 400
+     *                                            because
+     *                                            {@code minecraft:overworld}
+     *                                            was emitted unquoted)
+     * </pre>
+     * To handle both styles — value-in-quotes and bare-value — the
+     * placeholder substitution <em>always</em> emits a JSON string
+     * literal regardless of what surrounds it in the template. If the
+     * template already supplied a pair of double quotes around the
+     * placeholder ({@code "%player%"}), we strip them on the way
+     * through, so the final wire body is well-formed JSON in every
+     * case:
+     * <pre>
+     *   "name": "%player%"     template  ->  "name": "Steve"
+     *   "x":    %pos_x%        template  ->  "x":    "100"
+     * </pre>
+     * Use {@code false} for the standard embed path, where the
+     * value is later wrapped in our own JSON string and escaped by
+     * {@link #escapeJson(String)} — the placeholder replacement here
+     * must not add a second pair of quotes and must not strip
+     * anything.
      */
     static String substitute(String template, Map<String, String> placeholders, boolean escapeForJson) {
         if (template == null || template.isEmpty() || placeholders == null || placeholders.isEmpty()) {
@@ -234,7 +251,32 @@ public final class WebhookEngine {
                     String key = template.substring(i + 1, end);
                     String value = placeholders.get(key);
                     if (value != null) {
-                        out.append(escapeForJson ? escapeJsonStringContent(value) : value);
+                        if (escapeForJson) {
+                            // Peek at the character immediately before
+                            // the `%` and the character immediately
+                            // after the closing `%`. If the template
+                            // already wrapped the placeholder in a
+                            // pair of double quotes (the convention in
+                            // the default config.yml), strip those
+                            // surrounding quotes so we don't emit
+                            // double-quoted output. Otherwise leave
+                            // the template characters alone.
+                            boolean leftIsQuote = i > 0 && out.length() > 0
+                                && out.charAt(out.length() - 1) == '"';
+                            boolean rightIsQuote = end + 1 < n
+                                && template.charAt(end + 1) == '"';
+                            if (leftIsQuote) {
+                                out.setLength(out.length() - 1);
+                            }
+                            out.append('"').append(escapeJsonStringContent(value)).append('"');
+                            if (rightIsQuote) {
+                                // skip the template's closing quote
+                                i = end + 2;
+                                continue;
+                            }
+                        } else {
+                            out.append(value);
+                        }
                         i = end + 1;
                         continue;
                     }

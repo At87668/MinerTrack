@@ -70,6 +70,26 @@ public class BukkitPlatform extends JavaPlugin {
         // output at startup.
         detectionBridge.loadGroupConfigs();
 
+        // Seed the runtime dimension-id ↔ Bukkit-world registry with
+        // every world that's already loaded. WorldLoadEvent only
+        // fires for worlds that load AFTER the listener is
+        // registered, so without this seed the
+        // `level-name=world2` case (and any other world whose
+        // folder is already on disk at enable time) would never
+        // end up in the registry and resolveWorld() would fall
+        // through to the environment-based fallback that picks
+        // the FIRST matching world in Bukkit.getWorlds() — which
+        // is wrong on multi-world servers.
+        detectionBridge.seedWorldRegistry();
+
+        // Register the world-load / world-unload listener so the
+        // registry stays in sync with worlds that come and go
+        // during the server's lifetime (e.g. dungeon plugins
+        // that create new worlds on first player entry, or
+        // server operators that /mv load a world after startup).
+        getServer().getPluginManager().registerEvents(
+            new WorldRegistryListener(detectionBridge), this);
+
         // Core mining detection orchestrator
         miningCore = new MiningCore(detectionBridge, violationManager);
 
