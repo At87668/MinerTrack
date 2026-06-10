@@ -53,6 +53,20 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     private BukkitTask decayTask;
     private String currentLogFileName;
     private final Map<UUID, BukkitTask> playerDecayTasks = new ConcurrentHashMap<>();
+    // Tracks the in-flight `resetViolation` round-trip: the
+    // engine calls back into the bridge to notify it of a
+    // reset, the bridge forwards to the engine to actually
+    // clear state, the engine notifies the bridge again —
+    // and the second notification must be a no-op or the JVM
+    // stack overflows (see the user-reported
+    // StackOverflowError from `/mt reset <player>`). Adding
+    // the player UUID to this set before the engine call, and
+    // checking it at entry to the bridge method, breaks the
+    // cycle. A `Set` (not a `boolean`) is used because the
+    // command path can call `resetViolation` for many players
+    // in quick succession, and a single shared flag would
+    // mis-classify concurrent unrelated resets.
+    private final Set<UUID> resetViolationRecursionGuard = Collections.synchronizedSet(new HashSet<>());
 
     public BukkitViolationManager(PluginAdapter adapter) {
         this.adapter = adapter;
@@ -446,14 +460,45 @@ public class BukkitViolationManager implements ViolationManagerBridge {
 
     @Override
     public void resetViolation(UUID playerId) {
-        engine.resetViolation(playerId);
+        // The VL state for a player lives entirely inside the
+        // `ViolationEngine` (violationLevels, vlChangedTimestamp,
+        // vlZeroTimestamp maps). The platform-specific bridge
+        // (`BukkitViolationManager`) doesn't keep its own copy
+        // of the VL counter, so on the Bukkit path the
+        // `resetViolation` notification from the engine is a
+        // no-op. We DO need to forward to the engine when the
+        // call originates from a command (`/mt reset <player>`)
+        // rather than from the engine itself, otherwise the
+        // VL state wouldn't be cleared. The guard set
+        // distinguishes the two cases: the engine adds the
+        // player UUID to the set before calling back into the
+        // bridge, so the second invocation (from the engine's
+        // own call chain) sees the player already in the set
+        // and skips the forward to avoid a stack overflow.
+        if (resetViolationRecursionGuard.add(playerId)) {
+            return;
+        }
+        try {
+            engine.resetViolation(playerId);
+        } finally {
+            resetViolationRecursionGuard.remove(playerId);
+        }
     }
 
     @Override
     public void clearPlayerState(UUID playerId) {
+        // Bukkit-specific extras: cancel any scheduled per-
+        // player decay task, and forget the player from the
+        // verbose-listener set. The VL state itself is
+        // cleared via `engine.resetViolation` — and to
+        // avoid the same StackOverflowError that bit
+        // `resetViolation`, the per-player bookkeeping
+        // above is done BEFORE the engine call rather than
+        // after, so the bridge→engine→bridge round trip
+        // has no chance of re-entering this method.
         cancelVLDecayTask(playerId);
         verbosePlayers.remove(playerId);
-        engine.resetViolation(playerId);
+        resetViolation(playerId);
     }
 
     @Override
