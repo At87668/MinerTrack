@@ -43,6 +43,30 @@ public interface DetectionBridge {
     void trackBrokenAir(UUID playerId, CommonLocation location);
     void clearPlayerTracking(UUID playerId);
 
+    /**
+     * Drop ALL mining-path state the detection engine holds for
+     * {@code playerId}: the per-world path list, the parallel
+     * air-exposure list, the {@code lastMiningTime} / vein-count /
+     * last-vein-location / cluster / type maps and the
+     * {@code vlZeroTimestamp} map. Called from the platform's
+     * {@code /mt reset <player>} handler (via
+     * {@code ViolationManagerBridge.clearPlayerState}) so the
+     * admin reset also clears the path-based detection state,
+     * not just the violation counter — otherwise a player with
+     * a long accumulated path can keep ticking up VL on the
+     * next ore break even though the counter was just zeroed.
+     *
+     * <p>The default implementation is a no-op so platforms
+     * without a path-tracking engine (e.g. a pure-vl Fabric
+     * build) keep compiling; the Bukkit implementation in
+     * {@code BukkitDetectionBridge} forwards to the
+     * {@code MiningState.clearPlayerPath} helper.
+     */
+    default void clearPlayerPath(UUID playerId) {
+        // No-op default; override in platform-specific bridges
+        // that own a MiningState / path-tracking structure.
+    }
+
     // Invalidate cached config so the next access re-reads from disk
     void clearConfigCache();
 

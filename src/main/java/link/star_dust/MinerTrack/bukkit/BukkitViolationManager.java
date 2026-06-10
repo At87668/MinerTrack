@@ -470,12 +470,31 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         // call originates from a command (`/mt reset <player>`)
         // rather than from the engine itself, otherwise the
         // VL state wouldn't be cleared. The guard set
-        // distinguishes the two cases: the engine adds the
-        // player UUID to the set before calling back into the
-        // bridge, so the second invocation (from the engine's
-        // own call chain) sees the player already in the set
-        // and skips the forward to avoid a stack overflow.
-        if (resetViolationRecursionGuard.add(playerId)) {
+        // distinguishes the two cases: the FIRST entry to this
+        // method (the command) marks the player in the set and
+        // proceeds to call the engine; the engine's subsequent
+        // call back into this bridge finds the player already
+        // in the set and returns immediately, breaking the
+        // cycle. A `Set` (not a `boolean`) is used because
+        // the command path can call `resetViolation` for many
+        // players in quick succession, and a single shared
+        // flag would mis-classify concurrent unrelated resets.
+        //
+        // `Set.add` returns `true` when the element was NOT
+        // already in the set (i.e. this is the first /
+        // outermost call), and `false` when the element WAS
+        // already there (i.e. the engine is recursing back into
+        // the bridge — short-circuit to break the cycle). The
+        // previous implementation inverted this check and
+        // dropped the early return, so the command path's
+        // first call would short-circuit and never reach
+        // `engine.resetViolation` — `/mt reset` would print
+        // success but leave the VL state intact, and on the
+        // NEXT call (after the engine had already cleaned up
+        // state) the command would short-circuit again,
+        // producing the StackOverflowError visible in the
+        // user-reported stack trace.
+        if (!resetViolationRecursionGuard.add(playerId)) {
             return;
         }
         try {
@@ -490,14 +509,32 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         // Bukkit-specific extras: cancel any scheduled per-
         // player decay task, and forget the player from the
         // verbose-listener set. The VL state itself is
-        // cleared via `engine.resetViolation` — and to
-        // avoid the same StackOverflowError that bit
-        // `resetViolation`, the per-player bookkeeping
-        // above is done BEFORE the engine call rather than
-        // after, so the bridge→engine→bridge round trip
-        // has no chance of re-entering this method.
+        // cleared via `resetViolation` (which guards the
+        // bridge↔engine round trip with the recursion set
+        // — see `resetViolation` for the full rationale).
+        //
+        // We ALSO drop the detection-engine state for the
+        // player (mining path, air-exposure list, vein cluster
+        // maps, last-vein-location, mined-vein-count and
+        // vlZeroTimestamp) by reaching the active
+        // `BukkitDetectionBridge` and calling
+        // `clearPlayerPath`. Without this an admin `reset`
+        // only zeroes the VL counter, but the next rare-ore
+        // break re-evaluates the (long, pre-existing) path
+        // list — the same `smoothPath` / `isNewVein` / vein-
+        // count decision the player just got reset for — and
+        // can push VL right back up. The bridge may be null
+        // in theory if a reset fires before
+        // `BukkitPlatform.onEnable` finishes wiring it up
+        // (which can't happen, the command executor isn't
+        // registered until enable completes), but we guard
+        // for it anyway.
         cancelVLDecayTask(playerId);
         verbosePlayers.remove(playerId);
+        BukkitDetectionBridge bridge = BukkitDetectionBridge.getActive();
+        if (bridge != null) {
+            bridge.clearPlayerPath(playerId);
+        }
         resetViolation(playerId);
     }
 

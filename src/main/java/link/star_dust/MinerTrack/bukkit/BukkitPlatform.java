@@ -92,6 +92,20 @@ public class BukkitPlatform extends JavaPlugin {
 
         // Core mining detection orchestrator
         miningCore = new MiningCore(detectionBridge, violationManager);
+        // Hand the MiningCore back-reference to the detection
+        // bridge so `BukkitDetectionBridge.clearPlayerPath` —
+        // invoked by `BukkitViolationManager.clearPlayerState`
+        // when the admin runs `/mt reset <player>` — can reach
+        // the `MiningState` and drop the per-player mining
+        // path, air-exposure, vein cluster, last-vein-location
+        // and vlZeroTimestamp maps. Without this wiring the
+        // bridge's `clearPlayerPath` would see a null
+        // `miningCore` and silently no-op, leaving the
+        // path-based detection state intact after a reset and
+        // allowing the very next rare-ore break to re-trip
+        // the smooth-path / vein-count checks against the
+        // long, pre-existing trail.
+        detectionBridge.setMiningCore(miningCore);
 
         // Webhook engine — built from the (already merged) main config
         // snapshot held by the violation manager. The platform-specific

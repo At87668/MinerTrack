@@ -33,11 +33,47 @@ public class BukkitDetectionBridge implements DetectionBridge {
     private final YamlLoader loader;
     private final Map<UUID, Map<CommonLocation, Long>> placedBlocks = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<UUID, Map<CommonLocation, Long>> brokenAir = new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * Back-reference to the {@code MiningCore} that was wired up
+     * in {@code BukkitPlatform#onEnable} via
+     * {@link #setMiningCore(link.star_dust.MinerTrack.core.detection.MiningCore)}.
+     * Stored here (rather than passed into individual methods)
+     * so the platform's {@code /mt reset} handler — which lands
+     * on {@code ViolationManagerBridge.clearPlayerState} and
+     * therefore has no direct {@code MiningCore} handle — can
+     * still reach the per-player mining-path state through
+     * {@link #clearPlayerPath(UUID)} and ask the engine to drop
+     * it. Volatile because the setter is called once on the
+     * platform's main thread at enable time and the read is
+     * from the (possibly async) reset handler.
+     */
+    private volatile link.star_dust.MinerTrack.core.detection.MiningCore miningCore;
 
     public BukkitDetectionBridge(PluginAdapter adapter, YamlLoader loader) {
         this.adapter = adapter;
         this.loader = loader;
         active = this;
+    }
+
+    /**
+     * Wire the {@code MiningCore} instance into the bridge.
+     * Called once from {@code BukkitPlatform#onEnable} right
+     * after both objects are constructed; subsequent calls are
+     * ignored (the field is set-once). The bridge needs this
+     * back-reference so {@link #clearPlayerPath(UUID)} — invoked
+     * by the platform's {@code /mt reset <player>} command
+     * path through {@code ViolationManagerBridge.clearPlayerState}
+     * — can ask the engine to drop the player's per-world
+     * mining-path list, the parallel air-exposure list, the
+     * vein cluster maps and the {@code vlZeroTimestamp}
+     * bookkeeping. Without this, resetting the VL counter via
+     * {@code /mt reset} leaves the path-based detection
+     * state intact, so the very next rare-ore break can re-
+     * trip the smooth-path / vein-count checks against a long,
+     * pre-existing trail and push VL right back up.
+     */
+    public void setMiningCore(link.star_dust.MinerTrack.core.detection.MiningCore miningCore) {
+        this.miningCore = miningCore;
     }
 
     /**
@@ -768,5 +804,45 @@ public class BukkitDetectionBridge implements DetectionBridge {
     public void clearPlayerTracking(UUID playerId) {
         placedBlocks.remove(playerId);
         brokenAir.remove(playerId);
+    }
+
+    /**
+     * Drop every piece of mining-detection state the engine
+     * holds for {@code playerId}. Forwards to
+     * {@code MiningState.clearPlayerPath}, which in turn wipes
+     * the per-world path list, the air-exposure list, the
+     * {@code lastMiningTime} / vein-count / last-vein-location
+     * / cluster / type maps and the {@code vlZeroTimestamp}
+     * entry — i.e. every map the {@code /mt reset <player>}
+     * command is conceptually expected to reset.
+     *
+     * <p>This is the Bukkit-side override of the default
+     * no-op declared on {@link DetectionBridge#clearPlayerPath}.
+     * The platform's reset handler reaches it via
+     * {@code ViolationManagerBridge.clearPlayerState} →
+     * {@code BukkitViolationManager.clearPlayerState} (which
+     * fetches the active {@code BukkitDetectionBridge} and
+     * calls this method). A null-check on
+     * {@link #miningCore} is required because the bridge is
+     * constructed (and registered as {@code active}) BEFORE
+     * {@code MiningCore} exists in
+     * {@code BukkitPlatform#onEnable}; if a reset arrived in
+     * that small window (it can't, because the command
+     * executor isn't registered until after enable completes)
+     * we'd silently no-op, which is the same behaviour as the
+     * default interface method.
+     */
+    @Override
+    public void clearPlayerPath(UUID playerId) {
+        link.star_dust.MinerTrack.core.detection.MiningCore mc = this.miningCore;
+        if (mc == null) {
+            // MiningCore hasn't been wired up yet (extremely
+            // unlikely at the moment a reset can fire, but
+            // guard for it). Fall through silently — the
+            // default no-op behaviour is the right fallback
+            // here.
+            return;
+        }
+        mc.getState().clearPlayerPath(playerId);
     }
 }
