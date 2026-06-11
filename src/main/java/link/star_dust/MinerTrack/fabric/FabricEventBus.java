@@ -40,9 +40,9 @@ final class FabricEventBus {
      */
     static void registerServerStarted(Consumer<Object> handler) {
         register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents",
-            "SERVER_STARTED", new Class<?>[]{
-                FabricReflection.forName("net.minecraft.server.MinecraftServer")
-            }, fromConsumer(handler));
+            "SERVER_STARTED",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents$ServerStarted",
+            fromConsumer(handler));
     }
 
     /**
@@ -52,10 +52,9 @@ final class FabricEventBus {
      */
     static void registerServerWorldLoad(java.util.function.Consumer<Object[]> handler) {
         register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents",
-            "LOAD", new Class<?>[]{
-                FabricReflection.forName("net.minecraft.server.MinecraftServer"),
-                FabricReflection.forName("net.minecraft.server.world.ServerWorld")
-            }, fromArrayConsumer(handler));
+            "LOAD",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents$Load",
+            fromArrayConsumer(handler));
     }
 
     /**
@@ -63,10 +62,9 @@ final class FabricEventBus {
      */
     static void registerServerWorldUnload(java.util.function.Consumer<Object[]> handler) {
         register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents",
-            "UNLOAD", new Class<?>[]{
-                FabricReflection.forName("net.minecraft.server.MinecraftServer"),
-                FabricReflection.forName("net.minecraft.server.world.ServerWorld")
-            }, fromArrayConsumer(handler));
+            "UNLOAD",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents$Unload",
+            fromArrayConsumer(handler));
     }
 
     /**
@@ -76,9 +74,9 @@ final class FabricEventBus {
      */
     static void registerEndServerTick(Consumer<Object> handler) {
         register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents",
-            "END_SERVER_TICK", new Class<?>[]{
-                FabricReflection.forName("net.minecraft.server.MinecraftServer")
-            }, fromConsumer(handler));
+            "END_SERVER_TICK",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents$EndServerTick",
+            fromConsumer(handler));
     }
 
     /**
@@ -88,13 +86,9 @@ final class FabricEventBus {
      * five-element array.
      */
     static void registerBlockBreakAfter(java.util.function.Consumer<Object[]> handler) {
-        Class<?> worldCls = FabricReflection.forName("net.minecraft.world.World");
-        Class<?> playerCls = FabricReflection.forName("net.minecraft.entity.player.PlayerEntity");
-        Class<?> posCls = FabricReflection.forName("net.minecraft.util.math.BlockPos");
-        Class<?> stateCls = FabricReflection.forName("net.minecraft.block.BlockState");
-        Class<?> beCls = FabricReflection.forName("net.minecraft.block.entity.BlockEntity");
         register("net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents",
-            "AFTER", new Class<?>[]{worldCls, playerCls, posCls, stateCls, beCls},
+            "AFTER",
+            "net.fabricmc.fabric.api.event.player.BlockBreakCallback",
             fromArrayConsumer(handler));
     }
 
@@ -108,12 +102,9 @@ final class FabricEventBus {
     static void registerUseBlock(UseBlockHandler handler) {
         Class<?> actionResultCls = FabricReflection.forName("net.minecraft.util.ActionResult");
         register("net.fabricmc.fabric.api.event.player.UseBlockCallback",
-            "EVENT", new Class<?>[]{
-                FabricReflection.forName("net.minecraft.entity.player.PlayerEntity"),
-                FabricReflection.forName("net.minecraft.world.World"),
-                FabricReflection.forName("net.minecraft.util.Hand"),
-                FabricReflection.forName("net.minecraft.util.hit.BlockHitResult")
-            }, args -> {
+            "EVENT",
+            "net.fabricmc.fabric.api.event.player.UseBlockCallback",
+            args -> {
                 boolean consumed = handler.handle(args[0], args[1], args[2], args[3]);
                 try {
                     Object pass = actionResultCls.getField("PASS").get(null);
@@ -132,35 +123,32 @@ final class FabricEventBus {
      */
     static void registerCommandRegistration(Consumer<Object> handler) {
         register("net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
-            "EVENT", new Class<?>[]{
-                FabricReflection.forName("com.mojang.brigadier.CommandDispatcher"),
-                // RegistryAccess — varies across 1.18-1.21
-                // (sometimes a class, sometimes an interface).
-                // We declare the param type as Object so the
-                // dispatcher's {@code register} accepts whatever
-                // shape the running server has.
-                Object.class,
-                // CommandEnvironment — Fabric command API v2
-                // (1.19+). For 1.18, this parameter is absent;
-                // we still declare it as Object so the proxy
-                // doesn't fail signature matching.
-                Object.class
-            }, fromConsumer(handler));
+            "EVENT",
+            "net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
+            fromConsumer(handler));
     }
 
     // ── Internals ───────────────────────────────────────────────────
 
     /**
      * Internal: register a single Fabric API event listener by
-     * reflection. The {@code listenerInterface} is the Fabric
-     * API's interface (a functional interface whose single
-     * abstract method takes the event parameters). We build a
-     * dynamic proxy that implements {@code listenerInterface}
-     * and whose {@code invoke} handler delegates to
-     * {@code handler}.
+     * reflection. The {@code listenerInterfaceName} is the FQN
+     * of the Fabric event-listener interface (e.g.
+     * {@code net.fabricmc.fabric.api.event.player.BlockBreakCallback}).
+     * The listener-interface FQN must be supplied explicitly by
+     * the caller because the generic parameter {@code T} of
+     * {@code Event<T>} is erased at runtime and can't be
+     * recovered from the event's class hierarchy alone — the
+     * listener type T is NOT a superinterface of the
+     * {@code Event} class.
+     *
+     * <p>We build a dynamic proxy that implements the
+     * listener interface and whose {@code invoke} handler
+     * delegates to {@code handler}. The proxy is then
+     * registered with the event via {@code event.register(proxy)}.
      */
     private static void register(String eventClassName, String fieldName,
-                                  Class<?>[] callbackParamTypes, CallbackAdapter handler) {
+                                  String listenerInterfaceName, CallbackAdapter handler) {
         try {
             Class<?> eventCls = FabricReflection.forName(eventClassName);
             if (eventCls == null) return;
@@ -171,26 +159,28 @@ final class FabricEventBus {
             // event's functional interface.
             java.lang.reflect.Field eventField = eventCls.getField(fieldName);
             Object event = eventField.get(null);
-            // The Event class exposes {@code Class<T> type()} and
-            // {@code void register(T listener)}. We use the
-            // declared class of the field's generic type to
-            // determine the listener interface.
-            // Fabric's Event class has a
-            // {@code register(Object)} method, so we don't
-            // actually need the type.
+            // Resolve {@code Event#register(Object)} on the
+            // concrete event implementation. Fabric's
+            // {@code Event} class declares
+            // {@code public void register(T listener)}, but
+            // since {@code T} is erased we look up
+            // {@code register(Object)} which is the actual
+            // method signature the JVM sees.
             java.lang.reflect.Method registerMethod = event.getClass().getMethod("register", Object.class);
-            // Determine the listener interface from the Event's
-            // declared type. The generic parameter is on the
-            // Event's parent (or via getTypeParameters on the
-            // field). For our purposes, the listener interface
-            // has exactly one abstract method whose parameter
-            // types we already know.
-            Class<?> listenerInterface = findListenerInterface(event.getClass(), callbackParamTypes.length);
+            // The listener interface is supplied by the caller
+            // — we can't reliably discover it from the Event
+            // class alone because {@code Event<T>} erases the
+            // {@code T} type parameter at runtime. Looking at
+            // {@code event.getClass().getInterfaces()} returns
+            // the Event class's own interfaces (e.g. the
+            // {@code Event} marker interface and
+            // {@code InvokerFactory}-related interfaces), NOT
+            // the listener type T. The previous
+            // {@code findListenerInterface} approach silently
+            // built a proxy against the wrong interface and
+            // the dispatcher called it as a no-op.
+            Class<?> listenerInterface = FabricReflection.forName(listenerInterfaceName);
             if (listenerInterface == null) {
-                // Fallback: build a proxy that implements the
-                // most-specific event interface Fabric declares
-                // (often an abstract class or interface inside
-                // the event class).
                 return;
             }
             // Identify the listener interface's single
@@ -276,49 +266,6 @@ final class FabricEventBus {
     }
 
     /**
-     * Walk the Event object's class hierarchy looking for the
-     * listener interface. Fabric's {@code Event<T>} is a
-     * generic parameter; the actual {@code T} is visible via
-     * the Event subclass's type information, but the easier
-     * route is to find the single abstract method on the
-     * class's interfaces.
-     */
-    private static Class<?> findListenerInterface(Class<?> eventCls, int expectedParamCount) {
-        // Walk the listener interface hierarchy. The actual
-        // listener interface is the one whose single
-        // abstract method's parameter count matches
-        // {@code expectedParamCount} (which is the arg
-        // count the caller passed in). Picking the
-        // matching interface by parameter count is more
-        // robust than the original "first interface with
-        // any abstract method" approach — the
-        // {@code net.fabricmc.fabric.impl.event.Event}
-        // class has several internal abstract methods on
-        // its interface set (invoker-building, listener
-        // comparison, etc.), and the old code was
-        // returning the wrong interface for some events.
-        for (Class<?> iface : allInterfaces(eventCls)) {
-            Method m = findAbstractMethod(iface);
-            if (m != null && m.getParameterCount() == expectedParamCount) {
-                return iface;
-            }
-        }
-        // Fallback: any interface with an abstract method
-        // whose parameter count matches. Less strict than
-        // the primary loop, but catches edge cases where
-        // the listener interface is declared on a
-        // superclass of the Event implementation rather
-        // than directly.
-        for (Class<?> iface : allInterfaces(eventCls)) {
-            Method m = findAbstractMethod(iface);
-            if (m != null && m.getParameterCount() == expectedParamCount) {
-                return iface;
-            }
-        }
-        return null;
-    }
-
-    /**
      * Find the single abstract method declared on
      * {@code iface} (a functional-interface convention).
      * Returns {@code null} when the interface has zero or
@@ -341,20 +288,6 @@ final class FabricEventBus {
         // methods alongside the abstract one; the
         // abstract method count is the relevant filter.
         return found;
-    }
-
-    private static java.util.Set<Class<?>> allInterfaces(Class<?> cls) {
-        java.util.Set<Class<?>> result = new java.util.LinkedHashSet<>();
-        Class<?> cur = cls;
-        while (cur != null) {
-            for (Class<?> iface : cur.getInterfaces()) {
-                if (result.add(iface)) {
-                    result.addAll(allInterfaces(iface));
-                }
-            }
-            cur = cur.getSuperclass();
-        }
-        return result;
     }
 
     /** Adapter that produces the proxy's return value from the
