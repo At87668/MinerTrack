@@ -102,19 +102,24 @@ public class CoreConfig {
             // and `get(key)`, Map via `entrySet()`. We
             // normalise both to the same loop by walking
             // `getKeys(false)` and calling `get(key)` for the
-            // value.
+            // value. The Bukkit branch goes through the
+            // platform-neutral {@link PlatformTypes} helper
+            // so this file never references the Bukkit class
+            // literal directly (the shadow JAR excludes
+            // {@code org/bukkit/} and a class literal would
+            // fail to verify on Fabric).
             java.util.Set<String> worldKeys;
             if (worldsSection instanceof Map) {
                 worldKeys = ((Map<String, Object>) worldsSection).keySet();
-            } else if (worldsSection instanceof org.bukkit.configuration.ConfigurationSection) {
-                worldKeys = ((org.bukkit.configuration.ConfigurationSection) worldsSection).getKeys(false);
+            } else if (link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(worldsSection)) {
+                worldKeys = link.star_dust.MinerTrack.common.PlatformTypes.getKeys(worldsSection);
             } else {
                 worldKeys = java.util.Collections.emptySet();
             }
             for (String fileKey : worldKeys) {
                 Object v = (worldsSection instanceof Map)
                         ? ((Map<String, Object>) worldsSection).get(fileKey)
-                        : ((org.bukkit.configuration.ConfigurationSection) worldsSection).get(fileKey);
+                        : link.star_dust.MinerTrack.common.PlatformTypes.getValue(worldsSection, fileKey);
                 if (v instanceof List) {
                     @SuppressWarnings("unchecked")
                     List<Object> list = (List<Object>) v;

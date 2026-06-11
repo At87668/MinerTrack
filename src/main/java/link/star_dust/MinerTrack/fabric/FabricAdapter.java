@@ -224,8 +224,15 @@ public class FabricAdapter implements PluginAdapter {
         // running outside a Fabric server. The Minecraft server
         // log handler is configured by the server at boot and
         // routes System.out lines through its own formatting, so
-        // this is acceptable.
-        System.out.println("[MinerTrack] " + msg);
+        // this is acceptable. We translate the {@code §}
+        // section-sign colour codes to ANSI escapes via
+        // {@link #toAnsi(String)}, which is a no-op for plain
+        // text (so the terminal's default state is preserved
+        // for uncoloured log lines) and appends a {@code
+        // \u001B[0m} reset at the end of every translated line
+        // so the formatting doesn't bleed into the next server
+        // log entry the server writes after ours.
+        System.out.println("[MinerTrack] " + toAnsi(msg));
     }
 
     @Override
@@ -243,7 +250,7 @@ public class FabricAdapter implements PluginAdapter {
                 // Fall through.
             }
         }
-        System.out.println("[MinerTrack] [WARN] " + msg);
+        System.out.println("[MinerTrack] [WARN] " + toAnsi(msg));
     }
 
     @Override
@@ -263,6 +270,106 @@ public class FabricAdapter implements PluginAdapter {
             }
         }
         return new String(chars);
+    }
+
+    /**
+     * Translate Minecraft colour codes (the {@code §} section
+     * sign variant produced by {@link #applyColors(String)})
+     * into ANSI escape sequences for stdout. The standard
+     * Minecraft log handler doesn't render {@code §} codes
+     * (it's a private-use Unicode codepoint), so without this
+     * translation the banner lines would print with literal
+     * {@code §} characters visible in the terminal. The
+     * translation covers the same colour/formatting codes the
+     * Bukkit adapter's {@code ChatColor.translateAlternateColorCodes}
+     * recognises, plus the {@code §r} reset / {@code §l}/{@code §o}
+     * / {@code §n}/{@code §m} formatting codes; {@code §k}
+     * (obfuscated) has no ANSI equivalent and is silently
+     * dropped.
+     *
+     * <p>This strategy is applied only when the input actually
+     * contains a {@code §} colour code; plain text passes
+     * through untouched so the terminal's default formatting
+     * isn't disturbed. When a translation does happen, a
+     * {@code \u001B[0m} reset escape is appended at the end
+     * of the returned string so the formatting doesn't bleed
+     * into the next server log line — i.e. the plugin
+     * "restores" the terminal's default state after sending
+     * the coloured text. The reset is skipped when the input
+     * is null / empty so we don't pollute the log with stray
+     * escape codes.
+     *
+     * <p>Implementation note: we walk the string in one pass
+     * building a {@link StringBuilder}; the {@link String#replace}
+     * chained calls would be a touch slower on long banners
+     * and the inline approach makes the per-code mapping
+     * explicit in one place.
+     */
+    static String toAnsi(String input) {
+        if (input == null) return "";
+        // Fast path: no colour code at all → return the
+        // input unchanged. Skipping the {@link StringBuilder}
+        // for plain text avoids the per-call allocation
+        // overhead for the (much more frequent) plain
+        // logging case.
+        if (input.indexOf('§') < 0) {
+            return input;
+        }
+        StringBuilder out = new StringBuilder(input.length() + 32);
+        int len = input.length();
+        boolean translated = false;
+        for (int i = 0; i < len; i++) {
+            char c = input.charAt(i);
+            if (c == '§' && i + 1 < len) {
+                char code = Character.toLowerCase(input.charAt(i + 1));
+                String ansi = ansiForCode(code);
+                if (ansi != null) {
+                    out.append(ansi);
+                    i++; // consume the code letter
+                    translated = true;
+                    continue;
+                }
+            }
+            out.append(c);
+        }
+        if (translated) {
+            // Restore: append the ANSI reset so the
+            // formatting doesn't bleed into the next
+            // log line that the server writes after
+            // ours. Without this, e.g. an italic
+            // banner line would italicise every
+            // subsequent server log entry.
+            out.append("\u001B[0m");
+        }
+        return out.toString();
+    }
+
+    private static String ansiForCode(char code) {
+        switch (code) {
+            case '0': return "\u001B[30m"; // black
+            case '1': return "\u001B[34m"; // dark blue
+            case '2': return "\u001B[32m"; // dark green
+            case '3': return "\u001B[36m"; // dark cyan
+            case '4': return "\u001B[31m"; // dark red
+            case '5': return "\u001B[35m"; // dark magenta
+            case '6': return "\u001B[33m"; // dark yellow
+            case '7': return "\u001B[37m"; // gray
+            case '8': return "\u001B[90m"; // dark gray
+            case '9': return "\u001B[94m"; // blue
+            case 'a': return "\u001B[92m"; // green
+            case 'b': return "\u001B[96m"; // cyan
+            case 'c': return "\u001B[91m"; // red
+            case 'd': return "\u001B[95m"; // magenta
+            case 'e': return "\u001B[93m"; // yellow
+            case 'f': return "\u001B[97m"; // white
+            case 'l': return "\u001B[1m";  // bold
+            case 'o': return "\u001B[3m";  // italic
+            case 'n': return "\u001B[4m";  // underline
+            case 'm': return "\u001B[9m";  // strikethrough
+            case 'r': return "\u001B[0m";  // reset
+            case 'k': return null;         // obfuscated, no ANSI equivalent
+            default:  return null;
+        }
     }
 
     @Override

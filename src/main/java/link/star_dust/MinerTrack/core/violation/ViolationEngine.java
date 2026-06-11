@@ -58,18 +58,23 @@ public class ViolationEngine {
         // configs) or a Bukkit `ConfigurationSection` (the
         // live delegate the v1-style in-place merger
         // produced). Normalise to a `Map<String, Object>`
-        // view: ConfigurationSection's `getKeys(false)`
-        // returns the section's direct keys, which we
-        // re-fetch via `get(key)`.
+        // view via the platform-neutral {@link
+        // link.star_dust.MinerTrack.common.PlatformTypes}
+        // helper (which uses reflection to call
+        // {@code getKeys(false)} and {@code get(key)} on a
+        // Bukkit section without ever referencing the class
+        // literal).
         java.util.Map<String, Object> section = null;
         if (raw instanceof Map) {
             section = (java.util.Map<String, Object>) raw;
-        } else if (raw instanceof org.bukkit.configuration.ConfigurationSection) {
-            org.bukkit.configuration.ConfigurationSection cs =
-                    (org.bukkit.configuration.ConfigurationSection) raw;
+        } else if (link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(raw)) {
+            java.util.Set<String> keys = link.star_dust.MinerTrack.common.PlatformTypes.getKeys(raw);
             section = new java.util.LinkedHashMap<>();
-            for (String k : cs.getKeys(false)) {
-                section.put(k, cs.get(k));
+            if (keys != null) {
+                for (String k : keys) {
+                    Object v = link.star_dust.MinerTrack.common.PlatformTypes.getValue(raw, k);
+                    section.put(k, v);
+                }
             }
         }
         if (section != null) {

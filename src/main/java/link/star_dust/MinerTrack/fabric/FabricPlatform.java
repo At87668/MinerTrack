@@ -131,15 +131,29 @@ public class FabricPlatform implements DedicatedServerModInitializer {
      * dispatcher via reflection. Builds a
      * {@code LiteralArgumentBuilder} from
      * {@code CommandManager.literal(name)}, attaches a single
-     * greedy {@code String[]} argument that captures every
-     * trailing token, and registers the resulting builder with
-     * the dispatcher.
+     * greedy {@code String} argument (via
+     * {@code StringArgumentType.greedyString()}) that captures
+     * every trailing token as one string, and registers the
+     * resulting builder with the dispatcher.
      *
      * <p>The {@code exec} body (a {@code Command}) and the
      * {@code argument} builder are both created via reflection
      * because their types live in {@code com.mojang.brigadier}
      * and {@code net.minecraft.server.command}, neither of which
      * is on the project's compile classpath.
+     *
+     * <p>Why greedyString: the previous implementation used
+     * {@code CommandManager.argument("args", String[].class)}
+     * to capture the trailing tokens as an array, but brigadier
+     * only supports a fixed set of argument types (integer,
+     * long, float, double, boolean, string). {@code String[]}
+     * is not in that set, so the argument's argument-type
+     * serializer was unset and the dispatcher rejected the
+     * command at parse time with
+     * "Unknown or incomplete command, mt<--[HERE]".
+     * {@code greedyString} returns a single
+     * {@code String} that captures every remaining token
+     * verbatim, and we split on whitespace in the executor.
      */
     private void registerCommand(Object dispatcher, String name) {
         try {
@@ -150,20 +164,29 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                 "literal", new Class<?>[]{String.class}, new Object[]{name});
             if (literal == null) return;
             Class<?> literalCls = literal.getClass();
-            // 2. CommandManager.argument("args", String[].class)
-            //    -> RequiredArgumentBuilder
+            // 2. StringArgumentType.greedyString() -> ArgumentType<String>
+            Object greedy = FabricReflection.callStatic("com.mojang.brigadier.arguments.StringArgumentType",
+                "greedyString", new Class<?>[0], new Object[0]);
+            if (greedy == null) {
+                adapter.warning("Failed to build greedyString argument type; /" + name + " will not be registered.");
+                return;
+            }
+            // 3. CommandManager.argument("args", greedy) -> RequiredArgumentBuilder
             Object arg = FabricReflection.callStatic("net.minecraft.server.command.CommandManager",
-                "argument", new Class<?>[]{String.class, Class.class},
-                new Object[]{"args", String[].class});
-            if (arg == null) return;
-            Class<?> argCls = arg.getClass();
-            // 3. Wrap the platform command in a brigadier
+                "argument", new Class<?>[]{String.class, FabricReflection.forName("com.mojang.brigadier.arguments.ArgumentType")},
+                new Object[]{"args", greedy});
+            if (arg == null) {
+                adapter.warning("Failed to build argument builder for /" + name + "; command will not be registered.");
+                return;
+            }
+            // 4. Wrap the platform command in a brigadier
             //    {@code Command<Object>} lambda. The lambda's
             //    single method ({@code run}) takes a
             //    {@code CommandContext<Object>} and returns int.
             //    We build a dynamic proxy that implements
             //    {@code com.mojang.brigadier.Command} and reads
-            //    the context's source + input via reflection.
+            //    the context's source + the greedy String
+            //    argument via reflection.
             Class<?> brigadierCommandCls = FabricReflection.forName("com.mojang.brigadier.Command");
             if (brigadierCommandCls == null) return;
             Object commandProxy = java.lang.reflect.Proxy.newProxyInstance(
@@ -171,51 +194,85 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                 new Class<?>[]{brigadierCommandCls},
                 (proxy, method, methodArgs) -> {
                     if (!"run".equals(method.getName()) || methodArgs == null || methodArgs.length == 0) {
-                        // {@code then} / {@code thenAsync}
-                        // delegates might call other methods; the
-                        // Command interface only has the single
-                        // {@code run} abstract method, so any
-                        // other invocation is a no-op.
                         return 1;
                     }
                     try {
                         Object ctx = methodArgs[0];
                         Object source = FabricReflection.callAny(ctx, "getSource", new Class<?>[0], new Object[0]);
-                        String input = null;
-                        // 1.20+: CommandContext has {@code getInput()} returning the
-                        // raw text the user typed; 1.19- uses {@code getNodes()} or
-                        // {@code getLastChild()}. We try {@code getInput} first
-                        // and fall back to {@code getNodes}.
-                        Object inputObj = FabricReflection.callAny(ctx, "getInput", new Class<?>[0], new Object[0]);
-                        if (inputObj != null) {
-                            input = inputObj.toString();
+                        // Read the "args" greedy String from the
+                        // CommandContext. The greedy string is
+                        // the entire tail of the command line
+                        // (e.g. "kick PlayerA no cheating"
+                        // for /minertrack kick PlayerA no
+                        // cheating), so we can split it on
+                        // whitespace and pass the tokens to
+                        // the platform command executor.
+                        String greedyString = "";
+                        try {
+                            Class<?> stringTypeCls = FabricReflection.forName("com.mojang.brigadier.arguments.StringArgumentType");
+                            Object greedyVal = FabricReflection.callAny(ctx, "getArgument",
+                                new Class<?>[]{String.class, FabricReflection.forName("com.mojang.brigadier.arguments.ArgumentType")},
+                                new Object[]{"args", greedy});
+                            if (greedyVal != null) greedyString = greedyVal.toString();
+                        } catch (Throwable t) {
+                            // No "args" provided (e.g. /minertrack
+                            // with no subcommand) — the
+                            // dispatcher may call us directly
+                            // on the literal, in which case the
+                            // {@code args} argument is absent.
+                            // That's fine: the command executor
+                            // treats an empty array as "show
+                            // help".
                         }
-                        String[] args = parseArgs(input);
-                        // Strip the leading literal (e.g.
-                        // "minertrack") so the args array the
-                        // executor sees matches the Bukkit path.
-                        if (args.length > 0 && args[0].equalsIgnoreCase(name)) {
-                            String[] sub = new String[args.length - 1];
-                            System.arraycopy(args, 1, sub, 0, sub.length);
-                            args = sub;
-                        }
+                        String[] args = parseArgs(greedyString);
                         return commandExecutor.onCommand(source, args) ? 1 : 0;
                     } catch (Throwable t) {
                         return 0;
                     }
                 });
-            // 4. arg.executes(commandProxy)
+            // 5. arg.executes(commandProxy)
             FabricReflection.callAny(arg, "executes",
                 new Class<?>[]{FabricReflection.forName("com.mojang.brigadier.Command")},
                 new Object[]{commandProxy});
-            // 5. literal.then(arg)
+            // 6. literal.then(arg)
             FabricReflection.callAny(literal, "then",
                 new Class<?>[]{FabricReflection.forName("com.mojang.brigadier.builder.ArgumentBuilder")},
                 new Object[]{arg});
-            // 6. dispatcher.register(literal)
+            // 7. literal.executes(commandProxy)
+            //    — the literal itself must also execute so
+            //    `/minertrack` (no trailing args) works as
+            //    "show help" (the {@code commandExecutor} treats
+            //    an empty args[] as the help command). Without
+            //    this, the dispatcher would match the literal
+            //    node but find no command body and report
+            //    "Unknown or incomplete command".
+            FabricReflection.callAny(literal, "executes",
+                new Class<?>[]{FabricReflection.forName("com.mojang.brigadier.Command")},
+                new Object[]{commandProxy});
+            // 8. dispatcher.register(literal)
+            //    The dispatcher.register method takes a
+            //    {@code CommandNode}. {@code LiteralArgumentBuilder}
+            //    extends {@code CommandNode} via the
+            //    {@code ArgumentBuilder} → {@code CommandBuilder}
+            //    chain, so passing the builder's class as the
+            //    method's parameter type works — brigadier's
+            //    dispatcher.register is `CommandNode
+            //    register(CommandNode)`, and the builder IS a
+            //    CommandNode. We resolve the class literal via
+            //    reflection because {@code CommandNode} lives in
+            //    the {@code com.mojang.brigadier.tree} package,
+            //    which is not on our compile classpath.
+            Class<?> commandNodeCls = FabricReflection.forName("com.mojang.brigadier.tree.CommandNode");
+            if (commandNodeCls == null) {
+                // Fallback: use the builder's first
+                // implemented interface, which is
+                // ArgumentBuilder (a CommandNode subclass).
+                commandNodeCls = literalCls.getInterfaces().length > 0
+                        ? literalCls.getInterfaces()[0]
+                        : literalCls;
+            }
             FabricReflection.call(dispatcher, "register",
-                new Class<?>[]{literalCls.getInterfaces().length > 0
-                    ? literalCls.getInterfaces()[0] : literalCls},
+                new Class<?>[]{commandNodeCls},
                 new Object[]{literal});
         } catch (Throwable t) {
             adapter.warning("Failed to register command /" + name + ": " + t.getMessage());

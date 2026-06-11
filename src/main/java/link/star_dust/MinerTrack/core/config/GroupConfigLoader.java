@@ -80,7 +80,7 @@ public class GroupConfigLoader {
                     + "Add a `xray.worlds` block mapping group file names to dimension ids (e.g. "
                     + "`'overworld': [minecraft:overworld]`) to enable detection.");
         } else if (!(worldsObj instanceof Map)
-                && !(worldsObj instanceof org.bukkit.configuration.ConfigurationSection)) {
+                && !link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(worldsObj)) {
             adapter.info("config.yml 'xray.worlds' is not a map (got "
                     + worldsObj.getClass().getSimpleName()
                     + "); expected a map of group name -> [dimension id]. "
@@ -91,18 +91,20 @@ public class GroupConfigLoader {
             // flat default-stream view) or a Bukkit
             // `ConfigurationSection` (the live delegate the
             // v1-style in-place merger produced). Normalise
-            // both to a `Map<String, Object>` view via
-            // `getValues(false)` (Bukkit) or a direct cast
-            // (Map) so the rest of this loop can stay
-            // platform-neutral.
+            // both to a `Map<String, Object>` view via the
+            // platform-neutral {@link
+            // link.star_dust.MinerTrack.common.PlatformTypes}
+            // helper (which uses reflection to read
+            // {@code getValues(false)} on a Bukkit section and
+            // falls back to a direct Map cast on every other
+            // platform).
             java.util.Map<String, Object> worldsSection;
             if (worldsObj instanceof java.util.Map) {
                 @SuppressWarnings("unchecked")
                 java.util.Map<String, Object> raw = (java.util.Map<String, Object>) worldsObj;
                 worldsSection = raw;
             } else {
-                worldsSection = ((org.bukkit.configuration.ConfigurationSection) worldsObj)
-                        .getValues(false);
+                worldsSection = link.star_dust.MinerTrack.common.PlatformTypes.getValues(worldsObj);
             }
             for (Map.Entry<String, Object> entry : worldsSection.entrySet()) {
                 try {
@@ -242,14 +244,20 @@ public class GroupConfigLoader {
         Object worldsObj = mainConfig.get("xray.worlds");
         // v2 returns either a `Map` (Map-backed configs) or a
         // Bukkit `ConfigurationSection` (live delegate). Handle
-        // both: we only need to iterate the keys here.
+        // both: we only need to iterate the keys here. The
+        // Bukkit branch is reached via the platform-neutral
+        // {@link PlatformTypes} helper, which uses reflection
+        // to invoke {@code getKeys(false)} without ever
+        // referencing the Bukkit class literal (the shadow
+        // JAR excludes {@code org/bukkit/} and a class literal
+        // here would fail to verify on Fabric).
         java.util.Set<String> fileKeys;
         if (worldsObj instanceof java.util.Map) {
             @SuppressWarnings("unchecked")
             java.util.Map<String, Object> raw = (java.util.Map<String, Object>) worldsObj;
             fileKeys = raw.keySet();
-        } else if (worldsObj instanceof org.bukkit.configuration.ConfigurationSection) {
-            fileKeys = ((org.bukkit.configuration.ConfigurationSection) worldsObj).getKeys(false);
+        } else if (link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(worldsObj)) {
+            fileKeys = link.star_dust.MinerTrack.common.PlatformTypes.getKeys(worldsObj);
         } else {
             return;
         }
@@ -404,8 +412,11 @@ public class GroupConfigLoader {
     }
 
     private static boolean isSection(Object v) {
+        // Use the platform-neutral helper so we never reference
+        // the Bukkit {@code ConfigurationSection} class literal
+        // (which would fail to verify on the Fabric classpath).
         return v instanceof java.util.Map
-                || v instanceof org.bukkit.configuration.ConfigurationSection;
+                || link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(v);
     }
 
     @SuppressWarnings("unchecked")

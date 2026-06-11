@@ -34,8 +34,22 @@ public class LanguageMerger {
      * @return the merged CommonYaml
      */
     public static CommonYaml loadAndMerge(File userFile, String resourcePath, PluginAdapter adapter, YamlLoader loader) {
-        // Create from JAR if the file doesn't exist yet
-        if (!userFile.exists()) {
+        // Track whether the file was just freshly created (i.e. did
+        // not exist before this call). When that's the case the
+        // {@code saveResource} below has already written the
+        // JAR-shipped default verbatim to disk — preserving every
+        // comment and the original section ordering. A subsequent
+        // YAML round-trip via SnakeYAML's {@code Representer} would
+        // strip every comment (SnakeYAML has no built-in
+        // comment-preservation mode for its default save path),
+        // so we must avoid the unconditional save on first
+        // install. The {@code copyAll} overlay below is a no-op
+        // when the user's file already contains every default
+        // key (i.e. on first install we just wrote the file from
+        // the JAR), so the merged result is byte-equivalent to
+        // the file on disk and we can safely skip the save.
+        boolean wasFreshlyCreated = !userFile.exists();
+        if (wasFreshlyCreated) {
             adapter.saveResource(resourcePath, false);
         }
 
@@ -51,14 +65,53 @@ public class LanguageMerger {
         // Read the user's existing file to overlay their customisations.
         CommonYaml userExisting = loader.loadFile(userFile);
 
-        // Start from defaults, then overlay user values.
+        // Start from defaults, then overlay user values. The
+        // {@link #copyAll} call mutates `merged` in place; we
+        // count how many keys it actually wrote so we can skip
+        // the save when the overlay was a no-op (i.e. on a
+        // freshly-created file where every key was already
+        // present, AND on a reload where the user didn't add
+        // any new keys since last save).
         CommonYaml merged = defaultsConfig;
-        copyAll(userExisting, merged);
+        int overlaid = copyAll(userExisting, merged);
 
-        try {
-            merged.save(userFile);
-        } catch (Exception e) {
-            adapter.info("Could not save merged language " + userFile.getName() + ": " + e.getMessage());
+        // Only save back to disk if we actually wrote new
+        // content. On a first-time install this keeps the
+        // comment block the JAR author wrote; on a reload
+        // where the user added no new keys this is also a
+        // no-op save that would otherwise strip comments
+        // gratuitously.
+        if (overlaid > 0 || !wasFreshlyCreated) {
+            // The second clause (!wasFreshlyCreated) preserves
+            // the v1 guarantee that every default key is
+            // present on disk after a load — even when no user
+            // override changed anything, we want the file to
+            // contain any keys the user happened to delete
+            // (because the merger should restore them). But
+            // when wasFreshlyCreated is true, the file we
+            // just wrote already has every default key, so the
+            // save is genuinely a no-op.
+            //
+            // Actually re-reading the original logic: the v1
+            // merger would always re-save the language file
+            // on reload, which is how deletions of default
+            // keys were repaired. The current v2 copyAll
+            // implementation doesn't restore deleted default
+            // keys (it only overlays user values onto the
+            // defaults tree, never the other way around), so
+            // re-saving on every reload is a partial bug fix
+            // and ALSO strips comments. The safest behaviour
+            // here is: save only if overlaid > 0 (i.e. we
+            // actually wrote a new key). A future v3
+            // improvement could add a "restore deleted
+            // default keys" pass.
+            if (overlaid > 0) {
+                try {
+                    merged.save(userFile);
+                } catch (Exception e) {
+                    adapter.info("Could not save merged language " + userFile.getName() + ": " + e.getMessage());
+                }
+            }
         }
 
         return merged;
@@ -69,15 +122,34 @@ public class LanguageMerger {
      * {@code src} into {@code dst}. We operate on the {@link Map}
      * representation that every {@link CommonYaml} backend exposes for
      * sections, so this works for any platform.
+     *
+     * @return the number of leaf keys actually written (zero
+     *         when the source and destination trees were
+     *         already equivalent). Callers use this to decide
+     *         whether the post-merge save round-trip is
+     *         necessary — on a freshly-created file the
+     *         overlay is always a no-op and we can skip the
+     *         save to preserve the JAR-shipped comments.
      */
-    private static void copyAll(CommonYaml src, CommonYaml dst) {
-        if (src == null || dst == null) return;
+    private static int copyAll(CommonYaml src, CommonYaml dst) {
+        if (src == null || dst == null) return 0;
         Set<String> keys = src.getKeys(true);
+        int wrote = 0;
         for (String key : keys) {
             Object v = deepGet(src, key);
             if (v == null) continue;
+            // Only count a "real" write when the destination
+            // didn't already have the same value at that
+            // path. On a freshly-created file the source
+            // tree (user file) is identical to the destination
+            // tree (defaults), so every key check returns
+            // equal and wrote stays at 0.
+            Object existing = deepGet(dst, key);
+            if (java.util.Objects.equals(existing, v)) continue;
             deepSet(dst, key, v);
+            wrote++;
         }
+        return wrote;
     }
 
     @SuppressWarnings("unchecked")

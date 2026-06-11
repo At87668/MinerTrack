@@ -63,14 +63,17 @@ public final class WebhookConfig {
         // configs) or a Bukkit `ConfigurationSection` (the
         // live delegate the v1-style in-place merger
         // produced). Normalise both to a
-        // `Map<String, Object>` view: ConfigurationSection's
-        // `getValues(false)` returns a Map, which is what
-        // the rest of this builder expects.
+        // `Map<String, Object>` view via the platform-neutral
+        // {@link link.star_dust.MinerTrack.common.PlatformTypes}
+        // helper (which uses reflection to call
+        // {@code getValues(false)} on a Bukkit section
+        // without ever referencing the class literal).
         Map<String, Object> section;
         if (root instanceof Map) {
             section = (Map<String, Object>) root;
-        } else if (root instanceof org.bukkit.configuration.ConfigurationSection) {
-            section = ((org.bukkit.configuration.ConfigurationSection) root).getValues(false);
+        } else if (link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(root)) {
+            section = link.star_dust.MinerTrack.common.PlatformTypes.getValues(root);
+            if (section == null) section = java.util.Collections.emptyMap();
         } else {
             return new WebhookConfig(false, "", Integer.MAX_VALUE,
                     Embed.defaults(), CustomJson.disabled());
@@ -105,8 +108,9 @@ public final class WebhookConfig {
         if (raw instanceof Map) {
             return (Map<String, Object>) raw;
         }
-        if (raw instanceof org.bukkit.configuration.ConfigurationSection) {
-            return ((org.bukkit.configuration.ConfigurationSection) raw).getValues(false);
+        if (link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(raw)) {
+            Map<String, Object> v = link.star_dust.MinerTrack.common.PlatformTypes.getValues(raw);
+            return v == null ? java.util.Collections.emptyMap() : v;
         }
         return java.util.Collections.emptyMap();
     }

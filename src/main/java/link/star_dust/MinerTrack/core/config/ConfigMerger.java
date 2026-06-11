@@ -154,23 +154,32 @@ public class ConfigMerger {
                     + " missing key(s) from defaults.");
         }
 
-        // Save the merged config back to disk. This mirrors the
-        // v1 legacy `ConfigManager.saveConfig()` call, and is
-        // safe now that the v1-style in-place recursion (via
-        // `CommonYaml.getChild`) preserves the in-memory section
-        // tree the YAML serializer expects. The earlier v2
-        // round-trip failed because the v2 merger used
-        // `set(path, Map)` to write back a flattened copy,
-        // which silently flipped scalar values into Maps on
-        // re-parse (`xray.enable: true` → one-entry Map →
-        // `getBoolean` returned false). With the in-place
-        // recursion, the in-memory tree the merger mutates is
-        // the same tree SnakeYAML serialises, and the reload
-        // sees the same structure.
-        try {
-            userConfig.save(userFile);
-        } catch (Exception e) {
-            adapter.info("Could not save merged config " + userFile.getName() + ": " + e.getMessage());
+        // Save the merged config back to disk ONLY if the
+        // merge actually changed anything. On a first-time
+        // install the {@link #saveResource} call above wrote
+        // the JAR-shipped default verbatim to disk, which
+        // preserves all of the comments and original
+        // formatting. The YAML round-trip via SnakeYAML on
+        // the save() path strips every comment (SnakeYAML
+        // has no comment-preservation mode for its default
+        // {@code Representer}/{@code DumperOptions}), so a
+        // blanket save-on-every-load would silently delete
+        // the entire comment block in the user's freshly
+        // generated config.yml. The merge step above is
+        // a no-op when the user file already contains every
+        // default key (i.e. on first install we just wrote
+        // the file from the JAR), so we can skip the save
+        // entirely in that case and keep the comment
+        // formatting intact. Subsequent reloads (after the
+        // user has edited the file and a new plugin version
+        // has added a new key) DO need a save — that's
+        // covered by the {@code added > 0} branch below.
+        if (added > 0) {
+            try {
+                userConfig.save(userFile);
+            } catch (Exception e) {
+                adapter.info("Could not save merged config " + userFile.getName() + ": " + e.getMessage());
+            }
         }
 
         // Reload from disk so the returned config reflects the
@@ -331,10 +340,16 @@ public class ConfigMerger {
         // A "section" is anything that can hold nested keys:
         // either a `Map` (Map-backed default configs) or a
         // Bukkit `ConfigurationSection` (live delegate). The
-        // merger recurses via `getChild`, which the platform
-        // implementations handle appropriately.
-        return v instanceof java.util.Map
-                || v instanceof org.bukkit.configuration.ConfigurationSection;
+        // Bukkit check is delegated to
+        // {@link link.star_dust.MinerTrack.common.PlatformTypes
+        // #isConfigurationSection(Object)} so we never reference
+        // the Bukkit class literal directly (the {@code
+        // org/bukkit/} package is excluded from the shadow
+        // JAR, and a class literal would force the JVM to
+        // verify the class is loadable even on Fabric where
+        // it isn't).
+        if (v instanceof java.util.Map) return true;
+        return link.star_dust.MinerTrack.common.PlatformTypes.isConfigurationSection(v);
     }
 
     /**
