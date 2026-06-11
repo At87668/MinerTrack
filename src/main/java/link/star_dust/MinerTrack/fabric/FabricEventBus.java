@@ -185,7 +185,7 @@ final class FabricEventBus {
             // field). For our purposes, the listener interface
             // has exactly one abstract method whose parameter
             // types we already know.
-            Class<?> listenerInterface = findListenerInterface(event.getClass());
+            Class<?> listenerInterface = findListenerInterface(event.getClass(), callbackParamTypes.length);
             if (listenerInterface == null) {
                 // Fallback: build a proxy that implements the
                 // most-specific event interface Fabric declares
@@ -193,15 +193,72 @@ final class FabricEventBus {
                 // the event class).
                 return;
             }
+            // Identify the listener interface's single
+            // abstract method. The proxy is invoked for ANY
+            // method on the interface (including
+            // {@code equals}, {@code hashCode}, {@code
+            // toString} from {@link Object}), but only the
+            // abstract method is the actual event callback.
+            // The original handler treated every invocation
+            // as an event fire, which meant that the
+            // Event<T> infrastructure's set-membership
+            // bookkeeping (e.g. {@code listener.equals(...)} on
+            // each register() call) would end up invoking our
+            // detection handler with bogus arguments. Filtering
+            // by abstract method ensures we only call the
+            // handler for the actual event, never for Object
+            // methods.
+            final java.lang.reflect.Method abstractMethod = findAbstractMethod(listenerInterface);
+            if (abstractMethod == null) {
+                // No abstract method on the listener interface
+                // (shouldn't happen for a Fabric event, which
+                // is always a functional interface). Skip the
+                // registration rather than building a proxy
+                // that does the wrong thing.
+                return;
+            }
+            final int expectedParamCount = abstractMethod.getParameterCount();
             InvocationHandler proxyHandler = (proxy, method, args) -> {
+                // Only forward to the event handler when the
+                // method being invoked is the listener
+                // interface's single abstract method (the
+                // event callback). For any other method —
+                // Object's {@code equals}, {@code hashCode},
+                // {@code toString}, the Event<T> infrastructure's
+                // internal book-keeping methods, etc. — return
+                // a sensible default so the proxy behaves
+                // correctly as an Object (equal to itself,
+                // identity hash, default toString).
+                if (!method.equals(abstractMethod)) {
+                    if ("equals".equals(method.getName()) && method.getParameterCount() == 1
+                            && method.getParameterTypes()[0] == Object.class) {
+                        return proxy == args[0];
+                    }
+                    if ("hashCode".equals(method.getName()) && method.getParameterCount() == 0) {
+                        return System.identityHashCode(proxy);
+                    }
+                    if ("toString".equals(method.getName()) && method.getParameterCount() == 0) {
+                        return "FabricEventBus$Proxy@" + System.identityHashCode(proxy);
+                    }
+                    // For any other non-abstract method, just
+                    // return a default. The proxy won't
+                    // actually be invoked through any other
+                    // method, but the JVM may call
+                    // {@link Object}'s methods during
+                    // classloader / GC walks.
+                    return null;
+                }
                 if (args == null) args = new Object[0];
-                Object result = handler.handle(args);
-                // For methods with a primitive return type, the
-                // Proxy's default unboxing throws NPE on null;
-                // the caller (event dispatcher) accepts a null
-                // result for "I have no opinion", which is
-                // equivalent to PASS.
-                return result;
+                // Validate the arg count. The dispatcher always
+                // passes the exact number of args the abstract
+                // method declares; if the count differs, the
+                // proxy is being invoked through a path we
+                // don't recognise, and we shouldn't feed bogus
+                // args to the handler.
+                if (args.length != expectedParamCount) {
+                    return null;
+                }
+                return handler.handle(args);
             };
             Object proxy = Proxy.newProxyInstance(
                 eventCls.getClassLoader(),
@@ -226,35 +283,64 @@ final class FabricEventBus {
      * route is to find the single abstract method on the
      * class's interfaces.
      */
-    private static Class<?> findListenerInterface(Class<?> eventCls) {
-        // The simplest path: scan every interface on the
-        // event class hierarchy. Fabric's Event<T> declares
-        // a {@code register(T)} method, but the actual
-        // listener interface is the type argument T, which
-        // is unfortunately erased at runtime. As a
-        // workaround, look at the class hierarchy of the
-        // Event implementation and find the interface that
-        // declares a method whose signature matches our
-        // known callback parameter list.
-        //
-        // The caller passes the parameter types via
-        // {@code callbackParamTypes}; we look for the
-        // interface whose only abstract method has the
-        // matching parameter list.
+    private static Class<?> findListenerInterface(Class<?> eventCls, int expectedParamCount) {
+        // Walk the listener interface hierarchy. The actual
+        // listener interface is the one whose single
+        // abstract method's parameter count matches
+        // {@code expectedParamCount} (which is the arg
+        // count the caller passed in). Picking the
+        // matching interface by parameter count is more
+        // robust than the original "first interface with
+        // any abstract method" approach — the
+        // {@code net.fabricmc.fabric.impl.event.Event}
+        // class has several internal abstract methods on
+        // its interface set (invoker-building, listener
+        // comparison, etc.), and the old code was
+        // returning the wrong interface for some events.
         for (Class<?> iface : allInterfaces(eventCls)) {
-            for (Method m : iface.getDeclaredMethods()) {
-                if (java.lang.reflect.Modifier.isAbstract(m.getModifiers())) {
-                    // Match by method name ({@code invoke} or
-                    // any other) and approximate parameter
-                    // count.
-                    Class<?>[] pts = m.getParameterTypes();
-                    if (pts.length > 0) {
-                        return iface;
-                    }
-                }
+            Method m = findAbstractMethod(iface);
+            if (m != null && m.getParameterCount() == expectedParamCount) {
+                return iface;
+            }
+        }
+        // Fallback: any interface with an abstract method
+        // whose parameter count matches. Less strict than
+        // the primary loop, but catches edge cases where
+        // the listener interface is declared on a
+        // superclass of the Event implementation rather
+        // than directly.
+        for (Class<?> iface : allInterfaces(eventCls)) {
+            Method m = findAbstractMethod(iface);
+            if (m != null && m.getParameterCount() == expectedParamCount) {
+                return iface;
             }
         }
         return null;
+    }
+
+    /**
+     * Find the single abstract method declared on
+     * {@code iface} (a functional-interface convention).
+     * Returns {@code null} when the interface has zero or
+     * multiple abstract methods (i.e. it's not a
+     * functional interface, in which case we can't reliably
+     * forward to it).
+     */
+    private static Method findAbstractMethod(Class<?> iface) {
+        if (iface == null) return null;
+        Method found = null;
+        int count = 0;
+        for (Method m : iface.getDeclaredMethods()) {
+            if (java.lang.reflect.Modifier.isAbstract(m.getModifiers())) {
+                found = m;
+                count++;
+                if (count > 1) return null;
+            }
+        }
+        // Functional interfaces can also have default
+        // methods alongside the abstract one; the
+        // abstract method count is the relevant filter.
+        return found;
     }
 
     private static java.util.Set<Class<?>> allInterfaces(Class<?> cls) {
