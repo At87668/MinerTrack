@@ -95,6 +95,30 @@ public class FabricPlatform implements DedicatedServerModInitializer {
             registerCommand(dispatcher, "mtrack");
         });
 
+        // Also attempt an explicit registration on server start
+        // as a fallback for environments where the Command
+        // Registration callback may not fire as expected.
+        FabricEventBus.registerServerStarted(server -> {
+            try {
+                Object cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
+                if (cmdManager == null) return;
+                Object dispatcher = null;
+                try {
+                    dispatcher = FabricReflection.callAny(cmdManager, "getDispatcher", new Class<?>[0], new Object[0]);
+                } catch (Throwable ignored) {
+                    // Some implementations expose the dispatcher
+                    // directly as the command manager.
+                }
+                if (dispatcher == null) dispatcher = cmdManager;
+                if (dispatcher == null) return;
+                registerCommand(dispatcher, "minertrack");
+                registerCommand(dispatcher, "mt");
+                registerCommand(dispatcher, "mtrack");
+            } catch (Throwable t) {
+                adapter.warning("Explicit command registration failed: " + t.getMessage());
+            }
+        });
+
         // ── Global VL decay tick ─────────────────────────────────
         // 20 minutes in ticks (20 ticks/second). The Bukkit path
         // uses the same interval; Fabric API's

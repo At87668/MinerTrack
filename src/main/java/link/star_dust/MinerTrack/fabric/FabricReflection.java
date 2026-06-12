@@ -73,7 +73,17 @@ final class FabricReflection {
             m.setAccessible(true);
             return m.invoke(target, args);
         } catch (IllegalAccessException | InvocationTargetException e) {
-            return null;
+            // Fallback: try a permissive lookup by name and
+            // parameter count when exact signature lookup fails
+            // due to classloader/type mismatches.
+            try {
+                Method m2 = findMethodByNameAndParamCount(target.getClass(), methodName, args == null ? 0 : args.length);
+                if (m2 == null) return null;
+                m2.setAccessible(true);
+                return m2.invoke(target, args == null ? new Object[0] : args);
+            } catch (IllegalAccessException | InvocationTargetException ex) {
+                return null;
+            }
         }
     }
 
