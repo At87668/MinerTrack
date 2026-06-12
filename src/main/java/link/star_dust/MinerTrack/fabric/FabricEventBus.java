@@ -32,6 +32,8 @@ import java.util.function.Consumer;
  */
 final class FabricEventBus {
     private FabricEventBus() {}
+    // Temporary debug flag to trace event registration issues.
+    private static final boolean DEBUG = true;
 
     /**
      * Register a {@code ServerLifecycleEvents#SERVER_STARTED}
@@ -151,22 +153,41 @@ final class FabricEventBus {
                                   String listenerInterfaceName, CallbackAdapter handler) {
         try {
             Class<?> eventCls = FabricReflection.forName(eventClassName);
-            if (eventCls == null) return;
+            if (eventCls == null) {
+                if (DEBUG) System.out.println("[MinerTrack:DEBUG] Event class not found: " + eventClassName);
+                return;
+            }
             // The Fabric event holder is a static field whose
             // value is an {@code Event<Listener>} instance. We
             // call {@code EVENT.register(listener)} where
             // {@code listener} is a proxy implementing the
             // event's functional interface.
-            java.lang.reflect.Field eventField = eventCls.getField(fieldName);
+            java.lang.reflect.Field eventField = null;
+            try {
+                eventField = eventCls.getField(fieldName);
+            } catch (Throwable t) {
+                if (DEBUG) System.out.println("[MinerTrack:DEBUG] Event field not found: " + fieldName + " on " + eventClassName);
+                throw t;
+            }
             Object event = eventField.get(null);
             // Resolve {@code Event#register(Object)} on the
-            // concrete event implementation. Fabric's
-            // {@code Event} class declares
-            // {@code public void register(T listener)}, but
-            // since {@code T} is erased we look up
-            // {@code register(Object)} which is the actual
-            // method signature the JVM sees.
-            java.lang.reflect.Method registerMethod = event.getClass().getMethod("register", Object.class);
+            // Fabric API's public Event interface rather than
+            // the implementation class. Calling the method
+            // on the implementation via reflection may hit
+            // JVM access checks (IllegalAccessException) when
+            // the implementation class is in an impl package.
+            java.lang.reflect.Method registerMethod;
+            Class<?> eventIface = FabricReflection.forName("net.fabricmc.fabric.api.event.Event");
+            if (eventIface != null) {
+                try {
+                    registerMethod = eventIface.getMethod("register", Object.class);
+                } catch (NoSuchMethodException e) {
+                    // Fallback to the concrete class method
+                    registerMethod = event.getClass().getMethod("register", Object.class);
+                }
+            } else {
+                registerMethod = event.getClass().getMethod("register", Object.class);
+            }
             // The listener interface is supplied by the caller
             // — we can't reliably discover it from the Event
             // class alone because {@code Event<T>} erases the
@@ -181,6 +202,7 @@ final class FabricEventBus {
             // the dispatcher called it as a no-op.
             Class<?> listenerInterface = FabricReflection.forName(listenerInterfaceName);
             if (listenerInterface == null) {
+                if (DEBUG) System.out.println("[MinerTrack:DEBUG] Listener interface not found: " + listenerInterfaceName);
                 return;
             }
             // Identify the listener interface's single
@@ -200,6 +222,7 @@ final class FabricEventBus {
             // methods.
             final java.lang.reflect.Method abstractMethod = findAbstractMethod(listenerInterface);
             if (abstractMethod == null) {
+                if (DEBUG) System.out.println("[MinerTrack:DEBUG] No single abstract method on listener interface: " + listenerInterfaceName);
                 // No abstract method on the listener interface
                 // (shouldn't happen for a Fabric event, which
                 // is always a functional interface). Skip the
@@ -250,12 +273,19 @@ final class FabricEventBus {
                 }
                 return handler.handle(args);
             };
+            if (DEBUG) System.out.println("[MinerTrack:DEBUG] Creating proxy for listener " + listenerInterfaceName + " (event=" + eventClassName + "." + fieldName + ")");
             Object proxy = Proxy.newProxyInstance(
                 eventCls.getClassLoader(),
                 new Class<?>[]{listenerInterface},
                 proxyHandler);
+            if (DEBUG) System.out.println("[MinerTrack:DEBUG] Invoking register on event " + eventClassName + "." + fieldName);
             registerMethod.invoke(event, proxy);
+            if (DEBUG) System.out.println("[MinerTrack:DEBUG] Registered listener for " + eventClassName + "." + fieldName + " using " + listenerInterfaceName);
         } catch (Throwable t) {
+            if (DEBUG) {
+                System.out.println("[MinerTrack:DEBUG] Exception during Fabric event registration: " + t.getMessage());
+                t.printStackTrace();
+            }
             // Silently swallow — registering a Fabric API
             // listener is best-effort. The mod continues to
             // function with reduced functionality (e.g. no

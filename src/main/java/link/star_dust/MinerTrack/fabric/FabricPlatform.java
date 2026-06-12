@@ -82,6 +82,11 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         commandExecutor = new FabricCommandExecutor(
             adapter, languageBridge, violationManager, updateManager, detectionBridge);
         FabricEventBus.registerCommandRegistration(dispatcher -> {
+            // Debug: log dispatcher type before registering commands.
+            try {
+                adapter.info("[MinerTrack:DEBUG] CommandRegistrationCallback invoked. dispatcher=" + (dispatcher == null ? "null" : dispatcher.getClass().getName()));
+            } catch (Throwable ignored) {
+            }
             // Register the /minertrack command and its aliases
             // (/mt, /mtrack) by reflection. The brigadier
             // dispatcher is a generic class; we call its
@@ -90,9 +95,13 @@ public class FabricPlatform implements DedicatedServerModInitializer {
             // argument} methods on MinecraftServer's
             // CommandManager. The {@code commandExecutor} runs
             // the same subcommand parser the Bukkit path uses.
-            registerCommand(dispatcher, "minertrack");
-            registerCommand(dispatcher, "mt");
-            registerCommand(dispatcher, "mtrack");
+            try {
+                registerCommand(dispatcher, "minertrack");
+                registerCommand(dispatcher, "mt");
+                registerCommand(dispatcher, "mtrack");
+            } catch (Throwable t) {
+                adapter.warning("[MinerTrack:DEBUG] Exception while registering commands in callback: " + t.getMessage());
+            }
         });
 
         // Also attempt an explicit registration on server start
@@ -100,6 +109,7 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         // Registration callback may not fire as expected.
         FabricEventBus.registerServerStarted(server -> {
             try {
+                adapter.info("[MinerTrack:DEBUG] ServerStarted callback invoked. server=" + (server == null ? "null" : server.getClass().getName()));
                 Object cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
                 if (cmdManager == null) return;
                 Object dispatcher = null;
@@ -111,6 +121,7 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                 }
                 if (dispatcher == null) dispatcher = cmdManager;
                 if (dispatcher == null) return;
+                adapter.info("[MinerTrack:DEBUG] Explicit registration dispatcher=" + (dispatcher == null ? "null" : dispatcher.getClass().getName()));
                 registerCommand(dispatcher, "minertrack");
                 registerCommand(dispatcher, "mt");
                 registerCommand(dispatcher, "mtrack");
@@ -181,6 +192,7 @@ public class FabricPlatform implements DedicatedServerModInitializer {
      */
     private void registerCommand(Object dispatcher, String name) {
         try {
+            adapter.info("[MinerTrack:DEBUG] Attempting to register command /" + name + " using dispatcher: " + (dispatcher == null ? "null" : dispatcher.getClass().getName()));
             Class<?> managerCls = FabricReflection.forName("net.minecraft.server.command.CommandManager");
             if (managerCls == null) return;
             // 1. CommandManager.literal(name) -> LiteralArgumentBuilder
@@ -298,8 +310,12 @@ public class FabricPlatform implements DedicatedServerModInitializer {
             FabricReflection.call(dispatcher, "register",
                 new Class<?>[]{commandNodeCls},
                 new Object[]{literal});
+            adapter.info("[MinerTrack:DEBUG] Successfully registered command /" + name);
         } catch (Throwable t) {
             adapter.warning("Failed to register command /" + name + ": " + t.getMessage());
+            if (adapter.isDebugEnabled()) {
+                adapter.info("[MinerTrack:DEBUG] Exception during registerCommand for /" + name + ": " + t.toString());
+            }
         }
     }
 
