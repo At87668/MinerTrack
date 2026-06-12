@@ -350,6 +350,14 @@ public class FabricDetectionBridge implements DetectionBridge {
         cc.setWorldToGroup(result.worldToGroup);
         cc.setGroupWorldPatterns(result.groupWorldPatterns);
         cc.setDefaultUnnamedGroupKey(result.defaultUnnamedGroupKey);
+        // Publish to the bridge's cached state so subsequent
+        // lazy-load callers don't reload again. Use a short
+        // synchronized block to ensure visibility across
+        // threads.
+        synchronized (this) {
+            this.coreConfig = cc;
+            this.configLoaded = true;
+        }
         return cc;
     }
 

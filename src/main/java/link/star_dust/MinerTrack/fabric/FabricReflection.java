@@ -50,7 +50,17 @@ final class FabricReflection {
             Method m = target.getClass().getMethod(methodName, paramTypes);
             return m.invoke(target, args);
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-            return null;
+            // Fallback: try to find a compatible method by name and
+            // parameter count (handles classloader / signature
+            // mismatches when types come from different loaders).
+            try {
+                Method m2 = findMethodByNameAndParamCount(target.getClass(), methodName, args == null ? 0 : args.length);
+                if (m2 == null) return null;
+                m2.setAccessible(true);
+                return m2.invoke(target, args == null ? new Object[0] : args);
+            } catch (IllegalAccessException | InvocationTargetException ex) {
+                return null;
+            }
         }
     }
 
@@ -92,6 +102,23 @@ final class FabricReflection {
                  | InstantiationException | InvocationTargetException e) {
             return null;
         }
+    }
+
+    /** Find a method by name and parameter count, walking the
+     *  class hierarchy. This is a permissive lookup used as a
+     *  fallback when exact parameter-type matching fails due to
+     *  classloader differences. */
+    private static Method findMethodByNameAndParamCount(Class<?> cls, String name, int paramCount) {
+        Class<?> cur = cls;
+        while (cur != null) {
+            for (Method m : cur.getDeclaredMethods()) {
+                if (m.getName().equals(name) && m.getParameterCount() == paramCount) {
+                    return m;
+                }
+            }
+            cur = cur.getSuperclass();
+        }
+        return null;
     }
 
     /** Resolve a class by name; return null on failure. */
