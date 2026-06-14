@@ -351,16 +351,18 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                         //
                         // IMPORTANT: getArgument(String, Class<T>)
                         // expects the VALUE type class (String.class),
-                        // NOT the ArgumentType descriptor class.
-                        // The original code passed ArgumentType.class
-                        // which caused a ClassCastException inside
-                        // brigadier's clazz.cast(), making all
-                        // subcommand arguments silently return "".
+                        // NOT the ArgumentType descriptor instance.
+                        // The original code passed the ArgumentType
+                        // instance (greedy) as the second parameter,
+                        // which caused brigadier's internal type check
+                        // to fail, making all subcommand arguments
+                        // silently return empty strings or throw
+                        // ClassCastException.
                         String greedyString = "";
                         try {
                             Object greedyVal = FabricReflection.callAny(ctx, "getArgument",
-                                new Class<?>[]{String.class, String.class},
-                                new Object[]{"args", greedy});
+                                new Class<?>[]{String.class, Class.class},
+                                new Object[]{"args", String.class});
                             if (greedyVal != null) greedyString = greedyVal.toString();
                         } catch (Throwable t) {
                             // No "args" provided (e.g. /minertrack
