@@ -35,10 +35,22 @@ final class FabricReflection {
     static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
         try {
             Class<?> cls = Class.forName(className);
-            Method m = cls.getDeclaredMethod(methodName, paramTypes);
-            m.setAccessible(true);
-            return m.invoke(null, args);
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            Method m = findMethod(cls, methodName, paramTypes);
+            if (m != null) {
+                m.setAccessible(true);
+                return m.invoke(null, args);
+            }
+            // Fallback: try to find a compatible method by name
+            // and parameter count (handles classloader / signature
+            // mismatches when types come from different loaders,
+            // e.g. between Minecraft versions).
+            Method m2 = findMethodByNameAndParamCount(cls, methodName, args == null ? 0 : args.length);
+            if (m2 != null) {
+                m2.setAccessible(true);
+                return m2.invoke(null, args == null ? new Object[0] : args);
+            }
+            return null;
+        } catch (ClassNotFoundException | IllegalAccessException | InvocationTargetException e) {
             return null;
         }
     }
@@ -145,7 +157,8 @@ final class FabricReflection {
         return forName("net.minecraft." + className);
     }
 
-    private static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
+    /** Package-private: find a method by name and exact param types. */
+    static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
         // Walk the class hierarchy looking for a matching method.
         // We don't use getMethod() because the public API may
         // have moved across versions; the reflection call site

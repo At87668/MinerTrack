@@ -200,21 +200,43 @@ public class FabricAdapter implements PluginAdapter {
         // server adds its own prefix to the line.
         Object server = minecraftServer();
         if (server != null) {
-            // net.minecraft.text.Text.literal(msg).sendMessage(...)
+            // net.minecraft.text.Text.literal(msg) or
+            // new LiteralText(msg) depending on MC version.
+            // 1.18 – 1.19.2: LiteralText constructor
+            // 1.19.3+: Text.literal() static factory
             // We avoid holding a Text reference; build via
             // reflection so this class compiles on a non-Fabric
             // classpath.
             try {
+                Object text = null;
+                // 1. Try Text.literal() (1.19.3+)
+                try {
+                    Class<?> textCls = Class.forName("net.minecraft.text.Text");
+                    java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
+                    text = literal.invoke(null, msg);
+                } catch (Throwable ignored) {}
+                // 2. Fallback: new LiteralText(String) (1.18 – 1.19.2)
+                if (text == null) {
+                    try {
+                        Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+                        text = ltCls.getDeclaredConstructor(String.class).newInstance(msg);
+                    } catch (Throwable ignored) {}
+                }
+                if (text == null) return;
+                // Send via the server's sendMessage. We try
+                // both the single-arg (1.19.4+) and two-arg
+                // (1.18 – 1.19.3) overloads.
                 Class<?> textCls = Class.forName("net.minecraft.text.Text");
-                java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-                Object text = literal.invoke(null, msg);
-                // ServerPlayerEntity isn't on the classpath; we
-                // use the Server interface's sendMessage. The
-                // MinecraftServer instance implements
-                // {@code CommandOutput} and has a sendMessage
-                // overload that takes a Text.
-                java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls);
-                sendMessage.invoke(server, text);
+                try {
+                    java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls);
+                    sendMessage.invoke(server, text);
+                } catch (NoSuchMethodException nsme) {
+                    // Try with boolean arg (1.18 – 1.19.3)
+                    try {
+                        java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls, boolean.class);
+                        sendMessage.invoke(server, text, false);
+                    } catch (Throwable ignored) {}
+                }
                 return;
             } catch (Throwable t) {
                 // Fall through to System.out.

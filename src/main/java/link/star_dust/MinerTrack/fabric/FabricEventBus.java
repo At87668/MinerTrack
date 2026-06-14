@@ -32,8 +32,13 @@ import java.util.function.Consumer;
  */
 final class FabricEventBus {
     private FabricEventBus() {}
-    // Temporary debug flag to trace event registration issues.
-    private static final boolean DEBUG = true;
+    // Debug flag — controlled by FabricAdapter.isDebugEnabled()
+    // via setDebug(). Defaults to false to avoid log spam in
+    // production builds.
+    private static boolean DEBUG = false;
+
+    /** Enable or disable debug logging for event registration. */
+    static void setDebug(boolean enabled) { DEBUG = enabled; }
 
     /**
      * Register a {@code ServerLifecycleEvents#SERVER_STARTED}
@@ -122,12 +127,28 @@ final class FabricEventBus {
      * Register a {@code CommandRegistrationCallback} listener.
      * The {@code handler} receives a {@code CommandDispatcher}
      * (Fabric's brigadier dispatcher).
+     *
+     * <p>Supports both the v1 API (1.18.x) and the v2 API
+     * (1.19+). The class name changed between versions; we
+     * try v2 first (the common path for modern servers), then
+     * fall back to v1 for 1.18.x servers.
      */
     static void registerCommandRegistration(Consumer<Object> handler) {
-        register("net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
-            "EVENT",
-            "net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
-            fromConsumer(handler));
+        // Try v2 first (1.19+)
+        try {
+            register("net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
+                "EVENT",
+                "net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
+                fromConsumer(handler));
+            return;
+        } catch (Throwable ignored) {}
+        // Fallback: v1 (1.18.x)
+        try {
+            register("net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback",
+                "EVENT",
+                "net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback",
+                fromConsumer(handler));
+        } catch (Throwable ignored) {}
     }
 
     // ── Internals ───────────────────────────────────────────────────
