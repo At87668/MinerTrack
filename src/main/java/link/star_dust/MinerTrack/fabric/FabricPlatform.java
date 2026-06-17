@@ -8,6 +8,10 @@ import link.star_dust.MinerTrack.core.detection.MiningCore;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
 import net.fabricmc.api.DedicatedServerModInitializer;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Fabric platform entry point. Listed in
  * {@code fabric.mod.json} under
@@ -52,12 +56,10 @@ public class FabricPlatform implements DedicatedServerModInitializer {
     private FabricWebhookSender webhookSender;
     private FabricCommandExecutor commandExecutor;
     private FabricMiningListener miningListener;
-    private FabricDetectionBridge fabricBridge;
-    /**
-     * Guard against double registration (CommandRegistrationCallback +
-     * ServerStarted fallback).
-     */
-    private volatile boolean commandsRegistered = false;
+
+    // Use AtomicBoolean for thread-safe, atomic registration guard
+    // to prevent race conditions between CommandRegistrationCallback and ServerStarted.
+    private final AtomicBoolean commandsRegistered = new AtomicBoolean(false);
 
     @Override
     public void onInitializeServer() {
@@ -68,7 +70,7 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         FabricEventBus.setDebug(adapter.isDebugEnabled());
         if (adapter.isDebugEnabled()) {
             adapter.info(
-                    "[MinerTrack:DEBUG] Debug mode is ENABLED \u2014 expect a high volume of [MinerTrack:DEBUG] log lines.");
+                    "[MinerTrack:DEBUG] Debug mode is ENABLED — expect a high volume of [MinerTrack:DEBUG] log lines.");
         }
 
         // ── Violation manager ────────────────────────────────────
@@ -77,8 +79,6 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         // ── Detection bridge (config + world registry) ──────────
         detectionBridge = new FabricDetectionBridge(adapter, adapter.getYamlLoader());
         detectionBridge.loadGroupConfigs();
-
-        fabricBridge = detectionBridge;
 
         // ── Mining core (path detection, environment analyser) ─
         miningCore = new MiningCore(detectionBridge, violationManager);
@@ -97,8 +97,9 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         // ── Update manager ───────────────────────────────────────
         updateManager = new FabricUpdateManager(adapter, detectionBridge);
 
+        // Removed redundant fabricBridge field; pass detectionBridge directly.
         // ── Mining listener (block break / place callbacks) ─────
-        miningListener = new FabricMiningListener(miningCore, detectionBridge, violationManager, fabricBridge);
+        miningListener = new FabricMiningListener(miningCore, detectionBridge, violationManager, detectionBridge);
         miningListener.register();
 
         // ── Command executor / tab completer ─────────────────────
@@ -111,49 +112,53 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                         + (dispatcher == null ? "null" : dispatcher.getClass().getName()));
             } catch (Throwable ignored) {
             }
-            if (commandsRegistered)
-                return; // already registered — skip duplicate
+            // Atomic check-and-set prevents duplicate registration across threads.
+            if (!commandsRegistered.compareAndSet(false, true)) {
+                return;
+            }
             try {
                 registerCommand(dispatcher, "minertrack");
                 registerCommand(dispatcher, "mt");
                 registerCommand(dispatcher, "mtrack");
-                commandsRegistered = true;
             } catch (Throwable t) {
                 adapter.warning(
                         "[MinerTrack:DEBUG] Exception while registering commands in callback: " + t.getMessage());
             }
         });
 
-        // Also attempt an explicit registration on server start
+        // Also attempt an explicit registration on server start as fallback
         FabricEventBus.registerServerStarted(server -> {
-            if (commandsRegistered)
-                return; // already registered — skip
+            // Atomic check-and-set prevents duplicate registration across threads.
+            if (!commandsRegistered.compareAndSet(false, true)) {
+                return;
+            }
             try {
                 adapter.info("[MinerTrack:DEBUG] ServerStarted callback invoked. server="
                         + (server == null ? "null" : server.getClass().getName()));
                 Object cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0],
                         new Object[0]);
-                if (cmdManager == null)
-                    return;
+                if (cmdManager == null) return;
+
                 Object dispatcher = null;
                 try {
                     dispatcher = FabricReflection.callAny(cmdManager, "getDispatcher", new Class<?>[0], new Object[0]);
                 } catch (Throwable ignored) {
                 }
-                if (dispatcher == null)
-                    dispatcher = cmdManager;
-                if (dispatcher == null)
-                    return;
+                if (dispatcher == null) dispatcher = cmdManager;
+                if (dispatcher == null) return;
+
                 adapter.info("[MinerTrack:DEBUG] Explicit registration dispatcher="
                         + (dispatcher == null ? "null" : dispatcher.getClass().getName()));
                 registerCommand(dispatcher, "minertrack");
                 registerCommand(dispatcher, "mt");
                 registerCommand(dispatcher, "mtrack");
-                commandsRegistered = true;
             } catch (Throwable t) {
                 adapter.warning("Explicit command registration failed: " + t.getMessage());
             }
         });
+
+        // Register server stopping callback for proper cleanup.
+        FabricEventBus.registerServerStopping(this::onServerStopping);
 
         // ── Global VL decay tick ─────────────────────────────────
         violationManager.scheduleGlobalDecayTask(20L * 60L * 20L);
@@ -164,42 +169,47 @@ public class FabricPlatform implements DedicatedServerModInitializer {
     }
 
     /**
-     * Parse a {@code String[]} argument's raw text into a
-     * {@code String[]} of subcommand tokens.
+     * Parse a greedy string argument into subcommand tokens.
+     * In Brigadier, greedyString() only captures arguments after the command label,
+     * so no prefix/command-name stripping is needed (unlike Bukkit).
      */
     static String[] parseArgs(String input) {
-        if (input == null)
-            return new String[0];
+        if (input == null || input.trim().isEmpty()) return new String[0];
         String[] raw = input.trim().split("\\s+");
-        if (raw.length == 0)
-            return new String[0];
-        int offset = 0;
-        if (raw[0].startsWith("/") || "minertrack".equals(raw[0])
-                || "mt".equals(raw[0]) || "mtrack".equals(raw[0])) {
-            offset = 1;
-        }
-        if (offset >= raw.length)
-            return new String[0];
-        java.util.List<String> tokens = new java.util.ArrayList<>();
-        for (int i = offset; i < raw.length; i++) {
-            if (!raw[i].isEmpty())
-                tokens.add(raw[i]);
+        List<String> tokens = new ArrayList<>();
+        for (String s : raw) {
+            if (!s.isEmpty()) tokens.add(s);
         }
         return tokens.toArray(new String[0]);
     }
 
     // ── Tab-completion helpers ─────────────────────────────────────
 
+    /**
+     * Build an empty Suggestions object using the constructor (not a non-existent static method).
+     * Wrapped in try-catch to fail safely instead of crashing the tab-completion thread.
+     */
     private static Object buildEmptySuggestions() {
-        Class<?> suggestionsCls = FabricReflection.forName(
-                "com.mojang.brigadier.suggestion.Suggestions");
-        if (suggestionsCls == null)
-            return null;
+        try {
+            Class<?> suggestionsCls = FabricReflection.forName("com.mojang.brigadier.suggestion.Suggestions");
+            Class<?> rangeCls = FabricReflection.forName("com.mojang.brigadier.context.StringRange");
+            if (suggestionsCls == null || rangeCls == null) return null;
 
-        return FabricReflection.callStatic(suggestionsCls.getName(),
-                "create",
-                new Class<?>[] { String.class, java.util.Collection.class },
-                new Object[] { "", new java.util.ArrayList<>() });
+            // Create an empty range at position 0
+            Object range = FabricReflection.callStatic(rangeCls.getName(), "at",
+                    new Class<?>[]{int.class}, new Object[]{0});
+            if (range == null) {
+                range = FabricReflection.callStatic(rangeCls.getName(), "between",
+                        new Class<?>[]{int.class, int.class}, new Object[]{0, 0});
+            }
+
+            // Use constructor: new Suggestions(StringRange, List<Suggestion>)
+            return suggestionsCls.getConstructor(rangeCls, List.class)
+                    .newInstance(range, new ArrayList<>());
+        } catch (Throwable t) {
+            // Fail safely instead of propagating exception to brigadier
+            return null;
+        }
     }
 
     /**
@@ -209,54 +219,49 @@ public class FabricPlatform implements DedicatedServerModInitializer {
     private static Object wrapInCompletableFuture(Object value) {
         try {
             Class<?> completableFutureCls = FabricReflection.forName("java.util.concurrent.CompletableFuture");
-            if (completableFutureCls == null)
-                return value;
+            if (completableFutureCls == null) return value;
             return FabricReflection.callStatic(completableFutureCls.getName(),
                     "completedFuture",
-                    new Class<?>[] { Object.class },
-                    new Object[] { value });
+                    new Class<?>[]{Object.class},
+                    new Object[]{value});
         } catch (Throwable t) {
             return value;
         }
     }
 
-    private static Object buildSuggestions(Object builder,
-            java.util.List<String> completions,
-            String input) {
+    /**
+     * Build Suggestions with actual completions using the constructor.
+     */
+    private static Object buildSuggestions(Object builder, List<String> completions, String input) {
         try {
-            Class<?> suggestionCls = FabricReflection.forName(
-                    "com.mojang.brigadier.suggestion.Suggestion");
-            Class<?> rangeCls = FabricReflection.forName(
-                    "com.mojang.brigadier.context.StringRange");
-            Class<?> suggestionsCls = FabricReflection.forName(
-                    "com.mojang.brigadier.suggestion.Suggestions");
-            if (suggestionCls == null || rangeCls == null
-                    || suggestionsCls == null) {
+            Class<?> suggestionCls = FabricReflection.forName("com.mojang.brigadier.suggestion.Suggestion");
+            Class<?> rangeCls = FabricReflection.forName("com.mojang.brigadier.context.StringRange");
+            Class<?> suggestionsCls = FabricReflection.forName("com.mojang.brigadier.suggestion.Suggestions");
+            if (suggestionCls == null || rangeCls == null || suggestionsCls == null) {
                 return buildEmptySuggestions();
             }
+
             int start = 0;
             try {
-                Object startObj = FabricReflection.callAny(builder,
-                        "getStart", new Class<?>[0], new Object[0]);
-                if (startObj instanceof Number)
-                    start = ((Number) startObj).intValue();
+                Object startObj = FabricReflection.callAny(builder, "getStart", new Class<?>[0], new Object[0]);
+                if (startObj instanceof Number) start = ((Number) startObj).intValue();
             } catch (Throwable ignored) {
             }
-            Object range = FabricReflection.callStatic(rangeCls.getName(),
-                    "between",
-                    new Class<?>[] { int.class, int.class },
-                    new Object[] { start, input.length() });
-            java.util.List<Object> suggestions = new java.util.ArrayList<>();
+
+            Object range = FabricReflection.callStatic(rangeCls.getName(), "between",
+                    new Class<?>[]{int.class, int.class},
+                    new Object[]{start, input.length()});
+
+            List<Object> suggestions = new ArrayList<>();
             for (String c : completions) {
-                Object sug = suggestionCls.getDeclaredConstructor(
-                        rangeCls, String.class).newInstance(range, c);
+                Object sug = suggestionCls.getDeclaredConstructor(rangeCls, String.class)
+                        .newInstance(range, c);
                 suggestions.add(sug);
             }
-            Object result = FabricReflection.callStatic(suggestionsCls.getName(),
-                    "create",
-                    new Class<?>[] { String.class, java.util.Collection.class },
-                    new Object[] { input, suggestions });
-            return result;
+
+            // Use constructor instead of non-existent Suggestions.create() static method
+            return suggestionsCls.getConstructor(rangeCls, List.class)
+                    .newInstance(range, suggestions);
         } catch (Throwable t) {
             return buildEmptySuggestions();
         }
@@ -266,16 +271,14 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         try {
             adapter.info("[MinerTrack:DEBUG] Attempting to register command /" + name + " using dispatcher: "
                     + (dispatcher == null ? "null" : dispatcher.getClass().getName()));
+
             Class<?> managerCls = FabricReflection.forName("net.minecraft.server.command.CommandManager");
-            if (managerCls == null)
-                return;
+            if (managerCls == null) return;
 
             // 1. CommandManager.literal(name) -> LiteralArgumentBuilder
             Object literal = FabricReflection.callStatic("net.minecraft.server.command.CommandManager",
-                    "literal", new Class<?>[] { String.class }, new Object[] { name });
-            if (literal == null)
-                return;
-            Class<?> literalCls = literal.getClass();
+                    "literal", new Class<?>[]{String.class}, new Object[]{name});
+            if (literal == null) return;
 
             // 2. StringArgumentType.greedyString() -> ArgumentType<String>
             Object greedy = FabricReflection.callStatic("com.mojang.brigadier.arguments.StringArgumentType",
@@ -292,27 +295,24 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                 return;
             }
             Object arg = FabricReflection.callStatic("net.minecraft.server.command.CommandManager",
-                    "argument", new Class<?>[] { String.class, argumentTypeCls },
-                    new Object[] { "args", greedy });
+                    "argument", new Class<?>[]{String.class, argumentTypeCls},
+                    new Object[]{"args", greedy});
             if (arg == null) {
                 adapter.warning("Failed to build argument builder for /" + name + "; command will not be registered.");
                 return;
             }
 
-            // 4. Wrap the platform command in a brigadier Command<Object> lambda.
+            // 4. Wrap the platform command in a brigadier Command<Object> lambda via proxy.
             Class<?> brigadierCommandCls = FabricReflection.forName("com.mojang.brigadier.Command");
-            if (brigadierCommandCls == null)
-                return;
+            if (brigadierCommandCls == null) return;
+
             Object commandProxy = java.lang.reflect.Proxy.newProxyInstance(
                     brigadierCommandCls.getClassLoader(),
-                    new Class<?>[] { brigadierCommandCls },
+                    new Class<?>[]{brigadierCommandCls},
                     (proxy, method, methodArgs) -> {
-                        if ("hashCode".equals(method.getName()))
-                            return System.identityHashCode(proxy);
-                        if ("equals".equals(method.getName()))
-                            return proxy == methodArgs[0];
-                        if ("toString".equals(method.getName()))
-                            return "MinerTrackCommandProxy";
+                        if ("hashCode".equals(method.getName())) return System.identityHashCode(proxy);
+                        if ("equals".equals(method.getName())) return proxy == methodArgs[0];
+                        if ("toString".equals(method.getName())) return "MinerTrackCommandProxy";
 
                         if (!"run".equals(method.getName()) || methodArgs == null || methodArgs.length == 0) {
                             return 1;
@@ -323,10 +323,9 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                             String greedyString = "";
                             try {
                                 Object greedyVal = FabricReflection.callAny(ctx, "getArgument",
-                                        new Class<?>[] { String.class, Class.class },
-                                        new Object[] { "args", String.class });
-                                if (greedyVal != null)
-                                    greedyString = greedyVal.toString();
+                                        new Class<?>[]{String.class, Class.class},
+                                        new Object[]{"args", String.class});
+                                if (greedyVal != null) greedyString = greedyVal.toString();
                             } catch (Throwable t) {
                                 // No "args" provided
                             }
@@ -339,8 +338,8 @@ public class FabricPlatform implements DedicatedServerModInitializer {
 
             // 5. arg.executes(commandProxy)
             FabricReflection.callAny(arg, "executes",
-                    new Class<?>[] { brigadierCommandCls },
-                    new Object[] { commandProxy });
+                    new Class<?>[]{brigadierCommandCls},
+                    new Object[]{commandProxy});
 
             // 5b. Tab-completion: arg.suggests(suggestionProvider)
             Class<?> suggestionProviderCls = FabricReflection.forName(
@@ -348,14 +347,11 @@ public class FabricPlatform implements DedicatedServerModInitializer {
             if (suggestionProviderCls != null) {
                 Object suggestionProxy = java.lang.reflect.Proxy.newProxyInstance(
                         suggestionProviderCls.getClassLoader(),
-                        new Class<?>[] { suggestionProviderCls },
+                        new Class<?>[]{suggestionProviderCls},
                         (sproxy, sMethod, sArgs) -> {
-                            if ("hashCode".equals(sMethod.getName()))
-                                return System.identityHashCode(sproxy);
-                            if ("equals".equals(sMethod.getName()))
-                                return sproxy == sArgs[0];
-                            if ("toString".equals(sMethod.getName()))
-                                return "MinerTrackSuggestionProxy";
+                            if ("hashCode".equals(sMethod.getName())) return System.identityHashCode(sproxy);
+                            if ("equals".equals(sMethod.getName())) return sproxy == sArgs[0];
+                            if ("toString".equals(sMethod.getName())) return "MinerTrackSuggestionProxy";
 
                             if (!"getSuggestions".equals(sMethod.getName()) || sArgs == null || sArgs.length < 2) {
                                 return wrapInCompletableFuture(buildEmptySuggestions());
@@ -367,14 +363,12 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                                 try {
                                     Object getInput = FabricReflection.callAny(sBuilder, "getInput",
                                             new Class<?>[0], new Object[0]);
-                                    if (getInput != null)
-                                        input = getInput.toString();
+                                    if (getInput != null) input = getInput.toString();
                                 } catch (Throwable ignored) {
                                 }
                                 String[] args = parseArgs(input);
-                                Object source = FabricReflection.callAny(sCtx,
-                                        "getSource", new Class<?>[0], new Object[0]);
-                                java.util.List<String> completions = commandExecutor.onTabComplete(source, args);
+                                Object source = FabricReflection.callAny(sCtx, "getSource", new Class<?>[0], new Object[0]);
+                                List<String> completions = commandExecutor.onTabComplete(source, args);
                                 if (completions == null || completions.isEmpty()) {
                                     return wrapInCompletableFuture(buildEmptySuggestions());
                                 }
@@ -385,24 +379,30 @@ public class FabricPlatform implements DedicatedServerModInitializer {
                             }
                         });
                 FabricReflection.callAny(arg, "suggests",
-                        new Class<?>[] { suggestionProviderCls },
-                        new Object[] { suggestionProxy });
+                        new Class<?>[]{suggestionProviderCls},
+                        new Object[]{suggestionProxy});
             }
 
             // 6. literal.then(arg)
             FabricReflection.callAny(literal, "then",
-                    new Class<?>[] { FabricReflection.forName("com.mojang.brigadier.builder.ArgumentBuilder") },
-                    new Object[] { arg });
+                    new Class<?>[]{FabricReflection.forName("com.mojang.brigadier.builder.ArgumentBuilder")},
+                    new Object[]{arg});
 
             // 7. literal.executes(commandProxy)
             FabricReflection.callAny(literal, "executes",
-                    new Class<?>[] { brigadierCommandCls },
-                    new Object[] { commandProxy });
+                    new Class<?>[]{brigadierCommandCls},
+                    new Object[]{commandProxy});
 
             // 8. dispatcher.register(literal)
+            // Use base class LiteralArgumentBuilder for method lookup
+            // to avoid failures when literal() returns a proxy or subclass.
+            Class<?> literalBuilderCls = FabricReflection.forName("com.mojang.brigadier.builder.LiteralArgumentBuilder");
+            if (literalBuilderCls == null) literalBuilderCls = literal.getClass();
+
             FabricReflection.call(dispatcher, "register",
-                    new Class<?>[] { literalCls },
-                    new Object[] { literal });
+                    new Class<?>[]{literalBuilderCls},
+                    new Object[]{literal});
+
             adapter.info("[MinerTrack:DEBUG] Successfully registered command /" + name);
         } catch (Throwable t) {
             adapter.warning("Failed to register command /" + name + ": " + t.getMessage());
@@ -412,7 +412,13 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         }
     }
 
-    public void onServerStopping() {
-        // No explicit cleanup required
+    /**
+     * Called when the server is stopping. Receives the MinecraftServer instance.
+     * Registered via FabricEventBus.registerServerStopping().
+     *
+     * @param server the MinecraftServer instance that is shutting down
+     */
+    public void onServerStopping(Object server) {
+        adapter.info("MinerTrack (FabricPlatform) disabling.");
     }
 }

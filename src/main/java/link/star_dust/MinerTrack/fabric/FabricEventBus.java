@@ -53,6 +53,22 @@ final class FabricEventBus {
     }
 
     /**
+     * Register a {@code ServerLifecycleEvents#SERVER_STOPPING}
+     * listener. The {@code handler} receives the live
+     * {@code MinecraftServer} instance that is about to stop.
+     *
+     * <p>This event fires before the server begins its shutdown
+     * sequence, allowing mods to perform cleanup (e.g. flushing
+     * buffers, cancelling async tasks, closing connections).
+     */
+    static void registerServerStopping(Consumer<Object> handler) {
+        register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents",
+            "SERVER_STOPPING",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents$ServerStopping",
+            fromConsumer(handler));
+    }
+
+    /**
      * Register a {@code ServerWorldEvents#LOAD} listener. The
      * {@code handler} receives {@code (server, world)} as a
      * two-element array.
