@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+>
+> V2 is in development.
+> Once v2 is finished, v1 won't get any more updates.
+
 ![MinerTrack Anti-XRay](https://at87668.github.io/MinerTrack/Images/MinerTrack.png)
 
 ## MinerTrack Anti-XRay
