@@ -107,10 +107,7 @@ final class FabricReflection {
         }
     }
 
-    /** Find a method by name and parameter count, walking the
-     *  class hierarchy. This is a permissive lookup used as a
-     *  fallback when exact parameter-type matching fails due to
-     *  classloader differences. */
+    /** Permissive lookup: find a method by name+param count, walking class hierarchy and interfaces. */
     private static Method findMethodByNameAndParamCount(Class<?> cls, String name, int paramCount) {
         Class<?> cur = cls;
         while (cur != null) {
@@ -118,6 +115,10 @@ final class FabricReflection {
                 if (m.getName().equals(name) && m.getParameterCount() == paramCount) {
                     return m;
                 }
+            }
+            for (Class<?> iface : cur.getInterfaces()) {
+                Method m = findMethodByNameAndParamCount(iface, name, paramCount);
+                if (m != null) return m;
             }
             cur = cur.getSuperclass();
         }
@@ -138,19 +139,26 @@ final class FabricReflection {
         return forName("net.minecraft." + className);
     }
 
-    /** Package-private: find a method by name and exact param types. */
+    /**
+     * Find a method in the class hierarchy including interfaces.
+     * Uses getMethod (public API) as the primary path since it
+     * resolves interface methods automatically.
+     */
     static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
-        // Walk the class hierarchy looking for a matching method.
-        // We don't use getMethod() because the public API may
-        // have moved across versions; the reflection call site
-        // already accepts a {@code null} return for "method
-        // not found" and falls back to a sensible default.
+        if (cls == null) return null;
+        try {
+            return cls.getMethod(name, paramTypes);
+        } catch (NoSuchMethodException ignored) {}
+        // Fallback: walk declared methods up the hierarchy
         Class<?> cur = cls;
         while (cur != null) {
             try {
-                Method m = cur.getDeclaredMethod(name, paramTypes);
-                return m;
-            } catch (NoSuchMethodException ignored) {
+                return cur.getDeclaredMethod(name, paramTypes);
+            } catch (NoSuchMethodException ignored) {}
+            // Also check interfaces at each level
+            for (Class<?> iface : cur.getInterfaces()) {
+                Method m = findMethod(iface, name, paramTypes);
+                if (m != null) return m;
             }
             cur = cur.getSuperclass();
         }
