@@ -21,26 +21,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Fabric implementation of {@link ViolationManagerBridge}.
- *
- * <p>Mirrors {@code BukkitViolationManager} structurally: holds a
- * per-player VL map, a {@link ViolationEngine} that owns the
- * scheduling, and a small per-platform layer for I/O (log files,
- * verbose-player set, decay scheduling).
- *
- * <p>Scheduling uses Fabric API's
- * {@link ServerTickEvents#END_SERVER_TICK} for the global decay
- * tick. Per-player decay is fanned out from the same global tick
- * — Fabric does not have an equivalent of Bukkit's per-player
- * {@code BukkitTask}, so we mark which players have a pending
- * per-player decay and run the engine's processDecay on them
- * inside the same tick.
- *
- * <p>All {@code net.minecraft.*} access (player lookups, command
- * dispatch, sending messages) goes through
- * {@link FabricReflection} so the file compiles on a non-Fabric
- * classpath; the lookups succeed at runtime when the Fabric
- * loader is in play.
+ * Fabric ViolationManagerBridge. Mirrors BukkitViolationManager structurally.
+ * Uses ServerTickEvents.END_SERVER_TICK for decay (no per-player scheduler on Fabric).
  */
 public class FabricViolationManager implements ViolationManagerBridge {
     private static volatile FabricViolationManager active;

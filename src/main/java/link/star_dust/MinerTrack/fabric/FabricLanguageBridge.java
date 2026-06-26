@@ -8,21 +8,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Fabric implementation of {@link LanguageBridge}.
- *
- * <p>Mirrors {@code BukkitLanguageBridge} structurally: loads
- * {@code language.yml} from the data folder via
- * {@link LanguageMerger} (which uses the same whitelist-less
- * "overlay defaults on top of user file" pattern as the v1 legacy
- * language manager) and exposes a {@link CommonYaml} view the rest
- * of the codebase can read through the platform-agnostic
- * {@code LanguageBridge} interface.
- *
- * <p>Colour translation is the same as the adapter's: '&' → '§'
- * with a Minecraft colour-code whitelist, identical to the Bukkit
- * adapter's {@code ChatColor.translateAlternateColorCodes}.
- */
+/** Fabric LanguageBridge. Loads language.yml via LanguageMerger. */
 public class FabricLanguageBridge implements LanguageBridge {
     private static final String LANGUAGE_RESOURCE = "language.yml";
 

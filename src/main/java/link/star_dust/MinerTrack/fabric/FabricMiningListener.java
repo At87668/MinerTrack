@@ -8,17 +8,7 @@ import link.star_dust.MinerTrack.core.detection.MiningCore;
 
 import java.util.UUID;
 
-/**
- * Fabric mining listener: registers block-break and block-place
- * callbacks via the public Fabric API (no Mixin).
- *
- * <p>The callbacks fire on the main server thread, so the
- * detection core's bookkeeping structures can be updated
- * without a separate queue. The translation of a Fabric world
- * / block to the canonical {@code minecraft:xxx} ids is done
- * via {@link FabricReflection} so this class compiles on a
- * non-Fabric classpath.
- */
+/** Fabric mining listener: registers block-break/place callbacks via Fabric API (no Mixin). */
 public class FabricMiningListener {
     private final MiningCore miningCore;
     private final DetectionBridge detectionBridge;
@@ -45,19 +35,14 @@ public class FabricMiningListener {
                 if (isClientWorld(world)) return;
                 if (!isServerPlayer(player)) return;
                 handleBlockBreak(player, pos, state, world);
-            } catch (Throwable t) {
-                // Catch-all so a detection failure never
-                // aborts the server's break handling.
-            }
+            } catch (Throwable t) { /* silent */ }
         });
         FabricEventBus.registerUseBlock((player, world, hand, hitResult) -> {
             try {
                 if (isClientWorld(world)) return false;
                 if (!isServerPlayer(player)) return false;
                 handleBlockPlace(player, hitResult, world);
-            } catch (Throwable t) {
-                // Silent.
-            }
+        } catch (Throwable t) { /* silent */ }
             return false; // PASS
         });
     }
@@ -72,12 +57,6 @@ public class FabricMiningListener {
     }
 
     private boolean isServerPlayer(Object player) {
-        // ServerPlayerEntity is the server-side player; the
-        // Player interface itself is the client + server common
-        // supertype. We don't need a strict ServerPlayerEntity
-        // check (the platform never receives a client-side
-        // player on a dedicated server), so any non-null
-        // Player is acceptable.
         return player != null;
     }
 

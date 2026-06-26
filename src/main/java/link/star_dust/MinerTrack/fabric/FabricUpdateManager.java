@@ -8,21 +8,7 @@ import link.star_dust.MinerTrack.core.update.UpdateManagerCore;
 
 import java.util.List;
 
-/**
- * Fabric-side shim for the platform-agnostic
- * {@link UpdateManagerCore}. Mirrors {@code BukkitUpdateManager}:
- * constructs an {@link UpdateConfigSource} from the active
- * {@link DetectionBridge}, hands it to the core along with the
- * adapter's version string, and forwards
- * {@link #checkForUpdates(CommandBridge)} calls.
- *
- * <p>The Fabric side is intentionally simpler than the Bukkit
- * side: Fabric has no {@code CommandSender} / {@code Player}
- * abstraction to bridge to for the chat component renderer.
- * The core's {@link UpdateManagerCore#renderResult(LanguageBridge,
- * UpdateManagerCore.CheckResult)} returns a pre-coloured
- * string, which we send through the command bridge.
- */
+/** Fabric update-check shim. Mirrors BukkitUpdateManager. */
 public class FabricUpdateManager {
     private final FabricAdapter adapter;
     private final UpdateManagerCore core;

@@ -15,25 +15,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Fabric implementation of {@link DetectionBridge}.
- *
- * <p>The block-lookup path uses the Fabric server's
- * {@code World#getBlockState(BlockPos)} API. The
- * block-state → canonical-id conversion goes through the Fabric
- * registry's {@code Identifier}, which is the platform-neutral
- * equivalent of a Bukkit {@code Material} name: every block is
- * keyed by a {@code minecraft:<path>} identifier, so the
- * resulting string is already in the canonical format the
- * detection core expects (no translation table needed).
- *
- * <p>The bridge does NOT use Mixin (per the project
- * requirements); block lookups happen through the public
- * Fabric API, which on 1.18+ exposes
- * {@code World#getBlockState} for free without any class
- * transformer.
- *
- * <p>All {@code net.minecraft.*} access goes through
- * {@link FabricReflection}.
+ * Fabric DetectionBridge. Block lookups via Fabric server's World API (no Mixin).
+ * Block IDs are already minecraft:xxx canonical format.
  */
 public class FabricDetectionBridge implements DetectionBridge {
     private final FabricAdapter adapter;

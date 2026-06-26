@@ -8,27 +8,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Fabric platform implementation of {@link CommonYaml}.
- *
- * <p>Backed by SnakeYAML (a project-wide {@code implementation}
- * dependency), so the on-disk YAML format is identical to what the
- * Bukkit adapter produces. The Fabric platform does not have a
- * ready-made "live section" wrapper (Fabric doesn't ship a Bukkit-style
- * {@code YamlConfiguration}), so this implementation uses a flat
- * {@code LinkedHashMap} for everything. The {@code ConfigMerger} on
- * the Fabric path uses the {@code MapBackedYaml} fallback already
- * implemented in the merger; that path is correct because the only
- * mutating code path on Fabric is the merger's own
- * {@code set(key, value)} calls, which {@code MapBackedYaml} handles
- * fine.
- *
- * <p>Round-tripping YAML through SnakeYAML with the default
- * {@code Representer} / {@code Constructor} preserves the section
- * structure (sub-maps are sub-maps, scalars stay scalars), so the
- * v2 "xray.enable reads as false after the merger runs" bug that
- * hit the Bukkit path doesn't reappear here.
- */
+/** Fabric CommonYaml backed by SnakeYAML Map. Mirrors MapBackedYaml. */
 public class FabricCommonYaml implements CommonYaml {
     private final Map<String, Object> map;
 

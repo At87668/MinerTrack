@@ -12,25 +12,7 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 /**
- * Fabric implementation of the platform-agnostic {@link PluginAdapter}.
- *
- * <p>Mirrors {@code BukkitAdapter} structurally: holds a
- * platform-specific data folder, a YAML loader, an optional cached
- * debug flag, and a logger. The Fabric server's console is the only
- * built-in log sink we have here; we route the same
- * {@code [MinerTrack:DEBUG]} / {@code [MinerTrack]} prefix through
- * the Fabric server's logger via the {@link #info(String)} and
- * {@link #warning(String)} methods so the v2 {@code CoreLogger} debug
- * lines still appear in {@code logs/latest.log}.
- *
- * <p>All {@code net.minecraft.*} access goes through
- * {@link FabricReflection} because the Minecraft server classes are
- * NOT on the project's compile classpath (the project compiles
- * against the Bukkit API, with the Minecraft server jar supplied at
- * runtime by the Fabric loader). Reflection lets the same compiled
- * class work in a Bukkit build (where the lookup simply fails) and
- * in a Fabric build (where the lookup succeeds against the server's
- * runtime classpath).
+ * Fabric PluginAdapter. Mirrors BukkitAdapter structurally.
  */
 public class FabricAdapter implements PluginAdapter {
     private final File dataFolder;

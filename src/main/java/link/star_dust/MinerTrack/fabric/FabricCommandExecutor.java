@@ -14,20 +14,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Fabric command executor / tab completer for
- * {@code /minertrack} (alias {@code /mt}, {@code /mtrack}).
- *
- * <p>Mirrors {@code BukkitCommandExecutor}: delegates all
- * subcommand logic to the platform-agnostic
- * {@link MinerTrackCommandCore}. The Fabric side is functionally
- * identical to the Bukkit side; the only difference is how the
- * command source is exposed (a {@code ServerCommandSource} rather
- * than a Bukkit {@code CommandSender}).
- *
- * <p>All {@code net.minecraft.*} access goes through
- * {@link FabricReflection}.
- */
+/** Fabric command executor. Delegates to MinerTrackCommandCore. */
 public class FabricCommandExecutor {
     private final FabricAdapter adapter;
     private final FabricLanguageBridge langBridge;

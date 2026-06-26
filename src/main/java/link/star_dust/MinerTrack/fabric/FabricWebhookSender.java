@@ -5,22 +5,7 @@ import link.star_dust.MinerTrack.core.violation.WebhookEngine;
 
 import java.nio.charset.StandardCharsets;
 
-/**
- * Fabric platform implementation of {@link WebhookEngine.Sender}.
- *
- * <p>Routes HTTP POSTs through Apache HttpClient 5 on a daemon
- * thread (no Fabric async scheduler is exposed for plain
- * server-side mods on 1.18+; the {@code fabric-events}
- * lifecycle events only fire on the main thread). The HTTP
- * transport itself is the same as the Bukkit path, so the
- * webhook payload format and Discord error reporting are
- * identical across platforms.
- *
- * <p>The class is intentionally tiny: it does not own any
- * configuration, placeholder-substitution logic, or JSON
- * rendering. All of that lives in {@link WebhookEngine} so the
- * same engine code path works on both Bukkit and Fabric.
- */
+/** Fabric Webhook Sender. HTTP POST via HttpClient 5 on a daemon thread. */
 public class FabricWebhookSender implements WebhookEngine.Sender {
     private final PluginAdapter adapter;
 

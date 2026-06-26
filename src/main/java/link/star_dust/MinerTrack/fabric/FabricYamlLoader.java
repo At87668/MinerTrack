@@ -12,25 +12,7 @@ import java.io.Reader;
 import java.util.Collections;
 import java.util.Map;
 
-/**
- * Fabric YAML loader.
- *
- * <p>SnakeYAML is bundled at compile time (transitive of the
- * Bukkit / Paper classpath via the {@code org.yaml.snakeyaml} package
- * the project already depends on) and is therefore available at
- * runtime on the Fabric server too — SnakeYAML is a transitive
- * dependency of every Fabric YAML utility, and even when it isn't
- * present, the Fabric server's own classpath provides it. We
- * therefore don't need to shadow it into the JAR for the Fabric
- * build.
- *
- * <p>The loader reads a YAML stream into a {@code Map} and hands it
- * off to {@link FabricCommonYaml}, which exposes the same
- * {@code CommonYaml} surface every other platform uses. The
- * {@code Map}-backed representation is correct for the platform
- * merger path (the only mutating code path is the merger's own
- * {@code set} calls, which {@code MapBackedYaml} handles).
- */
+/** Fabric YAML loader. SnakeYAML-backed, returns FabricCommonYaml. */
 public class FabricYamlLoader implements YamlLoader {
 
     @Override

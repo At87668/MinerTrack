@@ -6,27 +6,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
- * Tiny reflection utility used by the Fabric platform code to
- * access the {@code net.minecraft.*} types that are NOT on the
- * project's compile classpath (Bukkit projects compile against
- * {@code org.bukkit.*}, not {@code net.minecraft.*}; the
- * Minecraft server jar is provided by the Fabric server at
- * runtime).
- *
- * <p>The plugin compiles cleanly on a standard Gradle setup
- * (the Bukkit build), and the reflection lookups succeed at
- * runtime on a Fabric server. The reflective indirection is
- * the only way to bridge a Bukkit-style shadow-jar project to
- * the Fabric server's classpath without a second Gradle module
- * (Loom). The user requested "use Fabric API, not Mixin" — that
- * constraint is preserved: every public Fabric API surface
- * (events, registries, command API) is called through Fabric
- * API directly, and only the {@code net.minecraft.*} type
- * surface (which Fabric inherits from Mojang) is reached via
- * reflection. This is the same pattern Mojang's own
- * {@code net.minecraftforge.versions.forge.ForgeVersion}
- * uses internally, and is the standard cross-loader workaround
- * for projects that ship a single binary on multiple loaders.
+ * Reflection helpers for accessing net.minecraft.* types not on compile classpath.
+ * Used only when Fabric API cannot provide the needed hook.
  */
 final class FabricReflection {
     private FabricReflection() {}
