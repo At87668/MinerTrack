@@ -18,7 +18,6 @@ public class FabricCommandBridge implements CommandBridge {
 
     private static volatile java.lang.reflect.Executable cachedTextFactory;
     private static volatile boolean textFactoryIsStatic;
-    private static volatile boolean twoArgSendSupported = true;
     private static volatile Boolean fabricPermissionApiChecked;
     private static volatile Class<?> cachedActorCls;
 
@@ -62,18 +61,22 @@ public class FabricCommandBridge implements CommandBridge {
         Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
         if (textCls == null) return;
         try {
-            if (twoArgSendSupported) {
-                FabricReflection.callAny(target, "sendMessage",
-                    new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
+            // sendMessage(Text) — works on ServerCommandSource (console) and 1.19.4+ players
+            Method m = FabricReflection.findMethod(target.getClass(), "sendMessage", new Class<?>[]{textCls});
+            if (m != null) {
+                m.setAccessible(true);
+                m.invoke(target, text);
                 return;
             }
-            FabricReflection.callAny(target, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
-        } catch (Throwable t1) {
-            try {
-                twoArgSendSupported = false;
-                FabricReflection.callAny(target, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
-            } catch (Throwable t2) {}
-        }
+        } catch (Throwable ignored) {}
+        try {
+            // sendMessage(Text, boolean) — 1.18-1.19.3 player entities
+            Method m = FabricReflection.findMethod(target.getClass(), "sendMessage", new Class<?>[]{textCls, boolean.class});
+            if (m != null) {
+                m.setAccessible(true);
+                m.invoke(target, text, false);
+            }
+        } catch (Throwable ignored) {}
     }
 
     @Override public void dispatchCommand(String command) {
@@ -99,7 +102,11 @@ public class FabricCommandBridge implements CommandBridge {
     @Override public Object getSender() { return source; }
     @Override public void sendMessage(String message) {
         Object s = source(); if (s == null) return;
-        try { Object text = createText(message); sendMessage0(s, text); } catch (Throwable t) {}
+        try {
+            Object text = createText(message);
+            if (text != null) { sendMessage0(s, text); return; }
+        } catch (Throwable ignored) {}
+        System.out.println("[MinerTrack] " + message);
     }
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
