@@ -90,49 +90,71 @@ public class FabricCommandBridge implements CommandBridge {
             //    the console, it also goes to the server log.
             if (isSuccess) {
                 try {
-                    Method m = targetCls.getMethod("sendSuccess", Supplier.class, boolean.class);
-                    Object supplier = createTextSupplier((String) invokeToString(text));
-                    if (supplier != null) {
-                        m.invoke(target, supplier, false);
-                        return;
+                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess", new Class<?>[]{Supplier.class, boolean.class});
+                    if (m != null) {
+                        Object supplier = createTextSupplier((String) invokeToString(text));
+                        if (supplier != null) {
+                            m.invoke(target, supplier, false);
+                            return;
+                        }
                     }
-                } catch (NoSuchMethodException ignored) {}
+                } catch (Throwable t) {
+                    // Reflection failed, try next fallback
+                }
             }
 
             // 2) Try sendFailure(Text) — 1.19+ CommandSourceStack error messages
             //    This sends red-colored text to the command source (player or console).
             if (!isSuccess) {
                 try {
-                    Method m = targetCls.getMethod("sendFailure", textCls);
-                    m.invoke(target, text);
-                    return;
-                } catch (NoSuchMethodException ignored) {}
+                    Method m = FabricReflection.findMethod(targetCls, "sendFailure", new Class<?>[]{textCls});
+                    if (m != null) {
+                        m.invoke(target, text);
+                        return;
+                    }
+                } catch (Throwable t) {
+                    // Reflection failed, try next fallback
+                }
             }
 
             // 3) Try sendMessage(Text, boolean) — 1.18-1.19.3 player entities
             //    The boolean parameter is the 'overlay' flag (false = chat).
             try {
-                Method m = targetCls.getMethod("sendMessage", textCls, boolean.class);
-                m.invoke(target, text, false);
-                return;
-            } catch (NoSuchMethodException ignored) {}
+                Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, boolean.class});
+                if (m != null) {
+                    m.invoke(target, text, false);
+                    return;
+                }
+            } catch (Throwable t) {
+                // Reflection failed, try next fallback
+            }
 
             // 4) Try sendMessage(Text) — 1.18 ServerCommandSource / MinecraftServer
             try {
-                Method m = targetCls.getMethod("sendMessage", textCls);
-                m.invoke(target, text);
-                return;
-            } catch (NoSuchMethodException ignored) {}
+                Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls});
+                if (m != null) {
+                    m.invoke(target, text);
+                    return;
+                }
+            } catch (Throwable t) {
+                // Reflection failed, try next fallback
+            }
 
             // 5) Try sendMessage(Component) — 1.19.3+ Adventure API
             try {
                 Class<?> componentCls = Class.forName("net.minecraft.text.Component");
-                Method m = targetCls.getMethod("sendMessage", componentCls);
-                m.invoke(target, text);
-                return;
-            } catch (Throwable ignored) {}
+                Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{componentCls});
+                if (m != null) {
+                    m.invoke(target, text);
+                    return;
+                }
+            } catch (Throwable t) {
+                // Reflection failed, will fall through to println
+            }
 
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            // Outer catch: unexpected errors, fall through to println
+        }
     }
 
     /** Extract a String representation from a Text object via reflection. */
