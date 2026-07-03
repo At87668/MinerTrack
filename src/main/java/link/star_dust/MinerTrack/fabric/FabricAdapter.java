@@ -28,7 +28,7 @@ public class FabricAdapter implements PluginAdapter {
         // Configuration/...). The modid is lowercase and matches
         // fabric.mod.json.
         Path root = FabricLoader.getInstance().getConfigDir();
-        this.dataFolder = root.resolve("minertrack").toFile();
+        this.dataFolder = root.resolve("MinerTrack").toFile();
         if (!dataFolder.exists()) {
             //noinspection ResultOfMethodCallIgnored
             dataFolder.mkdirs();
@@ -40,7 +40,7 @@ public class FabricAdapter implements PluginAdapter {
         String v;
         try {
             v = FabricLoader.getInstance()
-                    .getModContainer("minertrack")
+                    .getModContainer("MinerTrack")
                     .map(c -> c.getMetadata().getVersion().getFriendlyString())
                     .orElse("unknown");
         } catch (Throwable t) {
