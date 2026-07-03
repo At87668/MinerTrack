@@ -83,8 +83,8 @@ public class MinerTrackCommandCore {
 
         switch (args[0].toLowerCase()) {
             case "notify": {
-                if (!hasPermission("minertrack.sendnotify")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
-                if (args.length < 2) { cmd.sendMessage(lang.getPrefixedMessage("usage-notify")); return true; }
+                if (!hasPermission("minertrack.sendnotify")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
+                if (args.length < 2) { cmd.sendFailure(lang.getPrefixedMessage("usage-notify")); return true; }
                 String msg = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
                 // Translate the &-color codes in the user-supplied message
                 // (e.g. "&cVL: 2" coming from the xray.commands config)
@@ -105,7 +105,7 @@ public class MinerTrackCommandCore {
             }
 
             case "verbose": {
-                if (!hasPermission("minertrack.verbose")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
+                if (!hasPermission("minertrack.verbose")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 // toggleVerbose returns the new state so we can pick
                 // the correct language-file key for the feedback
                 // message (verbose-enable / verbose-disable). This
@@ -122,36 +122,36 @@ public class MinerTrackCommandCore {
             }
 
             case "check": {
-                if (!hasPermission("minertrack.check")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
-                if (args.length < 2) { cmd.sendMessage(lang.getPrefixedMessage("usage-check")); return true; }
+                if (!hasPermission("minertrack.check")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
+                if (args.length < 2) { cmd.sendFailure(lang.getPrefixedMessage("usage-check")); return true; }
                 UUID target = playerLookup.getPlayerUUID(args[1]);
                 if (target != null) {
                     int level = vl.getViolationLevel(target);
-                    cmd.sendMessage(lang.getPrefixedMessage("violation-level")
+                    cmd.sendSuccess(lang.getPrefixedMessage("violation-level")
                         .replace("{player}", args[1])
                         .replace("{level}", String.valueOf(level)));
                 } else {
-                    cmd.sendMessage(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
+                    cmd.sendFailure(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
                 }
                 break;
             }
 
             case "reset": {
-                if (!hasPermission("minertrack.reset")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
-                if (args.length < 2) { cmd.sendMessage(lang.getPrefixedMessage("usage-reset")); return true; }
+                if (!hasPermission("minertrack.reset")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
+                if (args.length < 2) { cmd.sendFailure(lang.getPrefixedMessage("usage-reset")); return true; }
                 UUID target = playerLookup.getPlayerUUID(args[1]);
                 if (target != null) {
                     vl.resetViolation(target);
-                    cmd.sendMessage(lang.getPrefixedMessage("reset-success").replace("{player}", args[1]));
+                    cmd.sendSuccess(lang.getPrefixedMessage("reset-success").replace("{player}", args[1]));
                 } else {
-                    cmd.sendMessage(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
+                    cmd.sendFailure(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
                 }
                 break;
             }
 
             case "kick": {
-                if (!hasPermission("minertrack.kick")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
-                if (args.length < 3) { cmd.sendMessage(lang.getPrefixedMessage("usage-kick")); return true; }
+                if (!hasPermission("minertrack.kick")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
+                if (args.length < 3) { cmd.sendFailure(lang.getPrefixedMessage("usage-kick")); return true; }
                 UUID target = playerLookup.getPlayerUUID(args[1]);
                 if (target != null) {
                     String reason = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
@@ -166,36 +166,36 @@ public class MinerTrackCommandCore {
                     }
                     kickBridge.kickPlayer(target, reason);
                 } else {
-                    cmd.sendMessage(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
+                    cmd.sendFailure(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
                 }
                 break;
             }
 
             case "reload": {
-                if (!hasPermission("minertrack.reload")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
+                if (!hasPermission("minertrack.reload")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 configReload.reloadConfig();
                 configReload.reloadLanguage();
-                cmd.sendMessage(lang.getPrefixedMessage("config-reloaded"));
+                cmd.sendSuccess(lang.getPrefixedMessage("config-reloaded"));
                 break;
             }
 
             case "update": {
-                if (!hasPermission("minertrack.checkupdate")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
+                if (!hasPermission("minertrack.checkupdate")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 updateCheck.checkForUpdates(cmd);
                 break;
             }
 
             case "logs": {
-                if (!hasPermission("minertrack.logs")) { cmd.sendMessage(lang.getPrefixedMessage("no-permission")); return true; }
+                if (!hasPermission("minertrack.logs")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 if (args.length == 2) {
                     String logName = args[1];
                     if (!logName.endsWith(".log")) {
-                        cmd.sendMessage(lang.getPrefixedMessage("log-viewer-not-log-file"));
+                        cmd.sendFailure(lang.getPrefixedMessage("log-viewer-not-log-file"));
                         return true;
                     }
                     byte[] data = logViewer.readLogFile(logName);
                     if (data == null) {
-                        cmd.sendMessage(lang.getPrefixedMessage("log-viewer-not-found").replace("{log_file}", logName));
+                        cmd.sendFailure(lang.getPrefixedMessage("log-viewer-not-found").replace("{log_file}", logName));
                         return true;
                     }
                     List<String> lines = new ArrayList<>(Arrays.asList(new String(data).split("\n")));
