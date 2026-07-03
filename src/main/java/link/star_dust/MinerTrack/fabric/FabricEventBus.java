@@ -72,30 +72,113 @@ final class FabricEventBus {
             });
     }
 
-    /** Supports v2 (1.19+) with v1 (1.18.x) fallback. */
+    /**
+     * Register a command registration callback.
+     *
+     * <p>Supports v2 (1.19+) with v1 (1.18.x) fallback. The handler
+     * receives the raw {@code CommandDispatcher} object (typed as
+     * {@code Object} to avoid compile-time dependency on Minecraft
+     * classes).
+     */
     static void registerCommandRegistration(Consumer<Object> handler) {
         // Try v2 first (1.19+)
-        try {
-            register("net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
-                "EVENT",
-                "net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback",
-                fromConsumer(handler));
-            return;
-        } catch (Throwable ignored) {}
+        if (tryRegisterCommandV2(handler)) return;
         // Fallback: v1 (1.18.x)
+        tryRegisterCommandV1(handler);
+    }
+
+    private static boolean tryRegisterCommandV2(Consumer<Object> handler) {
         try {
-            register("net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback",
-                "EVENT",
-                "net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback",
-                fromConsumer(handler));
-        } catch (Throwable ignored) {}
+            Class<?> callbackCls = FabricReflection.forName(
+                "net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback");
+            if (callbackCls == null) return false;
+
+            java.lang.reflect.Field eventField = callbackCls.getField("EVENT");
+            Object event = eventField.get(null);
+
+            // CommandRegistrationCallback has a single abstract method:
+            //   void register(CommandDispatcher<CommandSourceStack>, RegistryAccess, Environment)
+            // We proxy it so the handler receives just the dispatcher.
+            Class<?> listenerIface = callbackCls;
+            java.lang.reflect.Method abstractMethod = findAbstractMethod(listenerIface);
+            if (abstractMethod == null) return false;
+
+            Class<?> eventIface = FabricReflection.forName("net.fabricmc.fabric.api.event.Event");
+            java.lang.reflect.Method registerMethod = eventIface != null
+                ? eventIface.getMethod("register", Object.class)
+                : event.getClass().getMethod("register", Object.class);
+
+            Object proxy = Proxy.newProxyInstance(
+                callbackCls.getClassLoader(),
+                new Class<?>[]{listenerIface},
+                (proxyObj, method, args) -> {
+                    if (!method.equals(abstractMethod)) return handleObjectMethods(proxyObj, method, args);
+                    // args[0] is the CommandDispatcher
+                    handler.accept(args[0]);
+                    return null;
+                });
+
+            registerMethod.invoke(event, proxy);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static boolean tryRegisterCommandV1(Consumer<Object> handler) {
+        try {
+            Class<?> callbackCls = FabricReflection.forName(
+                "net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback");
+            if (callbackCls == null) return false;
+
+            java.lang.reflect.Field eventField = callbackCls.getField("EVENT");
+            Object event = eventField.get(null);
+
+            Class<?> listenerIface = callbackCls;
+            java.lang.reflect.Method abstractMethod = findAbstractMethod(listenerIface);
+            if (abstractMethod == null) return false;
+
+            Class<?> eventIface = FabricReflection.forName("net.fabricmc.fabric.api.event.Event");
+            java.lang.reflect.Method registerMethod = eventIface != null
+                ? eventIface.getMethod("register", Object.class)
+                : event.getClass().getMethod("register", Object.class);
+
+            Object proxy = Proxy.newProxyInstance(
+                callbackCls.getClassLoader(),
+                new Class<?>[]{listenerIface},
+                (proxyObj, method, args) -> {
+                    if (!method.equals(abstractMethod)) return handleObjectMethods(proxyObj, method, args);
+                    handler.accept(args[0]);
+                    return null;
+                });
+
+            registerMethod.invoke(event, proxy);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Handle equals/hashCode/toString for dynamic proxies. */
+    private static Object handleObjectMethods(Object proxy, Method method, Object[] args) {
+        if ("equals".equals(method.getName()) && method.getParameterCount() == 1
+                && method.getParameterTypes()[0] == Object.class) {
+            return proxy == args[0];
+        }
+        if ("hashCode".equals(method.getName()) && method.getParameterCount() == 0) {
+            return System.identityHashCode(proxy);
+        }
+        if ("toString".equals(method.getName()) && method.getParameterCount() == 0) {
+            return "FabricEventBus$Proxy@" + System.identityHashCode(proxy);
+        }
+        return null;
     }
 
     // ── Internals ───────────────────────────────────────────────────
 
     /**
      * Build a dynamic proxy implementing the listener interface, register with the event.
-     * Listener interface FQN is explicit because Event<T> erases T at runtime.
+     * Listener interface FQN is explicit because Event&lt;T&gt; erases T at runtime.
      */
     private static void register(String eventClassName, String fieldName,
                                   String listenerInterfaceName, CallbackAdapter handler) {
@@ -120,17 +203,7 @@ final class FabricEventBus {
             final int expectedParamCount = abstractMethod.getParameterCount();
             InvocationHandler proxyHandler = (proxy, method, args) -> {
                 if (!method.equals(abstractMethod)) {
-                    if ("equals".equals(method.getName()) && method.getParameterCount() == 1
-                            && method.getParameterTypes()[0] == Object.class) {
-                        return proxy == args[0];
-                    }
-                    if ("hashCode".equals(method.getName()) && method.getParameterCount() == 0) {
-                        return System.identityHashCode(proxy);
-                    }
-                    if ("toString".equals(method.getName()) && method.getParameterCount() == 0) {
-                        return "FabricEventBus$Proxy@" + System.identityHashCode(proxy);
-                    }
-                    return null;
+                    return handleObjectMethods(proxy, method, args);
                 }
                 if (args == null) args = new Object[0];
                 if (args.length != expectedParamCount) return null;
@@ -157,8 +230,8 @@ final class FabricEventBus {
                 count++;
                 if (count > 1) return null;
             }
-            }
-            return found;
+        }
+        return found;
     }
 
     @FunctionalInterface
