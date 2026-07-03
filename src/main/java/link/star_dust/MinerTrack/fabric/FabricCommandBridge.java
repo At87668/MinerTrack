@@ -7,104 +7,88 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Fabric CommandBridge wrapping ServerCommandSource (held as Object to avoid compile-time dep).
+ * Fabric CommandBridge wrapping ServerCommandSource / CommandSourceStack (held as Object).
  * Permission: Fabric Permission API (LP) -> op-level -> console bypass.
- * Text: Text.literal() / LiteralText fallback. sendMessage: 2-arg / 1-arg fallback.
+ * Text: Text.literal() (1.19.3+) / LiteralText (1.18-1.19.2) fallback.
+ * sendMessage: 1-arg / 2-arg fallback for cross-version compatibility.
  */
 public class FabricCommandBridge implements CommandBridge {
     private final Object source;
     private final Set<UUID> verbosePlayers;
     private volatile boolean verboseConsole = false;
 
-    private static volatile java.lang.reflect.Executable cachedTextFactory;
-    private static volatile boolean textFactoryIsStatic;
-    private static volatile Boolean fabricPermissionApiChecked;
-    private static volatile Class<?> cachedActorCls;
-
     public FabricCommandBridge(Object source, Set<UUID> verbosePlayers) {
         this.source = source;
         this.verbosePlayers = verbosePlayers;
     }
 
+    /**
+     * Create a Minecraft Text component from a plain string.
+     * Uses Text.literal() on 1.19.3+ and LiteralText constructor on 1.18-1.19.2.
+     * Returns null if neither approach works.
+     */
     private static Object createText(String message) {
-        if (cachedTextFactory != null) {
+        try {
+            Class<?> textCls = Class.forName("net.minecraft.text.Text");
             try {
-                if (textFactoryIsStatic) return ((Method) cachedTextFactory).invoke(null, message);
-                else return ((java.lang.reflect.Constructor<?>) cachedTextFactory).newInstance(message);
-            } catch (Throwable ignored) { cachedTextFactory = null; }
-        }
-        Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
-        if (textCls != null) {
-            Method m = FabricReflection.findMethod(textCls, "literal", new Class<?>[]{String.class});
-            if (m != null) {
-                try {
-                    m.setAccessible(true);
-                    Object result = m.invoke(null, message);
-                    cachedTextFactory = m; textFactoryIsStatic = true; return result;
-                } catch (Throwable ignored) {}
+                // 1.19.3+: Text.literal(String)
+                Method literal = textCls.getMethod("literal", String.class);
+                return literal.invoke(null, message);
+            } catch (NoSuchMethodException e) {
+                // 1.18 - 1.19.2: new LiteralText(String)
+                Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+                return ltCls.getDeclaredConstructor(String.class).newInstance(message);
             }
+        } catch (Throwable t) {
+            return null;
         }
-        Class<?> ltCls = FabricReflection.forName("net.minecraft.text.LiteralText");
-        if (ltCls != null) {
-            try {
-                java.lang.reflect.Constructor<?> ctor = ltCls.getDeclaredConstructor(String.class);
-                ctor.setAccessible(true);
-                Object result = ctor.newInstance(message);
-                cachedTextFactory = ctor; textFactoryIsStatic = false; return result;
-            } catch (Throwable ignored) {}
-        }
-        return null;
     }
 
+    /**
+     * Send a Text component to a target (ServerCommandSource / CommandSourceStack or PlayerEntity).
+     * Tries sendMessage(Text) first, then sendMessage(Text, boolean) as fallback.
+     */
     private static void sendMessage0(Object target, Object text) {
         if (text == null || target == null) return;
-        Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
-        if (textCls == null) return;
         try {
-            // sendMessage(Text) — works on ServerCommandSource (console) and 1.19.4+ players
-            Method m = FabricReflection.findMethod(target.getClass(), "sendMessage", new Class<?>[]{textCls});
-            if (m != null) {
-                m.setAccessible(true);
+            Class<?> textCls = Class.forName("net.minecraft.text.Text");
+            // Try single-arg sendMessage(Text) first (1.18+, works on both ServerCommandSource and newer CommandSourceStack)
+            try {
+                Method m = target.getClass().getMethod("sendMessage", textCls);
                 m.invoke(target, text);
                 return;
-            }
-        } catch (Throwable ignored) {}
-        try {
-            // sendMessage(Text, boolean) — 1.18-1.19.3 player entities
-            Method m = FabricReflection.findMethod(target.getClass(), "sendMessage", new Class<?>[]{textCls, boolean.class});
-            if (m != null) {
-                m.setAccessible(true);
-                m.invoke(target, text, false);
-            }
+            } catch (NoSuchMethodException ignored) {}
+            // Fallback: sendMessage(Text, boolean) (1.18-1.19.3 player entities)
+            Method m = target.getClass().getMethod("sendMessage", textCls, boolean.class);
+            m.invoke(target, text, false);
         } catch (Throwable ignored) {}
     }
 
     @Override public void dispatchCommand(String command) {
         try {
-            Object s = source(); if (s == null) return;
-            Object server = FabricReflection.callAny(s, "getServer", new Class<?>[0], new Object[0]);
+            if (source == null) return;
+            Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
             if (server == null) return;
             Object cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
             if (cmdManager == null) return;
             FabricReflection.callAny(cmdManager, "executeWithPrefix",
-                new Class<?>[]{FabricReflection.forName("net.minecraft.server.command.ServerCommandSource"), String.class},
-                new Object[]{s, command});
-        } catch (Throwable t) {}
+                new Class<?>[]{source.getClass(), String.class},
+                new Object[]{source, command});
+        } catch (Throwable t) { /* silent */ }
     }
     @Override public boolean isPlayer() {
-        Object s = source(); if (s == null) return false;
         try {
-            Object r = FabricReflection.callAny(s, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
+            Object r = FabricReflection.callAny(source, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) { return false; }
     }
     @Override public boolean isConsole() { return !isPlayer(); }
     @Override public Object getSender() { return source; }
     @Override public void sendMessage(String message) {
-        Object s = source(); if (s == null) return;
+        if (source == null) return;
         try {
             Object text = createText(message);
-            if (text != null) { sendMessage0(s, text); return; }
+            if (text != null) { sendMessage0(source, text); return; }
         } catch (Throwable ignored) {}
         System.out.println("[MinerTrack] " + message);
     }
@@ -118,7 +102,7 @@ public class FabricCommandBridge implements CommandBridge {
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             sendMessage0(player, createText(message));
-        } catch (Throwable t) {}
+        } catch (Throwable t) { /* silent */ }
     }
     @Override public void sendMessageToConsole(String message) {
         try {
@@ -129,13 +113,12 @@ public class FabricCommandBridge implements CommandBridge {
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
     @Override public boolean toggleVerbose() {
-        Object s = source();
-        if (s != null) {
-            Object r = FabricReflection.callAny(s, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
+        if (source != null) {
+            Object r = FabricReflection.callAny(source, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
             if (r instanceof Boolean && (Boolean) r) {
                 UUID id = null;
                 try {
-                    Object player = FabricReflection.callAny(s, "getPlayer", new Class<?>[0], new Object[0]);
+                    Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
                     if (player != null) {
                         Object uuid = FabricReflection.callAny(player, "getUuid", new Class<?>[0], new Object[0]);
                         if (uuid instanceof UUID) id = (UUID) uuid;
@@ -151,12 +134,9 @@ public class FabricCommandBridge implements CommandBridge {
 
     // ── Permission checks ──────────────────────────────────────────
 
-    /** Resolve Fabric Permission API Actor class (lazy, cached). LP hooks in automatically. */
+    /** Resolve Fabric Permission API Actor class (lazy lookup). LP hooks in automatically. */
     private static Class<?> resolveActorCls() {
-        if (fabricPermissionApiChecked != null) return cachedActorCls;
-        Class<?> actor = FabricReflection.forName("net.fabricmc.fabric.api.permission.v1.Actor");
-        fabricPermissionApiChecked = true; cachedActorCls = actor;
-        return actor;
+        return FabricReflection.forName("net.fabricmc.fabric.api.permission.v1.Actor");
     }
 
     private boolean checkFabricPermission(Object target, String node) {
@@ -174,14 +154,14 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override
     public boolean hasPermission(String node) {
-        Object s = source(); if (s == null) return false;
+        if (source == null) return false;
         // 1) Fabric Permission API (LuckPerms if installed)
-        if (checkFabricPermission(s, node)) return true;
+        if (checkFabricPermission(source, node)) return true;
         // 2) op-level >= 2 or console bypass
         try {
-            Object r = FabricReflection.callAny(s, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
+            Object r = FabricReflection.callAny(source, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
             if (r instanceof Boolean && (Boolean) r) {
-                Object lvl = FabricReflection.callAny(s, "hasPermissionLevel",
+                Object lvl = FabricReflection.callAny(source, "hasPermissionLevel",
                     new Class<?>[]{int.class}, new Object[]{2});
                 return lvl instanceof Boolean && (Boolean) lvl;
             }
@@ -208,13 +188,5 @@ public class FabricCommandBridge implements CommandBridge {
             }
             return false;
         } catch (Throwable t) { return false; }
-    }
-
-    private Object source() {
-        try {
-            Class<?> cls = Class.forName("net.minecraft.server.command.ServerCommandSource");
-            if (source != null && cls.isInstance(source)) return source;
-            return null;
-        } catch (Throwable t) { return null; }
     }
 }
