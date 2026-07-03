@@ -1,9 +1,12 @@
 package link.star_dust.MinerTrack.fabric;
 
+import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import link.star_dust.MinerTrack.common.DebugConfig;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
@@ -68,6 +71,10 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         adapter.info("MinerTrack (Fabric) enabled.");
     }
 
+    /**
+     * Split a command input string into arguments, preserving the
+     * platform-neutral contract expected by MinerTrackCommandCore.
+     */
     static String[] parseArgs(String input) {
         if (input == null || input.trim().isEmpty()) return new String[0];
         List<String> tokens = new ArrayList<>();
@@ -77,23 +84,47 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         return tokens.toArray(new String[0]);
     }
 
+    /**
+     * Register a Brigadier command with the given dispatcher under the
+     * given name (e.g. "minertrack", "mt", "mtrack").
+     *
+     * <p>Uses a required greedy-string argument so every token after the
+     * command name is captured verbatim, then parsed into a {@code String[]}
+     * for the platform-agnostic command core. A no-arg execution path is
+     * also registered so {@code /minertrack} (with zero trailing args) routes
+     * to the help screen.
+     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void registerCommand(CommandDispatcher dispatcher, String name) {
         LiteralArgumentBuilder literal = LiteralArgumentBuilder.literal(name);
-        RequiredArgumentBuilder arg = RequiredArgumentBuilder.argument("args", StringArgumentType.greedyString());
 
-        arg.executes(ctx -> {
+        // Greedy-string branch: captures everything after the command name
+        RequiredArgumentBuilder arg = RequiredArgumentBuilder
+            .argument("args", StringArgumentType.greedyString());
+
+        arg.executes((Command) ctx -> {
             String greedy = StringArgumentType.getString(ctx, "args");
-            return commandExecutor.onCommand(ctx.getSource(), parseArgs(greedy)) ? 1 : 0;
+            Object source = ctx.getSource();
+            return commandExecutor.onCommand(source, parseArgs(greedy)) ? 1 : 0;
         });
-        arg.suggests((ctx, builder) -> {
-            List<String> completions = commandExecutor.onTabComplete(ctx.getSource(), parseArgs(builder.getInput()));
+
+        arg.suggests((SuggestionProvider) (ctx, builder) -> {
+            String[] split = builder.getInput().split(" ", 2);
+            String prefix = split.length > 1 ? split[1] : "";
+            List<String> completions = commandExecutor.onTabComplete(
+                ctx.getSource(), parseArgs(prefix));
             if (completions != null) completions.forEach(builder::suggest);
             return builder.buildFuture();
         });
 
         literal.then(arg);
-        literal.executes(ctx -> commandExecutor.onCommand(ctx.getSource(), new String[0]) ? 1 : 0);
+
+        // No-arg branch: /<name> with no arguments → show help
+        literal.executes((Command) ctx -> {
+            Object source = ctx.getSource();
+            return commandExecutor.onCommand(source, new String[0]) ? 1 : 0;
+        });
+
         dispatcher.register(literal);
     }
 
