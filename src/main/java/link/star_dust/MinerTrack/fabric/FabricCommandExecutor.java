@@ -14,7 +14,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/** Fabric command executor. Delegates to MinerTrackCommandCore. */
+/**
+ * Fabric command executor. Delegates to MinerTrackCommandCore.
+ * Uses FabricReflection for Minecraft type access (not on compile classpath).
+ */
 public class FabricCommandExecutor {
     private final FabricAdapter adapter;
     private final FabricLanguageBridge langBridge;
@@ -56,14 +59,47 @@ public class FabricCommandExecutor {
         return buildCore(source).onTabComplete(args);
     }
 
+    // ── Shared server helpers ────────────────────────────────────────────
+
+    /** Resolve MinecraftServer.getServer() reflectively. */
+    private static Object server() {
+        return FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
+            "getServer", new Class<?>[0], new Object[0]);
+    }
+
+    /** Resolve ServerPlayerEntity from UUID. */
+    private static Object playerByUuid(UUID uuid) {
+        Object server = server();
+        if (server == null) return null;
+        Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+        if (pm == null) return null;
+        return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+    }
+
+    /** Create a Text component from a plain string. */
+    private static Object literalText(String message) {
+        Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
+        if (textCls == null) return null;
+        Object text = FabricReflection.callStatic("net.minecraft.text.Text",
+            "literal", new Class<?>[]{String.class}, new Object[]{message});
+        if (text != null) return text;
+        // Fallback: LiteralText constructor (1.18-1.19.2)
+        Class<?> ltCls = FabricReflection.forName("net.minecraft.text.LiteralText");
+        if (ltCls == null) return null;
+        try {
+            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     // ─── PlayerLookup ────────────────────────────────────────────────────
 
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
         @Override
         public UUID getPlayerUUID(String name) {
             try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
+                Object server = server();
                 if (server == null) return null;
                 Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
                 if (pm == null) return null;
@@ -79,12 +115,7 @@ public class FabricCommandExecutor {
         @Override
         public String getPlayerName(UUID uuid) {
             try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
-                if (server == null) return uuid.toString();
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
-                if (pm == null) return uuid.toString();
-                Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+                Object player = playerByUuid(uuid);
                 if (player == null) return uuid.toString();
                 Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
                 return name == null ? uuid.toString() : name.toString();
@@ -95,25 +126,14 @@ public class FabricCommandExecutor {
 
         @Override
         public boolean isOnline(UUID uuid) {
-            try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
-                if (server == null) return false;
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
-                if (pm == null) return false;
-                Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
-                return player != null;
-            } catch (Throwable t) {
-                return false;
-            }
+            return playerByUuid(uuid) != null;
         }
 
         @Override
         public List<String> getOnlinePlayerNames() {
             List<String> names = new ArrayList<>();
             try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
+                Object server = server();
                 if (server == null) return names;
                 Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
                 if (pm == null) return names;
@@ -138,19 +158,13 @@ public class FabricCommandExecutor {
         @Override
         public void kickPlayer(UUID playerId, String reason) {
             try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
-                if (server == null) return;
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
-                if (pm == null) return;
-                Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+                Object player = playerByUuid(playerId);
                 if (player == null) return;
                 Object network = FabricReflection.callAny(player, "networkHandler", new Class<?>[0], new Object[0]);
                 if (network == null) return;
+                Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
+                if (text == null) return;
                 Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
-                Object text = FabricReflection.callStatic("net.minecraft.text.Text",
-                    "literal", new Class<?>[]{String.class},
-                    new Object[]{reason == null ? "Kicked by MinerTrack" : reason});
                 FabricReflection.callAny(network, "disconnect", new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
@@ -169,26 +183,23 @@ public class FabricCommandExecutor {
         @Override
         public void strikeLightningEffect(UUID playerId) {
             try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
-                if (server == null) return;
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
-                if (pm == null) return;
-                Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+                Object player = playerByUuid(playerId);
                 if (player == null) return;
                 Object world = FabricReflection.callAny(player, "getWorld", new Class<?>[0], new Object[0]);
                 if (world == null) return;
                 Object registryKey = FabricReflection.callAny(world, "getRegistryKey", new Class<?>[0], new Object[0]);
                 if (registryKey == null) return;
+                Object server = server();
+                if (server == null) return;
                 Object serverWorld = FabricReflection.call(server, "getWorld",
                     new Class<?>[]{registryKey.getClass()}, new Object[]{registryKey});
                 if (serverWorld == null) return;
-                // Cosmetic-only lightning strike; created via
-                // reflection (no classloader-time dependency on
-                // the entity types).
+                // Cosmetic-only lightning strike; created via reflection
                 Object lightning = FabricReflection.newInstance("net.minecraft.entity.LightningEntity",
-                    new Class<?>[]{FabricReflection.forName("net.minecraft.entity.EntityType"),
-                                   FabricReflection.forName("net.minecraft.server.world.ServerWorld")},
+                    new Class<?>[]{
+                        FabricReflection.forName("net.minecraft.entity.EntityType"),
+                        FabricReflection.forName("net.minecraft.server.world.ServerWorld")
+                    },
                     new Object[]{
                         FabricReflection.forName("net.minecraft.entity.EntityType")
                             .getField("LIGHTNING_BOLT").get(null),
@@ -209,14 +220,13 @@ public class FabricCommandExecutor {
         @Override
         public void broadcastMessage(String message) {
             try {
-                Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                    "getServer", new Class<?>[0], new Object[0]);
+                Object server = server();
                 if (server == null) return;
                 Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
                 if (pm == null) return;
+                Object text = literalText(message);
+                if (text == null) return;
                 Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
-                Object text = FabricReflection.callStatic("net.minecraft.text.Text",
-                    "literal", new Class<?>[]{String.class}, new Object[]{message});
                 FabricReflection.call(pm, "broadcast", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
             } catch (Throwable t) {
                 // No players online.
