@@ -182,38 +182,19 @@ public class FabricAdapter implements PluginAdapter {
         // server adds its own prefix to the line.
         Object server = minecraftServer();
         if (server != null) {
-            // net.minecraft.text.Text.literal(msg) or
-            // new LiteralText(msg) depending on MC version.
-            // 1.18 – 1.19.2: LiteralText constructor
-            // 1.19.3+: Text.literal() static factory
-            // We avoid holding a Text reference; build via
-            // reflection so this class compiles on a non-Fabric
-            // classpath.
             try {
-                Object text = null;
-                // 1. Try Text.literal() (1.19.3+)
-                try {
-                    Class<?> textCls = Class.forName("net.minecraft.text.Text");
-                    java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-                    text = literal.invoke(null, msg);
-                } catch (Throwable ignored) {}
-                // 2. Fallback: new LiteralText(String) (1.18 – 1.19.2)
-                if (text == null) {
-                    try {
-                        Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
-                        text = ltCls.getDeclaredConstructor(String.class).newInstance(msg);
-                    } catch (Throwable ignored) {}
-                }
+                // Build a text component: try Component.literal() (MC 26.1+),
+                // Text.literal() (MC 1.19.3+), then LiteralText (MC 1.18-1.19.2).
+                Object text = createTextComponent(msg);
                 if (text == null) return;
-                // Send via the server's sendMessage. We try
-                // both the single-arg (1.19.4+) and two-arg
-                // (1.18 – 1.19.3) overloads.
-                Class<?> textCls = Class.forName("net.minecraft.text.Text");
+                Class<?> textCls = resolveTextComponentClass();
+                if (textCls == null) return;
+                // Send via the server's sendMessage. Try single-arg (1.19.4+),
+                // then two-arg (1.18 – 1.19.3).
                 try {
                     java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls);
                     sendMessage.invoke(server, text);
                 } catch (NoSuchMethodException nsme) {
-                    // Try with boolean arg (1.18 – 1.19.3)
                     try {
                         java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls, boolean.class);
                         sendMessage.invoke(server, text, false);
@@ -244,9 +225,10 @@ public class FabricAdapter implements PluginAdapter {
         Object server = minecraftServer();
         if (server != null) {
             try {
-                Class<?> textCls = Class.forName("net.minecraft.text.Text");
-                java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-                Object text = literal.invoke(null, "[WARN] " + msg);
+                Object text = createTextComponent("[WARN] " + msg);
+                if (text == null) return;
+                Class<?> textCls = resolveTextComponentClass();
+                if (textCls == null) return;
                 java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls);
                 sendMessage.invoke(server, text);
                 return;
@@ -415,5 +397,50 @@ public class FabricAdapter implements PluginAdapter {
     /** Platform-specific YAML loader exposed to the core config layer. */
     public YamlLoader getYamlLoader() {
         return yamlLoader;
+    }
+
+    // ── Text/Component helpers ─────────────────────────────────────
+
+    /**
+     * Create a Minecraft text/component from a plain string, trying
+     * all known MC version paths.
+     */
+    private static Object createTextComponent(String message) {
+        // 1. MC 26.1+: Component.literal(String)
+        try {
+            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
+            java.lang.reflect.Method literal = compCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 2. MC 1.19.3+: Text.literal(String)
+        try {
+            Class<?> textCls = Class.forName("net.minecraft.text.Text");
+            java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 3. MC 1.18-1.19.2: new LiteralText(String)
+        try {
+            Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolve the Minecraft text component class at runtime.
+     */
+    private static Class<?> resolveTextComponentClass() {
+        try {
+            return Class.forName("net.minecraft.network.chat.Component");
+        } catch (ClassNotFoundException e) {
+            try {
+                return Class.forName("net.minecraft.text.Text");
+            } catch (ClassNotFoundException ex) {
+                return null;
+            }
+        }
     }
 }
