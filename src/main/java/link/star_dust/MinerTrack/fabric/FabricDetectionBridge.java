@@ -105,7 +105,10 @@ public class FabricDetectionBridge implements DetectionBridge {
             Object w = resolveWorld(world);
             if (w == null) return BlockId.AIR;
             // Build a BlockPos via reflection. {@code BlockPos(int, int, int)}
-            // is a stable public constructor on every 1.18-1.21 version.
+            // is a stable public constructor on every 1.18+ version.
+            // The class moved from net.minecraft.util.math.BlockPos to
+            // net.minecraft.core.BlockPos in MC 26.1+; FabricReflection.forName
+            // handles the migration automatically.
             Object pos = FabricReflection.newInstance("net.minecraft.util.math.BlockPos",
                 new Class<?>[]{int.class, int.class, int.class},
                 new Object[]{x, y, z});
@@ -114,26 +117,26 @@ public class FabricDetectionBridge implements DetectionBridge {
             if (state == null) return BlockId.AIR;
             Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null) return BlockId.AIR;
-            // Registries.BLOCK.getId(block) -> Identifier -> toString.
-            Class<?> registriesCls = FabricReflection.forName("net.minecraft.registry.Registries");
-            if (registriesCls == null) return BlockId.AIR;
-            Object blockRegistryField = null;
-            try {
-                java.lang.reflect.Field f = registriesCls.getField("BLOCK");
-                blockRegistryField = f.get(null);
-            } catch (Throwable t) {
-                // 1.21+ moved Registries.BLOCK; try
-                // Registries.BLOCK_REGISTRY.
-                try {
-                    java.lang.reflect.Field f = registriesCls.getField("BLOCK_REGISTRY");
-                    blockRegistryField = f.get(null);
-                } catch (Throwable t2) {
-                    return BlockId.AIR;
-                }
-            }
-            Object id = FabricReflection.callAny(blockRegistryField, "getId",
+            // Resolve block registry: try BuiltInRegistries.BLOCK (MC 26.1+),
+            // Registries.BLOCK (MC 1.19-1.21), Registries.BLOCK_REGISTRY (MC 1.18).
+            Object blockRegistry = tryResolveBlockRegistry();
+            if (blockRegistry == null) return BlockId.AIR;
+            Object id = FabricReflection.callAny(blockRegistry, "getId",
                 new Class<?>[]{block.getClass()}, new Object[]{block});
-            if (id == null) return BlockId.AIR;
+            if (id == null) {
+                // getId may return int on newer MC; try getResourceKey
+                Object rv = FabricReflection.callAny(blockRegistry, "getResourceKey",
+                    new Class<?>[]{block.getClass()}, new Object[]{block});
+                if (rv instanceof java.util.Optional) {
+                    java.util.Optional<?> opt = (java.util.Optional<?>) rv;
+                    if (opt.isPresent()) {
+                        Object key = opt.get();
+                        Object loc = FabricReflection.callAny(key, "location", new Class<?>[0], new Object[0]);
+                        if (loc != null) return loc.toString();
+                    }
+                }
+                return BlockId.AIR;
+            }
             return id.toString();
         } catch (Exception e) {
             return BlockId.AIR;
@@ -372,6 +375,48 @@ public class FabricDetectionBridge implements DetectionBridge {
             }
         } catch (Throwable ignored) {
         }
+        return null;
+    }
+
+    // ── Block registry resolution ────────────────────────────────────
+
+    /**
+     * Resolve the Block registry instance at runtime, trying all known
+     * MC version paths:
+     * <ol>
+     *   <li>{@code BuiltInRegistries.BLOCK} (MC 26.1+, {@code core/registries} package)
+     *   <li>{@code Registries.BLOCK} (MC 1.19-1.21, {@code core/registries} package)
+     *   <li>{@code Registries.BLOCK} (MC 1.18, {@code registry} package)
+     * </ol>
+     */
+    private static Object tryResolveBlockRegistry() {
+        // 1. MC 26.1+: net.minecraft.core.registries.BuiltInRegistries.BLOCK
+        try {
+            Class<?> birCls = FabricReflection.forName("net.minecraft.core.registries.BuiltInRegistries");
+            if (birCls != null) {
+                java.lang.reflect.Field f = birCls.getField("BLOCK");
+                return f.get(null);
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        // 2. MC 1.19-1.21: net.minecraft.core.registries.Registries.BLOCK
+        try {
+            Class<?> rCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
+            if (rCls != null) {
+                java.lang.reflect.Field f = rCls.getField("BLOCK");
+                return f.get(null);
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        // 3. MC 1.18: net.minecraft.registry.Registries.BLOCK
+        try {
+            Class<?> rCls = FabricReflection.forName("net.minecraft.registry.Registries");
+            if (rCls != null) {
+                java.lang.reflect.Field f = rCls.getField("BLOCK");
+                return f.get(null);
+            }
+        } catch (Throwable t) { /* fall through */ }
+
         return null;
     }
 }
