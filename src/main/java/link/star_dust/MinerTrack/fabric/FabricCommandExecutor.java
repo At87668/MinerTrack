@@ -76,14 +76,24 @@ public class FabricCommandExecutor {
         return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
     }
 
-    /** Create a Text component from a plain string. */
+    /** Create a Text/Component from a plain string (MC version-aware). */
     private static Object literalText(String message) {
+        // 1. MC 26.1+: Component.literal(String)
+        try {
+            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
+            java.lang.reflect.Method literal = compCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 2. MC 1.19.3+: Text.literal(String)
         Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
-        if (textCls == null) return null;
-        Object text = FabricReflection.callStatic("net.minecraft.text.Text",
-            "literal", new Class<?>[]{String.class}, new Object[]{message});
-        if (text != null) return text;
-        // Fallback: LiteralText constructor (1.18-1.19.2)
+        if (textCls != null) {
+            Object text = FabricReflection.callStatic("net.minecraft.text.Text",
+                "literal", new Class<?>[]{String.class}, new Object[]{message});
+            if (text != null) return text;
+        }
+
+        // 3. MC 1.18-1.19.2: new LiteralText(String)
         Class<?> ltCls = FabricReflection.forName("net.minecraft.text.LiteralText");
         if (ltCls == null) return null;
         try {
@@ -164,7 +174,7 @@ public class FabricCommandExecutor {
                 if (network == null) return;
                 Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
                 if (text == null) return;
-                Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
+                Class<?> textCls = resolveTextComponentClass();
                 FabricReflection.callAny(network, "disconnect", new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
@@ -226,7 +236,7 @@ public class FabricCommandExecutor {
                 if (pm == null) return;
                 Object text = literalText(message);
                 if (text == null) return;
-                Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
+                Class<?> textCls = resolveTextComponentClass();
                 FabricReflection.call(pm, "broadcast", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
             } catch (Throwable t) {
                 // No players online.
@@ -308,6 +318,24 @@ public class FabricCommandExecutor {
         @Override
         public String getLogFormat() {
             return vlBridge.getLogFormat();
+        }
+    }
+
+    // ── Text/Component class resolution ─────────────────────────────
+
+    /**
+     * Resolve the Minecraft text component class at runtime.
+     * Returns {@code Component} (MC 26.1+) or {@code Text} (MC 1.18-1.21).
+     */
+    private static Class<?> resolveTextComponentClass() {
+        try {
+            return Class.forName("net.minecraft.network.chat.Component");
+        } catch (ClassNotFoundException e) {
+            try {
+                return Class.forName("net.minecraft.text.Text");
+            } catch (ClassNotFoundException ex) {
+                return null;
+            }
         }
     }
 }
