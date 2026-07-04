@@ -132,23 +132,75 @@ public class FabricMiningListener {
         try {
             Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null) return BlockId.AIR;
-            Class<?> registriesCls = FabricReflection.forName("net.minecraft.registry.Registries");
-            if (registriesCls == null) return BlockId.AIR;
-            Object blockRegistryField = null;
+            // Try net.minecraft.core.registries.BuiltInRegistries.BLOCK first (MC 26.1+),
+            // then net.minecraft.core.registries.Registries.BLOCK (MC 1.19-1.21),
+            // then net.minecraft.registry.Registries.BLOCK (MC 1.18).
+            Object blockRegistry = null;
             try {
-                java.lang.reflect.Field f = registriesCls.getField("BLOCK");
-                blockRegistryField = f.get(null);
-            } catch (Throwable t) {
-                try {
-                    java.lang.reflect.Field f = registriesCls.getField("BLOCK_REGISTRY");
-                    blockRegistryField = f.get(null);
-                } catch (Throwable t2) {
-                    return BlockId.AIR;
+                // MC 26.1+: BuiltInRegistries.BLOCK is a Registry<? extends Block>
+                // Registries.BLOCK is a RegistryKey, not the registry itself.
+                Class<?> birCls = FabricReflection.forName("net.minecraft.core.registries.BuiltInRegistries");
+                if (birCls != null) {
+                    try {
+                        java.lang.reflect.Field f = birCls.getField("BLOCK");
+                        blockRegistry = f.get(null);
+                    } catch (Throwable t) {
+                        // Field not found, try other approaches
+                    }
                 }
+            } catch (Throwable t) { /* fall through */ }
+
+            if (blockRegistry == null) {
+                try {
+                    Class<?> registriesCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
+                    if (registriesCls != null) {
+                        java.lang.reflect.Field f = registriesCls.getField("BLOCK");
+                        blockRegistry = f.get(null);
+                    }
+                } catch (Throwable t) { /* fall through */ }
             }
-            Object id = FabricReflection.callAny(blockRegistryField, "getId",
+
+            if (blockRegistry == null) {
+                try {
+                    Class<?> registriesCls = FabricReflection.forName("net.minecraft.registry.Registries");
+                    if (registriesCls != null) {
+                        java.lang.reflect.Field f = registriesCls.getField("BLOCK");
+                        blockRegistry = f.get(null);
+                    }
+                } catch (Throwable t) { /* fall through */ }
+            }
+
+            if (blockRegistry == null) return BlockId.AIR;
+
+            // Get the Identifier/ResourceLocation from the registry
+            Object id = FabricReflection.callAny(blockRegistry, "getId",
                 new Class<?>[]{block.getClass()}, new Object[]{block});
-            return id == null ? BlockId.AIR : id.toString();
+            if (id == null) {
+                // Try getKey (MC 1.19.3+ style where getId returns int)
+                Object resourceKey = FabricReflection.callAny(block, "builtInRegistryHolder", new Class<?>[0], new Object[0]);
+                if (resourceKey != null) {
+                    Object key = FabricReflection.callAny(resourceKey, "getKey", new Class<?>[0], new Object[0]);
+                    if (key != null) {
+                        Object loc = FabricReflection.callAny(key, "location", new Class<?>[0], new Object[0]);
+                        if (loc != null) return loc.toString();
+                    }
+                }
+                // Try block.getDescriptionId() or toString() as last resort
+                // On MC 26.1+, block registry may not have getId(Object) —
+                // try getResourceKey instead.
+                Object rv = FabricReflection.callAny(blockRegistry, "getResourceKey",
+                    new Class<?>[]{block.getClass()}, new Object[]{block});
+                if (rv instanceof java.util.Optional) {
+                    java.util.Optional<?> opt = (java.util.Optional<?>) rv;
+                    if (opt.isPresent()) {
+                        Object key = opt.get();
+                        Object loc = FabricReflection.callAny(key, "location", new Class<?>[0], new Object[0]);
+                        if (loc != null) return loc.toString();
+                    }
+                }
+                return BlockId.AIR;
+            }
+            return id.toString();
         } catch (Throwable t) {
             return BlockId.AIR;
         }
