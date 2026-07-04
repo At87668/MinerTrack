@@ -32,22 +32,30 @@ public class FabricCommandBridge implements CommandBridge {
     // ── Text creation ─────────────────────────────────────────────
 
     /**
-     * Create a Minecraft Text component from a plain string.
-     * Uses Text.literal() on 1.19.3+ and LiteralText constructor on 1.18-1.19.2.
-     * Returns null if neither approach works.
+     * Create a Minecraft Text/Component from a plain string.
+     * Uses Component.literal() (MC 26.1+/1.19.3+), Text.literal() (1.19.3+),
+     * or LiteralText constructor (1.18-1.19.2).
+     * Returns null if no approach works.
      */
     private static Object createText(String message) {
+        // 1. Try Component.literal(String) — MC 26.1+ (Text → Component)
+        try {
+            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
+            Method literal = compCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 2. Try Text.literal(String) — MC 1.19.3+
         try {
             Class<?> textCls = Class.forName("net.minecraft.text.Text");
-            try {
-                // 1.19.3+: Text.literal(String)
-                Method literal = textCls.getMethod("literal", String.class);
-                return literal.invoke(null, message);
-            } catch (NoSuchMethodException e) {
-                // 1.18 - 1.19.2: new LiteralText(String)
-                Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
-                return ltCls.getDeclaredConstructor(String.class).newInstance(message);
-            }
+            Method literal = textCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 3. Fallback: new LiteralText(String) — MC 1.18-1.19.2
+        try {
+            Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
         } catch (Throwable t) {
             return null;
         }
@@ -81,7 +89,8 @@ public class FabricCommandBridge implements CommandBridge {
     private static void sendFeedback(Object target, Object text, boolean isSuccess) {
         if (text == null || target == null) return;
         try {
-            Class<?> textCls = Class.forName("net.minecraft.text.Text");
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
             Class<?> targetCls = target.getClass();
 
             // 1) Try sendSuccess(Supplier<Text>, boolean) — 1.19+ CommandSourceStack
@@ -140,13 +149,15 @@ public class FabricCommandBridge implements CommandBridge {
                 // Reflection failed, try next fallback
             }
 
-            // 5) Try sendMessage(Component) — 1.19.3+ Adventure API
+            // 5) Try sendMessage(Component) — 26.1+ Adventure API (Component in network.chat)
             try {
-                Class<?> componentCls = Class.forName("net.minecraft.text.Component");
-                Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{componentCls});
-                if (m != null) {
-                    m.invoke(target, text);
-                    return;
+                Class<?> componentCls = resolveTextComponentClass();
+                if (componentCls != null && !componentCls.equals(textCls)) {
+                    Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{componentCls});
+                    if (m != null) {
+                        m.invoke(target, text);
+                        return;
+                    }
                 }
             } catch (Throwable t) {
                 // Reflection failed, will fall through to println
@@ -336,5 +347,23 @@ public class FabricCommandBridge implements CommandBridge {
             }
             return false;
         } catch (Throwable t) { return false; }
+    }
+
+    // ── Text/Component class resolution ─────────────────────────────
+
+    /**
+     * Resolve the Minecraft text component class at runtime.
+     * Returns {@code Component} (MC 26.1+) or {@code Text} (MC 1.18-1.21).
+     */
+    private static Class<?> resolveTextComponentClass() {
+        try {
+            return Class.forName("net.minecraft.network.chat.Component");
+        } catch (ClassNotFoundException e) {
+            try {
+                return Class.forName("net.minecraft.text.Text");
+            } catch (ClassNotFoundException ex) {
+                return null;
+            }
+        }
     }
 }
