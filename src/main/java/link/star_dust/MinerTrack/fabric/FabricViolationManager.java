@@ -190,12 +190,12 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (pm == null) return;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
-            Object text = FabricReflection.callStatic("net.minecraft.text.Text",
-                "literal", new Class<?>[]{String.class}, new Object[]{message});
-            // sendMessage(Text, boolean overlay) on the player
+            Object text = createTextComponent(message);
+            Class<?> textCls = resolveTextComponentClass();
+            // sendMessage(Text/Component, boolean overlay) on the player
             // (1.18+ signature; 1.20+ is identical).
             FabricReflection.call(player, "sendMessage",
-                new Class<?>[]{FabricReflection.forName("net.minecraft.text.Text"), boolean.class},
+                new Class<?>[]{textCls, boolean.class},
                 new Object[]{text, false});
         } catch (Throwable t) {
             // Player likely offline; silently drop.
@@ -326,6 +326,44 @@ public class FabricViolationManager implements ViolationManagerBridge {
             case 2: return "nd";
             case 3: return "rd";
             default: return "th";
+        }
+    }
+
+    // ── Text/Component helpers ─────────────────────────────────────
+
+    private static Object createTextComponent(String message) {
+        // 1. MC 26.1+: Component.literal(String)
+        try {
+            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
+            java.lang.reflect.Method literal = compCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 2. MC 1.19.3+: Text.literal(String)
+        try {
+            Class<?> textCls = Class.forName("net.minecraft.text.Text");
+            java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
+            return literal.invoke(null, message);
+        } catch (Throwable t) { /* fall through */ }
+
+        // 3. MC 1.18-1.19.2: new LiteralText(String)
+        try {
+            Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static Class<?> resolveTextComponentClass() {
+        try {
+            return Class.forName("net.minecraft.network.chat.Component");
+        } catch (ClassNotFoundException e) {
+            try {
+                return Class.forName("net.minecraft.text.Text");
+            } catch (ClassNotFoundException ex) {
+                return null;
+            }
         }
     }
 }
