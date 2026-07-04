@@ -229,12 +229,21 @@ final class FabricReflection {
         return null;
     }
 
-    /** Resolve a class by name; return null on failure. */
+    /** Resolve a class by name; return null on failure.
+     * Includes automatic fallback for MC version changes:
+     * - net.minecraft.text.Text → net.minecraft.network.chat.Component
+     * - net.minecraft.registry.* → net.minecraft.core.registries.*
+     * - net.minecraft.util.math.BlockPos → net.minecraft.core.BlockPos
+     */
     static Class<?> forName(String className) {
         try {
             // Try direct load first (for already unmapped or non-Minecraft classes)
             return Class.forName(className);
         } catch (ClassNotFoundException e) {
+            // Try MC version migration fallbacks
+            Class<?> result = tryMcMigration(className);
+            if (result != null) return result;
+
             // If it looks like an intermediary name, try unmapping
             if (className.contains("class_") || className.startsWith("net.minecraft.")) {
                 try {
@@ -244,6 +253,88 @@ final class FabricReflection {
                     }
                 } catch (ClassNotFoundException ignored) {}
             }
+            return null;
+        }
+    }
+
+    /**
+     * Try common MC version migration paths for renamed/moved classes.
+     */
+    private static Class<?> tryMcMigration(String className) {
+        // net.minecraft.text.Text → net.minecraft.network.chat.Component (MC 26.1+)
+        if ("net.minecraft.text.Text".equals(className)) {
+            return tryLoad("net.minecraft.network.chat.Component");
+        }
+        if ("net.minecraft.text.LiteralText".equals(className)) {
+            // LiteralText removed; Component.literal() is the replacement
+            return tryLoad("net.minecraft.network.chat.Component");
+        }
+        // net.minecraft.text.MutableText → net.minecraft.network.chat.MutableComponent
+        if ("net.minecraft.text.MutableText".equals(className)) {
+            return tryLoad("net.minecraft.network.chat.MutableComponent");
+        }
+        // net.minecraft.registry.Registries → net.minecraft.core.registries.Registries
+        if ("net.minecraft.registry.Registries".equals(className)) {
+            return tryLoad("net.minecraft.core.registries.Registries");
+        }
+        // net.minecraft.util.math.BlockPos → net.minecraft.core.BlockPos
+        if ("net.minecraft.util.math.BlockPos".equals(className)) {
+            return tryLoad("net.minecraft.core.BlockPos");
+        }
+        // net.minecraft.entity.LightningEntity → net.minecraft.world.entity.LightningBolt
+        if ("net.minecraft.entity.LightningEntity".equals(className)) {
+            return tryLoad("net.minecraft.world.entity.LightningBolt");
+        }
+        // net.minecraft.entity.EntityType → net.minecraft.world.entity.EntityType
+        if ("net.minecraft.entity.EntityType".equals(className)) {
+            return tryLoad("net.minecraft.world.entity.EntityType");
+        }
+        // net.minecraft.server.world.ServerWorld → net.minecraft.server.level.ServerLevel
+        if ("net.minecraft.server.world.ServerWorld".equals(className)) {
+            return tryLoad("net.minecraft.server.level.ServerLevel");
+        }
+        // net.minecraft.server.network.ServerPlayerEntity → net.minecraft.server.level.ServerPlayer
+        if ("net.minecraft.server.network.ServerPlayerEntity".equals(className)) {
+            return tryLoad("net.minecraft.server.level.ServerPlayer");
+        }
+        // net.minecraft.server.command.ServerCommandSource → net.minecraft.commands.CommandSourceStack
+        if ("net.minecraft.server.command.ServerCommandSource".equals(className)) {
+            return tryLoad("net.minecraft.commands.CommandSourceStack");
+        }
+        // net.minecraft.fluid.Fluids → net.minecraft.world.level.material.Fluids (MC 1.21+)
+        if ("net.minecraft.fluid.Fluids".equals(className)) {
+            return tryLoad("net.minecraft.world.level.material.Fluids");
+        }
+        // net.minecraft.fluid.Fluid → net.minecraft.world.level.material.Fluid
+        if ("net.minecraft.fluid.Fluid".equals(className)) {
+            return tryLoad("net.minecraft.world.level.material.Fluid");
+        }
+        // net.minecraft.block.FluidBlock → net.minecraft.world.level.block.LiquidBlock (MC 26.1+)
+        if ("net.minecraft.block.FluidBlock".equals(className)) {
+            return tryLoad("net.minecraft.world.level.block.LiquidBlock");
+        }
+        // net.minecraft.block.Blocks → net.minecraft.world.level.block.Blocks
+        if ("net.minecraft.block.Blocks".equals(className)) {
+            return tryLoad("net.minecraft.world.level.block.Blocks");
+        }
+        if ("net.minecraft.block.Block".equals(className)) {
+            return tryLoad("net.minecraft.world.level.block.Block");
+        }
+        // net.minecraft.block.BlockState → net.minecraft.world.level.block.state.BlockState
+        if ("net.minecraft.block.BlockState".equals(className)) {
+            return tryLoad("net.minecraft.world.level.block.state.BlockState");
+        }
+        // Reverse migrations (new name → old, for newer Fabric API versions)
+        if ("net.minecraft.network.chat.Component".equals(className)) {
+            return tryLoad("net.minecraft.text.Text");
+        }
+        return null;
+    }
+
+    private static Class<?> tryLoad(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
             return null;
         }
     }
