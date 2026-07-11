@@ -14,23 +14,23 @@ import java.util.logging.Logger;
  * Used only when Fabric API cannot provide the needed hook.
  *
  * <p>This class handles Minecraft's code obfuscation by using Fabric's {@link MappingResolver}
- * to map method names from intermediary to runtime (obfuscated) names when necessary.</p>
+ * to map method names from the injected {@code "mojmap"} namespace to runtime (obfuscated)
+ * names when necessary.</p>
  *
  * <p>In a named environment (development or modern Fabric servers with "named" mappings),
  * class and method names are already human-readable. In an obfuscated production environment,
- * this class will automatically resolve the correct obfuscated names.</p>
+ * this class will automatically resolve the correct obfuscated names via the Mojmap namespace
+ * that was injected during pre-launch by {@link MinerTrackPreLaunch}.</p>
  *
- * <p>For Minecraft 1.18–1.21.x, the {@link InternalMappingResolver} provides an additional
- * "mojmap" namespace that maps Mojang's official deobfuscated names to runtime names.
- * This is injected during the pre-launch phase by {@link MinerTrackPreLaunch}.</p>
+ * <p>For Minecraft 26.x and later the server jar ships unobfuscated, so all Mojmap resolution
+ * is bypassed and the original names are used directly.</p>
  */
 final class FabricReflection {
     private static final Logger LOGGER = Logger.getLogger("MinerTrack/FabricReflection");
     private static final MappingResolver MAPPING_RESOLVER = FabricLoader.getInstance().getMappingResolver();
-    private static final String INTERMEDIARY_NAMESPACE = "intermediary";
     private static final String RUNTIME_NAMESPACE = FabricLoader.getInstance().isDevelopmentEnvironment() ? "named" : getRuntimeNamespace();
 
-    // Lazily initialised Mojmap resolver (only for 1.18–1.21.x)
+    // Lazily initialised Mojmap resolver (only for 1.18–1.21.x, used for field lookups)
     private static InternalMappingResolver mojmapResolver;
 
     /** Determine the runtime namespace based on environment */
@@ -60,7 +60,6 @@ final class FabricReflection {
             }
             mojmapResolver = new InternalMappingResolver(
                     FabricLoader.getInstance().getGameDir(), mcVersion);
-            // If already cached and injected, the tables will be available
             return mojmapResolver;
         } catch (Exception e) {
             LOGGER.fine("Mojmap resolver not available: " + e.getMessage());
@@ -69,35 +68,13 @@ final class FabricReflection {
     }
 
     /**
-     * Resolve an intermediary class name to its runtime (obfuscated) name.
-     * @param intermediaryName class name in intermediary format (e.g. "net.minecraft.class_2561")
-     * @return runtime class name, or null if resolution fails
-     */
-    static String unmapClassName(String intermediaryName) {
-        try {
-            return MAPPING_RESOLVER.unmapClassName(INTERMEDIARY_NAMESPACE, intermediaryName);
-        } catch (Throwable t) {
-            return intermediaryName;
-        }
-    }
-
-    /**
      * Resolve a Mojmap class name to its runtime (obfuscated) name.
-     * Uses the "mojmap" namespace injected by {@link InternalMappingResolver}.
+     * Uses the injected {@code "mojmap"} namespace in Fabric's MappingResolver.
      *
-     * @param mojmapName class name in Mojmap format (e.g. "net.minecraft.server.network.ServerPlayerEntity")
+     * @param mojmapName class name in Mojmap format (e.g. "net.minecraft.server.MinecraftServer")
      * @return runtime class name, or the original name if resolution fails
      */
     static String unmapMojmapClassName(String mojmapName) {
-        InternalMappingResolver resolver = getMojmapResolver();
-        if (resolver != null) {
-            String official = resolver.mojmapToOfficial(mojmapName);
-            if (!official.equals(mojmapName)) {
-                // The official name is the obfuscated name — use it directly
-                return official;
-            }
-        }
-        // Fallback: try the mojmap namespace in the standard resolver
         try {
             return MAPPING_RESOLVER.unmapClassName("mojmap", mojmapName);
         } catch (Throwable t) {
@@ -106,58 +83,32 @@ final class FabricReflection {
     }
 
     /**
-     * Resolve an intermediary method name to its runtime (obfuscated) name.
-     * @param className class name in intermediary format
-     * @param methodName method name in intermediary format
-     * @param paramTypes parameter types in intermediary format (as Class objects)
-     * @return runtime method name, or the original name if resolution fails
-     */
-    static String unmapMethodName(String className, String methodName, Class<?>[] paramTypes) {
-        try {
-            // Convert intermediary param type names to runtime names
-            String[] runtimeParamTypes = new String[paramTypes.length];
-            for (int i = 0; i < paramTypes.length; i++) {
-                runtimeParamTypes[i] = unmapClassName(paramTypes[i].getName());
-            }
-            // Use mapMethodName with from=intermediary, to=runtime
-            // Signature: mapMethodName(fromNamespace, toNamespace, methodName, descriptor)
-            // Note: Fabric 0.14.x MappingResolver.mapMethodName takes 4 args:
-            //       mapMethodName(String fromNamespace, String toNamespace, String name, String descriptor)
-            // The className is NOT used - method names are global in intermediary.
-            // We need to build a method descriptor string
-            StringBuilder desc = new StringBuilder("(");
-            for (String paramType : runtimeParamTypes) {
-                desc.append(descriptorForType(paramType));
-            }
-            desc.append(")V"); // return type doesn't matter for lookup
-            return MAPPING_RESOLVER.mapMethodName(INTERMEDIARY_NAMESPACE, RUNTIME_NAMESPACE, methodName, desc.toString());
-        } catch (Throwable t) {
-            return methodName;
-        }
-    }
-
-    /**
      * Resolve a Mojmap method name to its runtime (obfuscated) name.
-     * Uses the "mojmap" namespace injected by {@link InternalMappingResolver}.
+     * Uses the injected {@code "mojmap"} namespace in Fabric's MappingResolver.
      *
-     * @param mojmapClass  the Mojmap class name
-     * @param mojmapMethod the Mojmap method name
+     * @param methodName the method name in Mojmap format (e.g. "getServer")
+     * @param paramTypes the parameter types
      * @return runtime method name, or the original name if resolution fails
      */
-    static String unmapMojmapMethodName(String mojmapClass, String mojmapMethod) {
-        InternalMappingResolver resolver = getMojmapResolver();
-        if (resolver != null) {
-            String official = resolver.resolveMethodName(mojmapClass, mojmapMethod);
-            if (!official.equals(mojmapMethod)) {
-                return official;
-            }
-        }
-        // Fallback: try the mojmap namespace in the standard resolver
+    static String unmapMojmapMethodName(String methodName, Class<?>[] paramTypes) {
         try {
-            return MAPPING_RESOLVER.mapMethodName("mojmap", RUNTIME_NAMESPACE, mojmapMethod, "()V");
-        } catch (Throwable t) {
-            return mojmapMethod;
-        }
+            String descriptor = buildDescriptor(paramTypes);
+            String result = MAPPING_RESOLVER.mapMethodName(
+                    "mojmap", RUNTIME_NAMESPACE, methodName, descriptor);
+            if (result != null && !result.equals(methodName)) {
+                return result;
+            }
+        } catch (Throwable ignored) {}
+        // Retry with "()V" descriptor — some namespace combos may not
+        // map the descriptor correctly cross-namespace.
+        try {
+            String result = MAPPING_RESOLVER.mapMethodName(
+                    "mojmap", RUNTIME_NAMESPACE, methodName, "()V");
+            if (result != null && !result.equals(methodName)) {
+                return result;
+            }
+        } catch (Throwable ignored) {}
+        return methodName;
     }
 
     /**
@@ -303,18 +254,14 @@ final class FabricReflection {
     /**
      * Resolve a Mojmap method name to its runtime (obfuscated) name.
      *
-     * <p>Uses {@link MappingResolver#mapMethodName} with the injected
-     * {@code "mojmap"} namespace. After injection, Fabric's resolver has:
-     * <ol>
-     *   <li>{@code official → mojmap} (from our Tiny v2 injection)</li>
-     *   <li>{@code official → intermediary} (built into Fabric Loader)</li>
-     * </ol>
-     * so asking for {@code mojmap → RUNTIME_NAMESPACE} traverses the full chain.
-     * The method name search is global — no class qualification is needed.</p>
+     * <p>Delegates to {@link #unmapMojmapMethodName} which uses the injected
+     * {@code "mojmap"} namespace in Fabric's {@link MappingResolver}.
+     * After injection, the resolver traverses the full chain:
+     * {@code mojmap → official → intermediary → named}.</p>
      *
      * @param cls        the runtime class (used only for the {@code net.minecraft.} guard)
      * @param methodName the method name in Mojmap format (e.g. {@code "getServer"})
-     * @param paramTypes the parameter types (used to build descriptor)
+     * @param paramTypes the parameter types
      * @return the runtime (obfuscated) method name, or the original name if resolution fails
      */
     private static String resolveMojmapMethodName(Class<?> cls, String methodName, Class<?>[] paramTypes) {
@@ -322,24 +269,7 @@ final class FabricReflection {
         if (!className.startsWith("net.minecraft.")) {
             return methodName;
         }
-        try {
-            String descriptor = buildDescriptor(paramTypes);
-            String result = MAPPING_RESOLVER.mapMethodName(
-                    "mojmap", RUNTIME_NAMESPACE, methodName, descriptor);
-            if (result != null && !result.equals(methodName)) {
-                return result;
-            }
-        } catch (Throwable ignored) {}
-        // Retry with "()V" descriptor — some Fabric/namespace combos
-        // may not map the descriptor correctly cross-namespace.
-        try {
-            String result = MAPPING_RESOLVER.mapMethodName(
-                    "mojmap", RUNTIME_NAMESPACE, methodName, "()V");
-            if (result != null && !result.equals(methodName)) {
-                return result;
-            }
-        } catch (Throwable ignored) {}
-        return methodName;
+        return unmapMojmapMethodName(methodName, paramTypes);
     }
 
     /**
@@ -347,10 +277,10 @@ final class FabricReflection {
      *
      * <p>Fabric's {@link MappingResolver} has no field resolution API.
      * We use the manual Tiny v2 parsing tables in {@link InternalMappingResolver},
-     * which map {@code official → mojmap}. On production servers the runtime
-     * class name is in the {@code intermediary} namespace, so we first convert
-     * it to the official name via {@link MappingResolver#unmapClassName}
-     * before looking up the field.</p>
+     * which map {@code official → mojmap}. We first convert the runtime class
+     * name to its Mojmap equivalent via
+     * {@link MappingResolver#unmapClassName(String, String)} with the
+     * {@code "mojmap"} namespace, then look up the field in the tables.</p>
      *
      * @param cls       the runtime class
      * @param fieldName the field name in Mojmap format (e.g. {@code "LIGHTNING_BOLT"})
@@ -364,18 +294,15 @@ final class FabricReflection {
         InternalMappingResolver resolver = getMojmapResolver();
         if (resolver != null) {
             try {
-                // Convert runtime (intermediary) → official via Fabric's resolver.
-                // unmapClassName("intermediary", "net.minecraft.class_3248") → "net/minecraft/...".
-                String officialName = MAPPING_RESOLVER.unmapClassName(
-                        INTERMEDIARY_NAMESPACE, className);
-                if (officialName != null && !officialName.equals(className)) {
-                    // Convert official → mojmap to get the mojmap class name.
-                    String mojmapClass = resolver.officialToMojmap(officialName);
-                    if (mojmapClass != null && !mojmapClass.equals(officialName)) {
-                        String official = resolver.resolveFieldName(mojmapClass, fieldName);
-                        if (official != null && !official.equals(fieldName)) {
-                            return official;
-                        }
+                // Convert runtime → mojmap class name via Fabric's resolver.
+                // unmapClassName("mojmap", runtimeName) traverses the chain
+                // mojmap → official → intermediary → named and returns the
+                // Mojmap-equivalent class name.
+                String mojmapClass = MAPPING_RESOLVER.unmapClassName("mojmap", className);
+                if (mojmapClass != null && !mojmapClass.equals(className)) {
+                    String official = resolver.resolveFieldName(mojmapClass, fieldName);
+                    if (official != null && !official.equals(fieldName)) {
+                        return official;
                     }
                 }
             } catch (Throwable ignored) {}
@@ -402,9 +329,8 @@ final class FabricReflection {
      * - net.minecraft.util.math.BlockPos → net.minecraft.core.BlockPos
      *
      * <p>For Minecraft 1.18–1.21.x, Mojmap class names (e.g.
-     * {@code net.minecraft.server.network.ServerPlayerEntity}) are resolved
-     * via the {@link InternalMappingResolver} which maps them to their
-     * official (obfuscated) runtime names.</p>
+     * {@code net.minecraft.server.MinecraftServer}) are resolved via the
+     * injected {@code "mojmap"} namespace in Fabric's {@link MappingResolver}.</p>
      */
     static Class<?> forName(String className) {
         try {
@@ -415,7 +341,9 @@ final class FabricReflection {
             Class<?> result = tryMcMigration(className);
             if (result != null) return result;
 
-            // Try Mojmap resolution for net.minecraft classes (1.18–1.21.x)
+            // Try Mojmap resolution for net.minecraft classes (1.18–1.21.x).
+            // unmapMojmapClassName uses MAPPING_RESOLVER.unmapClassName("mojmap", ...)
+            // which traverses mojmap → official → intermediary → named.
             if (className.startsWith("net.minecraft.")) {
                 String unmapped = unmapMojmapClassName(className);
                 if (!unmapped.equals(className)) {
@@ -425,15 +353,6 @@ final class FabricReflection {
                 }
             }
 
-            // If it looks like an intermediary name, try unmapping
-            if (className.contains("class_") || className.startsWith("net.minecraft.")) {
-                try {
-                    String unmapped = unmapClassName(className);
-                    if (!unmapped.equals(className)) {
-                        return Class.forName(unmapped);
-                    }
-                } catch (ClassNotFoundException ignored) {}
-            }
             return null;
         }
     }
@@ -537,13 +456,11 @@ final class FabricReflection {
      * <p>For Minecraft classes on 1.18–1.21.x, the method name is first
      * resolved through the Mojmap namespace — the caller passes a Mojmap
      * method name (e.g. {@code "getServer"}), and we translate it to the
-     * official (obfuscated) name before looking it up on the runtime class.
-     * If the Mojmap resolver is unavailable, the intermediary-based resolver
-     * is used as fallback.
+     * runtime (obfuscated) name before looking it up on the runtime class.
      *
      * <p>If none of the above finds the method, the Mojmap superclass chain
-     * is traversed to handle methods declared on Mojmap superclasses whose
-     * runtime hierarchy may differ from the compile-time hierarchy.</p>
+     * is traversed via {@link MappingResolver#unmapClassName} with the
+     * {@code "mojmap"} namespace to find the declaring class.</p>
      *
      * <p>No generic recursive hierarchy walk is performed — the declaring
      * class is either resolved via Mojmap or assumed to be the class itself.</p>
@@ -552,8 +469,6 @@ final class FabricReflection {
         if (cls == null) return null;
 
         // Resolve the method name through Mojmap first.
-        // On obfuscated 1.18–1.21.x servers, the caller passes a Mojmap name
-        // (e.g. "getServer") and we need the obfuscated name to look it up.
         String runtimeName = resolveMojmapMethodName(cls, name, paramTypes);
 
         // Primary path: getMethod resolves inherited public methods automatically.
@@ -566,20 +481,13 @@ final class FabricReflection {
             return cls.getDeclaredMethod(runtimeName, paramTypes);
         } catch (NoSuchMethodException ignored) {}
 
-        // Mojmap superclass traversal: if the class is a net.minecraft type
-        // and the Mojmap resolver is available, walk the Mojmap superclass
-        // chain to find the declaring class for the method. This replaces
-        // the generic recursive hierarchy walk with a Mojmap-aware traversal.
+        // Mojmap superclass traversal: walk the Mojmap superclass chain
+        // via MAPPING_RESOLVER.unmapClassName("mojmap", ...) to find the
+        // declaring class for the method.
         String className = cls.getName();
         if (className.startsWith("net.minecraft.")) {
-            InternalMappingResolver resolver = getMojmapResolver();
-            if (resolver != null) {
-                String mojmapClass = resolver.officialToMojmap(className);
-                if (!mojmapClass.equals(className)) {
-                    Method m = findMethodInMojmapHierarchy(resolver, mojmapClass, runtimeName, paramTypes);
-                    if (m != null) return m;
-                }
-            }
+            Method m = findMethodInMojmapHierarchy(className, runtimeName, paramTypes);
+            if (m != null) return m;
         }
 
         return null;
@@ -587,18 +495,24 @@ final class FabricReflection {
 
     /**
      * Walk the Mojmap superclass chain to find a method declared on a
-     * superclass within the Mojmap namespace. This is used instead of
-     * generic recursion when the Mojmap resolver is available.
+     * superclass within the Mojmap namespace.
      */
     private static Method findMethodInMojmapHierarchy(
-            InternalMappingResolver resolver, String mojmapClass,
-            String methodName, Class<?>[] paramTypes) {
+            String runtimeClassName, String methodName, Class<?>[] paramTypes) {
+        // Convert runtime → mojmap to get the mojmap superclass chain.
+        String mojmapClass = MAPPING_RESOLVER.unmapClassName("mojmap", runtimeClassName);
+        if (mojmapClass == null || mojmapClass.equals(runtimeClassName)) return null;
+
+        InternalMappingResolver resolver = getMojmapResolver();
+        if (resolver == null) return null;
+
         String current = resolver.getSuperclass(mojmapClass);
         while (current != null && !"java.lang.Object".equals(current)) {
-            String officialClass = resolver.mojmapToOfficial(current);
-            if (!officialClass.equals(current)) {
+            // Convert mojmap superclass → runtime name via MAPPING_RESOLVER.
+            String runtimeSuper = MAPPING_RESOLVER.unmapClassName("mojmap", current);
+            if (runtimeSuper != null && !runtimeSuper.equals(current)) {
                 try {
-                    Class<?> superCls = Class.forName(officialClass);
+                    Class<?> superCls = Class.forName(runtimeSuper);
                     try {
                         return superCls.getDeclaredMethod(methodName, paramTypes);
                     } catch (NoSuchMethodException ignored) {}
@@ -615,14 +529,12 @@ final class FabricReflection {
      * <p>For Minecraft classes on 1.18–1.21.x, the field name is first
      * resolved through the Mojmap namespace — the caller passes a Mojmap
      * field name (e.g. {@code "LIGHTNING_BOLT"}), and we translate it to
-     * the official (obfuscated) name before looking it up on the runtime
-     * class. If the Mojmap resolver is unavailable, the field name is
-     * used as-is.
+     * the runtime (obfuscated) name before looking it up on the runtime
+     * class.
      *
      * <p>If the field is not found on the class itself, the Mojmap
      * superclass chain is traversed via
-     * {@link InternalMappingResolver#getSuperclass(String)} instead of
-     * a generic Java superclass walk.</p>
+     * {@link InternalMappingResolver#getSuperclass(String)}.</p>
      *
      * <p>No generic recursive hierarchy walk is performed — the declaring
      * class is either resolved via Mojmap or assumed to be the class itself.</p>
@@ -638,18 +550,11 @@ final class FabricReflection {
             return cls.getDeclaredField(runtimeName);
         } catch (NoSuchFieldException ignored) {}
 
-        // Mojmap superclass traversal: if the class is a net.minecraft type
-        // and the Mojmap resolver is available, walk the Mojmap superclass
-        // chain to find the declaring class for the field.
-        if (cls.getName().startsWith("net.minecraft.")) {
-            InternalMappingResolver resolver = getMojmapResolver();
-            if (resolver != null) {
-                String mojmapClass = resolver.officialToMojmap(cls.getName());
-                if (!mojmapClass.equals(cls.getName())) {
-                    Field f = findFieldInMojmapHierarchy(resolver, mojmapClass, runtimeName);
-                    if (f != null) return f;
-                }
-            }
+        // Mojmap superclass traversal.
+        String className = cls.getName();
+        if (className.startsWith("net.minecraft.")) {
+            Field f = findFieldInMojmapHierarchy(className, runtimeName);
+            if (f != null) return f;
         }
 
         return null;
@@ -659,14 +564,19 @@ final class FabricReflection {
      * Walk the Mojmap superclass chain to find a field declared on a
      * superclass within the Mojmap namespace.
      */
-    private static Field findFieldInMojmapHierarchy(
-            InternalMappingResolver resolver, String mojmapClass, String fieldName) {
+    private static Field findFieldInMojmapHierarchy(String runtimeClassName, String fieldName) {
+        String mojmapClass = MAPPING_RESOLVER.unmapClassName("mojmap", runtimeClassName);
+        if (mojmapClass == null || mojmapClass.equals(runtimeClassName)) return null;
+
+        InternalMappingResolver resolver = getMojmapResolver();
+        if (resolver == null) return null;
+
         String current = resolver.getSuperclass(mojmapClass);
         while (current != null && !"java.lang.Object".equals(current)) {
-            String officialClass = resolver.mojmapToOfficial(current);
-            if (!officialClass.equals(current)) {
+            String runtimeSuper = MAPPING_RESOLVER.unmapClassName("mojmap", current);
+            if (runtimeSuper != null && !runtimeSuper.equals(current)) {
                 try {
-                    Class<?> superCls = Class.forName(officialClass);
+                    Class<?> superCls = Class.forName(runtimeSuper);
                     try {
                         return superCls.getDeclaredField(fieldName);
                     } catch (NoSuchFieldException ignored) {}
