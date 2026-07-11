@@ -3,7 +3,10 @@ package link.star_dust.MinerTrack.core.detection;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.Set;
 
 public class DetectionEngine {
     private final DetectionBridge bridge;
