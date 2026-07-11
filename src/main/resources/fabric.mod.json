@@ -16,6 +16,9 @@
   "icon": "assets/minertrack/icon.png",
   "environment": "server",
   "entrypoints": {
+    "preLaunch": [
+      "link.star_dust.MinerTrack.fabric.MinerTrackPreLaunch"
+    ],
     "server": [
       "link.star_dust.MinerTrack.fabric.FabricPlatform"
     ]
