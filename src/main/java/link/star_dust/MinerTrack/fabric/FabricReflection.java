@@ -197,22 +197,29 @@ final class FabricReflection {
     /** Invoke a static method by reflection; return null on failure. */
     static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
         try {
-            Class<?> cls = Class.forName(className);
-            // Use getDeclaredMethod on the explicitly declared class.
-            // Minecraft methods are typically declared on the class itself
-            // (e.g. MinecraftServer.getServer() is declared on MinecraftServer).
+            // Use forName() which includes Mojmap resolution for 1.18–1.21.x.
+            // Direct Class.forName() would fail on obfuscated servers when the
+            // caller passes a Mojmap class name like "net.minecraft.server.MinecraftServer".
+            Class<?> cls = forName(className);
+            if (cls == null) return null;
+
+            // Resolve the method name through Mojmap if this is a net.minecraft class.
+            // On obfuscated servers the method name like "getServer" must be
+            // translated to its official (obfuscated) name.
+            String runtimeMethodName = resolveMojmapMethodName(cls, methodName, paramTypes);
+
             try {
-                Method m = cls.getDeclaredMethod(methodName, paramTypes);
+                Method m = cls.getDeclaredMethod(runtimeMethodName, paramTypes);
                 m.setAccessible(true);
                 return m.invoke(null, args);
             } catch (NoSuchMethodException e) {
                 // Fallback: try getMethod (public API) which resolves
                 // inherited public methods automatically.
-                Method m = cls.getMethod(methodName, paramTypes);
+                Method m = cls.getMethod(runtimeMethodName, paramTypes);
                 m.setAccessible(true);
                 return m.invoke(null, args);
             }
-        } catch (ClassNotFoundException | IllegalAccessException | InvocationTargetException
+        } catch (IllegalAccessException | InvocationTargetException
                  | NoSuchMethodException e) {
             return null;
         }
@@ -222,16 +229,24 @@ final class FabricReflection {
     static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
         if (target == null) return null;
         try {
+            Class<?> cls = target.getClass();
+
+            // Resolve the method name through Mojmap if this is a net.minecraft class.
+            // On obfuscated servers the method name must be translated.
+            String runtimeMethodName = resolveMojmapMethodName(cls, methodName, paramTypes);
+
             // Use getMethod (public API) which resolves inherited methods
             // automatically without manual hierarchy walking.
-            Method m = target.getClass().getMethod(methodName, paramTypes);
+            Method m = cls.getMethod(runtimeMethodName, paramTypes);
             return m.invoke(target, args);
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
             // Fallback: try getDeclaredMethod on the runtime class.
             // This handles non-public methods declared directly on the
             // target's class (e.g. package-private Minecraft internals).
             try {
-                Method m = target.getClass().getDeclaredMethod(methodName, paramTypes);
+                Class<?> cls = target.getClass();
+                String runtimeMethodName = resolveMojmapMethodName(cls, methodName, paramTypes);
+                Method m = cls.getDeclaredMethod(runtimeMethodName, paramTypes);
                 m.setAccessible(true);
                 return m.invoke(target, args);
             } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ex) {
@@ -258,7 +273,10 @@ final class FabricReflection {
     static <T> T getField(Object target, String fieldName) {
         if (target == null) return null;
         try {
-            Field f = findField(target.getClass(), fieldName);
+            // Resolve the field name through Mojmap first, then find it
+            // in the class hierarchy.
+            String runtimeFieldName = resolveMojmapFieldName(target.getClass(), fieldName);
+            Field f = findField(target.getClass(), runtimeFieldName);
             if (f == null) return null;
             f.setAccessible(true);
             return (T) f.get(target);
@@ -270,14 +288,76 @@ final class FabricReflection {
     /** Construct an instance by reflection. */
     static Object newInstance(String className, Class<?>[] paramTypes, Object[] args) {
         try {
-            Class<?> cls = Class.forName(className);
+            // Use forName() which includes Mojmap resolution for 1.18–1.21.x.
+            Class<?> cls = forName(className);
+            if (cls == null) return null;
             Constructor<?> c = cls.getDeclaredConstructor(paramTypes);
             c.setAccessible(true);
             return c.newInstance(args);
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+        } catch (NoSuchMethodException | IllegalAccessException
                  | InstantiationException | InvocationTargetException e) {
             return null;
         }
+    }
+
+    /**
+     * Resolve a Mojmap method name to its runtime (obfuscated) name for the
+     * given class. Uses the Mojmap resolver when available, otherwise falls
+     * back to the intermediary-based resolver.
+     *
+     * @param cls        the runtime class
+     * @param methodName the method name (in Mojmap format for net.minecraft classes)
+     * @param paramTypes the parameter types
+     * @return the runtime (obfuscated) method name, or the original name if resolution fails
+     */
+    private static String resolveMojmapMethodName(Class<?> cls, String methodName, Class<?>[] paramTypes) {
+        String className = cls.getName();
+        if (!className.startsWith("net.minecraft.")) {
+            return methodName;
+        }
+        // Try Mojmap resolver first (1.18–1.21.x).
+        InternalMappingResolver resolver = getMojmapResolver();
+        if (resolver != null) {
+            String mojmapClass = resolver.officialToMojmap(className);
+            if (!mojmapClass.equals(className)) {
+                String official = resolver.resolveMethodName(mojmapClass, methodName);
+                if (!official.equals(methodName)) {
+                    return official;
+                }
+            }
+        }
+        // Fallback: try intermediary resolver.
+        String unmapped = unmapMethodName(className, methodName, paramTypes);
+        if (!unmapped.equals(methodName)) {
+            return unmapped;
+        }
+        return methodName;
+    }
+
+    /**
+     * Resolve a Mojmap field name to its runtime (obfuscated) name for the
+     * given class. Uses the Mojmap resolver when available.
+     *
+     * @param cls       the runtime class
+     * @param fieldName the field name (in Mojmap format for net.minecraft classes)
+     * @return the runtime (obfuscated) field name, or the original name if resolution fails
+     */
+    private static String resolveMojmapFieldName(Class<?> cls, String fieldName) {
+        String className = cls.getName();
+        if (!className.startsWith("net.minecraft.")) {
+            return fieldName;
+        }
+        InternalMappingResolver resolver = getMojmapResolver();
+        if (resolver != null) {
+            String mojmapClass = resolver.officialToMojmap(className);
+            if (!mojmapClass.equals(className)) {
+                String official = resolver.resolveFieldName(mojmapClass, fieldName);
+                if (!official.equals(fieldName)) {
+                    return official;
+                }
+            }
+        }
+        return fieldName;
     }
 
     /** Resolve a class by name; return null on failure.
@@ -419,57 +499,55 @@ final class FabricReflection {
      * {@link Class#getDeclaredMethod(String, Class[])} on the declaring
      * class directly.
      *
-     * <p>For Minecraft classes on 1.18–1.21.x, if the method is not found
-     * directly, the Mojmap superclass chain is traversed via
-     * {@link InternalMappingResolver#getSuperclass(String)} instead of
-     * generic Java recursion. This ensures that methods declared on
-     * superclasses within the Mojmap namespace are found even when the
-     * runtime class hierarchy differs from the Mojmap hierarchy.</p>
+     * <p>For Minecraft classes on 1.18–1.21.x, the method name is first
+     * resolved through the Mojmap namespace — the caller passes a Mojmap
+     * method name (e.g. {@code "getServer"}), and we translate it to the
+     * official (obfuscated) name before looking it up on the runtime class.
+     * If the Mojmap resolver is unavailable, the intermediary-based resolver
+     * is used as fallback.
+     *
+     * <p>If none of the above finds the method, the Mojmap superclass chain
+     * is traversed to handle methods declared on Mojmap superclasses whose
+     * runtime hierarchy may differ from the compile-time hierarchy.</p>
      *
      * <p>No generic recursive hierarchy walk is performed — the declaring
      * class is either resolved via Mojmap or assumed to be the class itself.</p>
      */
     static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
         if (cls == null) return null;
+
+        // Resolve the method name through Mojmap first.
+        // On obfuscated 1.18–1.21.x servers, the caller passes a Mojmap name
+        // (e.g. "getServer") and we need the obfuscated name to look it up.
+        String runtimeName = resolveMojmapMethodName(cls, name, paramTypes);
+
         // Primary path: getMethod resolves inherited public methods automatically.
         try {
-            return cls.getMethod(name, paramTypes);
+            return cls.getMethod(runtimeName, paramTypes);
         } catch (NoSuchMethodException ignored) {}
 
-        // Try unmapping the method name if this is a Minecraft class.
-        // The method may be declared on this class with an obfuscated name.
-        String className = cls.getName();
-        if (className.startsWith("net.minecraft.")) {
-            String unmappedName = unmapMethodName(className, name, paramTypes);
-            if (!unmappedName.equals(name)) {
-                try {
-                    return cls.getDeclaredMethod(unmappedName, paramTypes);
-                } catch (NoSuchMethodException ignored2) {}
-            }
-        }
+        // Try getDeclaredMethod on the class itself (for non-public methods).
+        try {
+            return cls.getDeclaredMethod(runtimeName, paramTypes);
+        } catch (NoSuchMethodException ignored) {}
 
         // Mojmap superclass traversal: if the class is a net.minecraft type
         // and the Mojmap resolver is available, walk the Mojmap superclass
         // chain to find the declaring class for the method. This replaces
         // the generic recursive hierarchy walk with a Mojmap-aware traversal.
+        String className = cls.getName();
         if (className.startsWith("net.minecraft.")) {
             InternalMappingResolver resolver = getMojmapResolver();
             if (resolver != null) {
                 String mojmapClass = resolver.officialToMojmap(className);
                 if (!mojmapClass.equals(className)) {
-                    Method m = findMethodInMojmapHierarchy(resolver, mojmapClass, name, paramTypes);
+                    Method m = findMethodInMojmapHierarchy(resolver, mojmapClass, runtimeName, paramTypes);
                     if (m != null) return m;
                 }
             }
         }
 
-        // Direct fallback: try getDeclaredMethod on the class itself.
-        // This handles non-public methods declared directly on this class.
-        try {
-            return cls.getDeclaredMethod(name, paramTypes);
-        } catch (NoSuchMethodException ignored) {
-            return null;
-        }
+        return null;
     }
 
     /**
@@ -489,13 +567,6 @@ final class FabricReflection {
                     try {
                         return superCls.getDeclaredMethod(methodName, paramTypes);
                     } catch (NoSuchMethodException ignored) {}
-                    // Also try unmapped method name
-                    String unmapped = unmapMethodName(officialClass, methodName, paramTypes);
-                    if (!unmapped.equals(methodName)) {
-                        try {
-                            return superCls.getDeclaredMethod(unmapped, paramTypes);
-                        } catch (NoSuchMethodException ignored) {}
-                    }
                 } catch (ClassNotFoundException ignored) {}
             }
             current = resolver.getSuperclass(current);
@@ -506,20 +577,30 @@ final class FabricReflection {
     /**
      * Find a field in the class hierarchy.
      *
-     * <p>For Minecraft classes on 1.18–1.21.x, if the field is not found
-     * directly, the Mojmap superclass chain is traversed via
+     * <p>For Minecraft classes on 1.18–1.21.x, the field name is first
+     * resolved through the Mojmap namespace — the caller passes a Mojmap
+     * field name (e.g. {@code "LIGHTNING_BOLT"}), and we translate it to
+     * the official (obfuscated) name before looking it up on the runtime
+     * class. If the Mojmap resolver is unavailable, the field name is
+     * used as-is.
+     *
+     * <p>If the field is not found on the class itself, the Mojmap
+     * superclass chain is traversed via
      * {@link InternalMappingResolver#getSuperclass(String)} instead of
-     * a generic Java superclass walk. This ensures that fields declared
-     * on superclasses within the Mojmap namespace are found correctly.</p>
+     * a generic Java superclass walk.</p>
      *
      * <p>No generic recursive hierarchy walk is performed — the declaring
      * class is either resolved via Mojmap or assumed to be the class itself.</p>
      */
     private static Field findField(Class<?> cls, String name) {
         if (cls == null) return null;
+
+        // Resolve the field name through Mojmap first.
+        String runtimeName = resolveMojmapFieldName(cls, name);
+
         // Direct lookup on the class itself first.
         try {
-            return cls.getDeclaredField(name);
+            return cls.getDeclaredField(runtimeName);
         } catch (NoSuchFieldException ignored) {}
 
         // Mojmap superclass traversal: if the class is a net.minecraft type
@@ -530,7 +611,7 @@ final class FabricReflection {
             if (resolver != null) {
                 String mojmapClass = resolver.officialToMojmap(cls.getName());
                 if (!mojmapClass.equals(cls.getName())) {
-                    Field f = findFieldInMojmapHierarchy(resolver, mojmapClass, name);
+                    Field f = findFieldInMojmapHierarchy(resolver, mojmapClass, runtimeName);
                     if (f != null) return f;
                 }
             }
