@@ -44,7 +44,7 @@ public class FabricCommonYaml implements CommonYaml {
     // Shared Representer that preserves insertion order and uses block style.
     private static final Representer REPRESENTER = new Representer(DUMPER_OPTIONS);
     static {
-        REPRESENTER.setDefaultFlowType(DumperOptions.FlowStyle.BLOCK);
+        REPRESENTER.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
     }
 
     public FabricCommonYaml(Map<String, Object> map) {
