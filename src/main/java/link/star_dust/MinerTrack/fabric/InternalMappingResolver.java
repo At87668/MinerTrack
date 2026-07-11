@@ -4,12 +4,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.MappingResolver;
-import net.fabricmc.loader.impl.launch.FabricLauncherBase;
-import net.fabricmc.loader.impl.lib.mappingio.MappingVisitor;
-import net.fabricmc.loader.impl.lib.mappingio.adapter.MappingSourceNsSwitch;
-import net.fabricmc.loader.impl.lib.mappingio.format.proguard.ProGuardFileReader;
-import net.fabricmc.loader.impl.lib.mappingio.format.tiny.Tiny2FileReader;
-import net.fabricmc.loader.impl.lib.mappingio.format.tiny.Tiny2FileWriter;
+import net.fabricmc.mappingio.adapter.MappingSourceNsSwitch;
+import net.fabricmc.mappingio.format.proguard.ProGuardFileReader;
+import net.fabricmc.mappingio.format.tiny.Tiny2FileWriter;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -20,6 +17,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -247,11 +245,33 @@ public final class InternalMappingResolver {
     // ── Injection ───────────────────────────────────────────────────────
 
     private void injectMappings() throws IOException {
-        try (Reader reader = new InputStreamReader(
-                new GZIPInputStream(new FileInputStream(cacheFile.toFile())), StandardCharsets.UTF_8)) {
-            MappingVisitor launcherMappings = (MappingVisitor)
-                    FabricLauncherBase.getLauncher().getMappingConfiguration().getMappings();
-            Tiny2FileReader.read(reader, launcherMappings);
+        // Use reflection to access Fabric Loader's internal mapping system.
+        // FabricLauncherBase.getLauncher().getMappingConfiguration().getMappings()
+        // returns a MappingVisitor that accepts injected mappings at runtime.
+        // The internal MappingVisitor class is different from the standalone
+        // mapping-io library's MappingVisitor, so we must use reflection for
+        // the entire Tiny2FileReader.read() call.
+        try {
+            Class<?> launcherBaseClass = Class.forName("net.fabricmc.loader.impl.launch.FabricLauncherBase");
+            java.lang.reflect.Method getLauncher = launcherBaseClass.getMethod("getLauncher");
+            Object launcher = getLauncher.invoke(null);
+            Object mappingConfig = launcher.getClass().getMethod("getMappingConfiguration").invoke(launcher);
+            Object mappings = mappingConfig.getClass().getMethod("getMappings").invoke(mappingConfig);
+
+            // Use reflection to call Tiny2FileReader.read(Reader, MappingVisitor)
+            // using the standalone mapping-io library's Tiny2FileReader class.
+            // The MappingVisitor parameter type is resolved via Class.forName to
+            // avoid compile-time dependency on the standalone mapping-io library.
+            try (Reader reader = new InputStreamReader(
+                    new GZIPInputStream(new FileInputStream(cacheFile.toFile())), StandardCharsets.UTF_8)) {
+                Class<?> tiny2ReaderClass = Class.forName("net.fabricmc.mappingio.format.tiny.Tiny2FileReader");
+                Class<?> mappingVisitorClass = Class.forName("net.fabricmc.mappingio.MappingVisitor");
+                java.lang.reflect.Method readMethod = tiny2ReaderClass.getMethod("read", Reader.class, mappingVisitorClass);
+                readMethod.invoke(null, reader, mappings);
+            }
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                 | InvocationTargetException e) {
+            throw new IOException("Failed to inject mappings via Fabric Loader API", e);
         }
     }
 
