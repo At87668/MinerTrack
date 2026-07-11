@@ -301,13 +301,20 @@ final class FabricReflection {
     }
 
     /**
-     * Resolve a Mojmap method name to its runtime (obfuscated) name for the
-     * given class. Uses the Mojmap resolver when available, otherwise falls
-     * back to the intermediary-based resolver.
+     * Resolve a Mojmap method name to its runtime (obfuscated) name.
      *
-     * @param cls        the runtime class
-     * @param methodName the method name (in Mojmap format for net.minecraft classes)
-     * @param paramTypes the parameter types
+     * <p>Uses {@link MappingResolver#mapMethodName} with the injected
+     * {@code "mojmap"} namespace. After injection, Fabric's resolver has:
+     * <ol>
+     *   <li>{@code official → mojmap} (from our Tiny v2 injection)</li>
+     *   <li>{@code official → intermediary} (built into Fabric Loader)</li>
+     * </ol>
+     * so asking for {@code mojmap → RUNTIME_NAMESPACE} traverses the full chain.
+     * The method name search is global — no class qualification is needed.</p>
+     *
+     * @param cls        the runtime class (used only for the {@code net.minecraft.} guard)
+     * @param methodName the method name in Mojmap format (e.g. {@code "getServer"})
+     * @param paramTypes the parameter types (used to build descriptor)
      * @return the runtime (obfuscated) method name, or the original name if resolution fails
      */
     private static String resolveMojmapMethodName(Class<?> cls, String methodName, Class<?>[] paramTypes) {
@@ -315,31 +322,38 @@ final class FabricReflection {
         if (!className.startsWith("net.minecraft.")) {
             return methodName;
         }
-        // Try Mojmap resolver first (1.18–1.21.x).
-        InternalMappingResolver resolver = getMojmapResolver();
-        if (resolver != null) {
-            String mojmapClass = resolver.officialToMojmap(className);
-            if (!mojmapClass.equals(className)) {
-                String official = resolver.resolveMethodName(mojmapClass, methodName);
-                if (!official.equals(methodName)) {
-                    return official;
-                }
+        try {
+            String descriptor = buildDescriptor(paramTypes);
+            String result = MAPPING_RESOLVER.mapMethodName(
+                    "mojmap", RUNTIME_NAMESPACE, methodName, descriptor);
+            if (result != null && !result.equals(methodName)) {
+                return result;
             }
-        }
-        // Fallback: try intermediary resolver.
-        String unmapped = unmapMethodName(className, methodName, paramTypes);
-        if (!unmapped.equals(methodName)) {
-            return unmapped;
-        }
+        } catch (Throwable ignored) {}
+        // Retry with "()V" descriptor — some Fabric/namespace combos
+        // may not map the descriptor correctly cross-namespace.
+        try {
+            String result = MAPPING_RESOLVER.mapMethodName(
+                    "mojmap", RUNTIME_NAMESPACE, methodName, "()V");
+            if (result != null && !result.equals(methodName)) {
+                return result;
+            }
+        } catch (Throwable ignored) {}
         return methodName;
     }
 
     /**
-     * Resolve a Mojmap field name to its runtime (obfuscated) name for the
-     * given class. Uses the Mojmap resolver when available.
+     * Resolve a Mojmap field name to its runtime (obfuscated) name.
+     *
+     * <p>Fabric's {@link MappingResolver} has no field resolution API.
+     * We use the manual Tiny v2 parsing tables in {@link InternalMappingResolver},
+     * which map {@code official → mojmap}. On production servers the runtime
+     * class name is in the {@code intermediary} namespace, so we first convert
+     * it to the official name via {@link MappingResolver#unmapClassName}
+     * before looking up the field.</p>
      *
      * @param cls       the runtime class
-     * @param fieldName the field name (in Mojmap format for net.minecraft classes)
+     * @param fieldName the field name in Mojmap format (e.g. {@code "LIGHTNING_BOLT"})
      * @return the runtime (obfuscated) field name, or the original name if resolution fails
      */
     private static String resolveMojmapFieldName(Class<?> cls, String fieldName) {
@@ -349,15 +363,36 @@ final class FabricReflection {
         }
         InternalMappingResolver resolver = getMojmapResolver();
         if (resolver != null) {
-            String mojmapClass = resolver.officialToMojmap(className);
-            if (!mojmapClass.equals(className)) {
-                String official = resolver.resolveFieldName(mojmapClass, fieldName);
-                if (!official.equals(fieldName)) {
-                    return official;
+            try {
+                // Convert runtime (intermediary) → official via Fabric's resolver.
+                // unmapClassName("intermediary", "net.minecraft.class_3248") → "net/minecraft/...".
+                String officialName = MAPPING_RESOLVER.unmapClassName(
+                        INTERMEDIARY_NAMESPACE, className);
+                if (officialName != null && !officialName.equals(className)) {
+                    // Convert official → mojmap to get the mojmap class name.
+                    String mojmapClass = resolver.officialToMojmap(officialName);
+                    if (mojmapClass != null && !mojmapClass.equals(officialName)) {
+                        String official = resolver.resolveFieldName(mojmapClass, fieldName);
+                        if (official != null && !official.equals(fieldName)) {
+                            return official;
+                        }
+                    }
                 }
-            }
+            } catch (Throwable ignored) {}
         }
         return fieldName;
+    }
+
+    /**
+     * Build a JVM method descriptor from parameter types.
+     */
+    private static String buildDescriptor(Class<?>[] paramTypes) {
+        StringBuilder desc = new StringBuilder("(");
+        for (Class<?> paramType : paramTypes) {
+            desc.append(descriptorForType(paramType.getName()));
+        }
+        desc.append(")V");
+        return desc.toString();
     }
 
     /** Resolve a class by name; return null on failure.

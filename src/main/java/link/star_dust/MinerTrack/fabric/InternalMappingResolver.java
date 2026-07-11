@@ -344,20 +344,25 @@ public final class InternalMappingResolver {
                         o2c.put(currentOfficialClass, currentMojmapClass);
                     }
                 } else if (line.startsWith("\tm\t") && currentMojmapClass != null) {
-                    // Method entry: \tm\t<officialMethod>\t<mojmapMethod>
+                    // Method entry: \tm\t<descriptor>\t<officialMethod>\t<mojmapMethod>
+                    // The line starts with a tab, so parts[0]="", parts[1]="m",
+                    // parts[2]=descriptor (e.g. "(Lnet/minecraft/...;)V"),
+                    // parts[3]=officialMethod, parts[4]=mojmapMethod.
                     String[] parts = line.split("\t");
-                    if (parts.length >= 3) {
-                        String officialMethod = parts[1];
-                        String mojmapMethod = parts[2];
+                    if (parts.length >= 5) {
+                        String officialMethod = parts[3];
+                        String mojmapMethod = parts[4];
                         methods.computeIfAbsent(currentMojmapClass, k -> new HashMap<>())
                                 .put(mojmapMethod, officialMethod);
                     }
                 } else if (line.startsWith("\tf\t") && currentMojmapClass != null) {
                     // Field entry: \tf\t<officialField>\t<mojmapField>
+                    // The line starts with a tab, so parts[0]="", parts[1]="f",
+                    // parts[2]=officialField, parts[3]=mojmapField.
                     String[] parts = line.split("\t");
-                    if (parts.length >= 3) {
-                        String officialField = parts[1];
-                        String mojmapField = parts[2];
+                    if (parts.length >= 4) {
+                        String officialField = parts[2];
+                        String mojmapField = parts[3];
                         fields.computeIfAbsent(currentMojmapClass, k -> new HashMap<>())
                                 .put(mojmapField, officialField);
                     }
