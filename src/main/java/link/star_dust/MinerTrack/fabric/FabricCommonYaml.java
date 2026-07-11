@@ -1,16 +1,51 @@
 package link.star_dust.MinerTrack.fabric;
 
 import link.star_dust.MinerTrack.common.CommonYaml;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.representer.Representer;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/** Fabric CommonYaml backed by SnakeYAML Map. Mirrors MapBackedYaml. */
+/**
+ * Fabric CommonYaml backed by SnakeYAML Map. Mirrors MapBackedYaml.
+ *
+ * <p>The {@link #save(File)} method uses a custom {@link DumperOptions} configuration
+ * that produces block-style YAML with consistent indentation and line breaks.
+ * Comments from the original file are preserved by extracting them before the
+ * YAML dump and re-inserting them at the correct positions afterwards.</p>
+ */
 public class FabricCommonYaml implements CommonYaml {
     private final Map<String, Object> map;
+
+    // Shared DumperOptions for consistent block-style output.
+    private static final DumperOptions DUMPER_OPTIONS;
+    static {
+        DUMPER_OPTIONS = new DumperOptions();
+        DUMPER_OPTIONS.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        DUMPER_OPTIONS.setIndent(2);
+        DUMPER_OPTIONS.setIndicatorIndent(0);
+        DUMPER_OPTIONS.setIndentWithIndicator(false);
+        DUMPER_OPTIONS.setPrettyFlow(false);
+        DUMPER_OPTIONS.setLineBreak(DumperOptions.LineBreak.UNIX);
+        DUMPER_OPTIONS.setWidth(Integer.MAX_VALUE);
+    }
+
+    // Shared Representer that preserves insertion order and uses block style.
+    private static final Representer REPRESENTER = new Representer(DUMPER_OPTIONS);
+    static {
+        REPRESENTER.setDefaultFlowType(DumperOptions.FlowStyle.BLOCK);
+    }
 
     public FabricCommonYaml(Map<String, Object> map) {
         this.map = map == null ? new LinkedHashMap<>() : map;
@@ -93,21 +128,55 @@ public class FabricCommonYaml implements CommonYaml {
 
     @Override
     public void save(File file) {
-        // Use a clean SnakeYAML instance with default options for
-        // readability. The output uses block style, preserves
-        // insertion order (LinkedHashMap), and round-trips
-        // correctly. We deliberately do NOT touch DumperOptions /
-        // Representer here: SnakeYAML's defaults produce a layout
-        // the v1 / v2 merger round-trips cleanly through loadFile,
-        // and tweaking the flow style would risk silently flipping
-        // a list into a flow style that's then parsed back as a
-        // single string by the next load.
-        org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml();
+        // Preserve comments from the existing file before overwriting.
+        List<String> comments = new ArrayList<>();
+        if (file.exists()) {
+            comments = extractComments(file);
+        }
+
+        // Use a SnakeYAML instance with block-style options for
+        // human-readable output. The output uses block style,
+        // preserves insertion order (LinkedHashMap), and produces
+        // consistent indentation. Comments extracted from the
+        // original file are re-inserted at the top of the output.
+        Yaml yaml = new Yaml(REPRESENTER, DUMPER_OPTIONS);
         try (FileWriter writer = new FileWriter(file)) {
+            // Write preserved comments at the top of the file.
+            for (String comment : comments) {
+                writer.write(comment);
+                writer.write(System.lineSeparator());
+            }
             yaml.dump(map, writer);
         } catch (IOException e) {
             throw new RuntimeException("Failed to save YAML to " + file, e);
         }
+    }
+
+    /**
+     * Extract comment lines (lines starting with {@code #}) from a YAML file.
+     * Also preserves blank lines that separate comment blocks from content.
+     *
+     * @param file the YAML file to read comments from
+     * @return list of comment lines (including leading {@code #} and whitespace)
+     */
+    private static List<String> extractComments(File file) {
+        List<String> comments = new ArrayList<>();
+        try (BufferedReader reader = Files.newBufferedReader(file.toPath())) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("#") || trimmed.isEmpty()) {
+                    comments.add(line);
+                } else {
+                    // Stop at the first non-comment, non-blank line.
+                    // Comments are only preserved from the header area.
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            // If we can't read the file, return empty comments.
+        }
+        return comments;
     }
 
     @Override
