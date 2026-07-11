@@ -247,10 +247,15 @@ public final class InternalMappingResolver {
     private void injectMappings() throws IOException {
         // Use reflection to access Fabric Loader's internal mapping system.
         // FabricLauncherBase.getLauncher().getMappingConfiguration().getMappings()
-        // returns a MappingVisitor that accepts injected mappings at runtime.
-        // The internal MappingVisitor class is different from the standalone
-        // mapping-io library's MappingVisitor, so we must use reflection for
-        // the entire Tiny2FileReader.read() call.
+        // returns a net.fabricmc.loader.impl.lib.mappingio.MappingVisitor which is
+        // a DIFFERENT type from the standalone mapping-io library's
+        // net.fabricmc.mappingio.MappingVisitor — they share the same interface
+        // methods but are loaded by different class loaders / packages.
+        //
+        // Therefore we must also use the Loader's INTERNAL Tiny2FileReader
+        // (net.fabricmc.loader.impl.lib.mappingio.format.tiny.Tiny2FileReader)
+        // whose read(Reader, MappingVisitor) signature uses the same internal
+        // MappingVisitor type as the mappings object we pass.
         try {
             Class<?> launcherBaseClass = Class.forName("net.fabricmc.loader.impl.launch.FabricLauncherBase");
             java.lang.reflect.Method getLauncher = launcherBaseClass.getMethod("getLauncher");
@@ -258,15 +263,17 @@ public final class InternalMappingResolver {
             Object mappingConfig = launcher.getClass().getMethod("getMappingConfiguration").invoke(launcher);
             Object mappings = mappingConfig.getClass().getMethod("getMappings").invoke(mappingConfig);
 
-            // Use reflection to call Tiny2FileReader.read(Reader, MappingVisitor)
-            // using the standalone mapping-io library's Tiny2FileReader class.
-            // The MappingVisitor parameter type is resolved via Class.forName to
-            // avoid compile-time dependency on the standalone mapping-io library.
             try (Reader reader = new InputStreamReader(
                     new GZIPInputStream(new FileInputStream(cacheFile.toFile())), StandardCharsets.UTF_8)) {
-                Class<?> tiny2ReaderClass = Class.forName("net.fabricmc.mappingio.format.tiny.Tiny2FileReader");
-                Class<?> mappingVisitorClass = Class.forName("net.fabricmc.mappingio.MappingVisitor");
-                java.lang.reflect.Method readMethod = tiny2ReaderClass.getMethod("read", Reader.class, mappingVisitorClass);
+                // Use Fabric Loader's INTERNAL Tiny2FileReader whose
+                // read(Reader, MappingVisitor) accepts the Loader's own
+                // MappingVisitor type (the same type as 'mappings').
+                Class<?> internalTiny2Reader = Class.forName(
+                        "net.fabricmc.loader.impl.lib.mappingio.format.tiny.Tiny2FileReader");
+                Class<?> internalMappingVisitor = Class.forName(
+                        "net.fabricmc.loader.impl.lib.mappingio.MappingVisitor");
+                java.lang.reflect.Method readMethod = internalTiny2Reader.getMethod(
+                        "read", Reader.class, internalMappingVisitor);
                 readMethod.invoke(null, reader, mappings);
             }
         } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
