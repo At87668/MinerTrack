@@ -43,7 +43,7 @@ public class FabricCommandExecutor {
             langBridge,
             vlBridge,
             cmdBridge,
-            new PlayerLookupImpl(),
+            new PlayerLookupImpl(source),
             new KickBridgeImpl(),
             new ConfigReloadBridgeImpl(),
             new UpdateCheckBridgeImpl(),
@@ -67,13 +67,56 @@ public class FabricCommandExecutor {
             "getServer", new Class<?>[0], new Object[0]);
     }
 
-    /** Resolve ServerPlayerEntity from UUID. */
+    /** Resolve ServerPlayerEntity from UUID using the command source's server. */
+    private static Object playerByUuid(Object source, UUID uuid) {
+        if (source == null) return playerByUuid(uuid);
+        // Try ServerCommandSource.getServer().getPlayerManager().getPlayer(UUID)
+        // which is the most reliable path across MC versions.
+        try {
+            Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
+            if (server == null) return playerByUuid(uuid);
+            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            if (pm == null) return playerByUuid(uuid);
+            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+            if (player != null) return player;
+        } catch (Throwable t) {
+            // Fall through to fallback
+        }
+        return playerByUuid(uuid);
+    }
+
+    /** Resolve ServerPlayerEntity from UUID (fallback using static server access). */
     private static Object playerByUuid(UUID uuid) {
         Object server = server();
         if (server == null) return null;
         Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
         if (pm == null) return null;
         return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+    }
+
+    /** Resolve ServerPlayerEntity from name using the command source's server. */
+    private static Object playerByName(Object source, String name) {
+        if (source == null) return playerByName(name);
+        try {
+            Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
+            if (server == null) return playerByName(name);
+            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            if (pm == null) return playerByName(name);
+            Object player = FabricReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
+            if (player != null) return player;
+        } catch (Throwable t) {
+            // Fall through to fallback
+        }
+        return playerByName(name);
+    }
+
+    /** Resolve ServerPlayerEntity from name (fallback using static server access). */
+    private static Object playerByName(String name) {
+        Object server = server();
+        if (server == null) return null;
+        Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+        if (pm == null) return null;
+        return FabricReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
     }
 
     /** Create a Text/Component from a plain string (MC version-aware). */
@@ -106,14 +149,18 @@ public class FabricCommandExecutor {
     // ─── PlayerLookup ────────────────────────────────────────────────────
 
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
+        private final Object commandSource;
+
+        PlayerLookupImpl(Object commandSource) {
+            this.commandSource = commandSource;
+        }
+
         @Override
         public UUID getPlayerUUID(String name) {
             try {
-                Object server = server();
-                if (server == null) return null;
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
-                if (pm == null) return null;
-                Object player = FabricReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
+                // Use the command source's server for player lookup, which is
+                // more reliable than the static server() accessor across MC versions.
+                Object player = playerByName(commandSource, name);
                 if (player == null) return null;
                 Object uuid = FabricReflection.callAny(player, "getUuid", new Class<?>[0], new Object[0]);
                 return uuid instanceof UUID ? (UUID) uuid : null;
@@ -125,7 +172,7 @@ public class FabricCommandExecutor {
         @Override
         public String getPlayerName(UUID uuid) {
             try {
-                Object player = playerByUuid(uuid);
+                Object player = playerByUuid(commandSource, uuid);
                 if (player == null) return uuid.toString();
                 Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
                 return name == null ? uuid.toString() : name.toString();
@@ -136,14 +183,16 @@ public class FabricCommandExecutor {
 
         @Override
         public boolean isOnline(UUID uuid) {
-            return playerByUuid(uuid) != null;
+            return playerByUuid(commandSource, uuid) != null;
         }
 
         @Override
         public List<String> getOnlinePlayerNames() {
             List<String> names = new ArrayList<>();
             try {
-                Object server = server();
+                Object server = commandSource != null
+                    ? FabricReflection.callAny(commandSource, "getServer", new Class<?>[0], new Object[0])
+                    : server();
                 if (server == null) return names;
                 Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
                 if (pm == null) return names;
@@ -168,6 +217,9 @@ public class FabricCommandExecutor {
         @Override
         public void kickPlayer(UUID playerId, String reason) {
             try {
+                // Resolve the player via UUID using the static server accessor.
+                // The command source is not available here since kickPlayer is
+                // called asynchronously from the command core.
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
                 Object network = FabricReflection.callAny(player, "networkHandler", new Class<?>[0], new Object[0]);
