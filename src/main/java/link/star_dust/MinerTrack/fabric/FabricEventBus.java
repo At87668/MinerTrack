@@ -56,7 +56,7 @@ final class FabricEventBus {
     }
 
     static void registerUseBlock(UseBlockHandler handler) {
-        Class<?> actionResultCls = FabricReflection.forName("net.minecraft.util.ActionResult");
+        Class<?> actionResultCls = FabricReflection.forName("net.minecraft.world.InteractionResult");
         register("net.fabricmc.fabric.api.event.player.UseBlockCallback",
             "EVENT",
             "net.fabricmc.fabric.api.event.player.UseBlockCallback",
