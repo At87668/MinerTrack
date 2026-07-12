@@ -45,16 +45,18 @@ public class FabricCommandBridge implements CommandBridge {
             return literal.invoke(null, message);
         } catch (Throwable t) { /* fall through */ }
 
-        // 2. Try Text.literal(String) — MC 1.19.3+
+        // 2. Try Component.literal(String) — also handles MC 1.19.3+ via tryMcMigration
         try {
-            Class<?> textCls = Class.forName("net.minecraft.text.Text");
-            Method literal = textCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
+            Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
+            if (textCls != null) {
+                Method literal = textCls.getMethod("literal", String.class);
+                return literal.invoke(null, message);
+            }
         } catch (Throwable t) { /* fall through */ }
 
-        // 3. Fallback: new LiteralText(String) — MC 1.18-1.19.2
+        // 3. Fallback: new TextComponent(String) — MC 1.18-1.19.2
         try {
-            Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+            Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
             return ltCls.getDeclaredConstructor(String.class).newInstance(message);
         } catch (Throwable t) {
             return null;
@@ -360,8 +362,8 @@ public class FabricCommandBridge implements CommandBridge {
             return Class.forName("net.minecraft.network.chat.Component");
         } catch (ClassNotFoundException e) {
             try {
-                return Class.forName("net.minecraft.text.Text");
-            } catch (ClassNotFoundException ex) {
+                return FabricReflection.forName("net.minecraft.network.chat.Component");
+            } catch (Throwable ex) {
                 return null;
             }
         }
