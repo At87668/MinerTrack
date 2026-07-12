@@ -128,16 +128,16 @@ public class FabricCommandExecutor {
             return literal.invoke(null, message);
         } catch (Throwable t) { /* fall through */ }
 
-        // 2. MC 1.19.3+: Text.literal(String)
-        Class<?> textCls = FabricReflection.forName("net.minecraft.text.Text");
+        // 2. MC 1.19.3+: Component.literal(String)
+        Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
         if (textCls != null) {
-            Object text = FabricReflection.callStatic("net.minecraft.text.Text",
+            Object text = FabricReflection.callStatic("net.minecraft.network.chat.Component",
                 "literal", new Class<?>[]{String.class}, new Object[]{message});
             if (text != null) return text;
         }
 
-        // 3. MC 1.18-1.19.2: new LiteralText(String)
-        Class<?> ltCls = FabricReflection.forName("net.minecraft.text.LiteralText");
+        // 3. MC 1.18-1.19.2: new LiteralText(String) → TextComponent
+        Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
         if (ltCls == null) return null;
         try {
             return ltCls.getDeclaredConstructor(String.class).newInstance(message);
@@ -257,13 +257,13 @@ public class FabricCommandExecutor {
                     new Class<?>[]{registryKey.getClass()}, new Object[]{registryKey});
                 if (serverWorld == null) return;
                 // Cosmetic-only lightning strike; created via reflection
-                Object lightning = FabricReflection.newInstance("net.minecraft.entity.LightningEntity",
+                Object lightning = FabricReflection.newInstance("net.minecraft.world.entity.LightningBolt",
                     new Class<?>[]{
-                        FabricReflection.forName("net.minecraft.entity.EntityType"),
-                        FabricReflection.forName("net.minecraft.server.world.ServerWorld")
+                        FabricReflection.forName("net.minecraft.world.entity.EntityType"),
+                        FabricReflection.forName("net.minecraft.server.level.ServerLevel")
                     },
                     new Object[]{
-                        FabricReflection.forName("net.minecraft.entity.EntityType")
+                        FabricReflection.forName("net.minecraft.world.entity.EntityType")
                             .getField("LIGHTNING_BOLT").get(null),
                         serverWorld
                     });
@@ -384,8 +384,8 @@ public class FabricCommandExecutor {
             return Class.forName("net.minecraft.network.chat.Component");
         } catch (ClassNotFoundException e) {
             try {
-                return Class.forName("net.minecraft.text.Text");
-            } catch (ClassNotFoundException ex) {
+                return FabricReflection.forName("net.minecraft.network.chat.Component");
+            } catch (Throwable ex) {
                 return null;
             }
         }
