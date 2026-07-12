@@ -4,7 +4,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.MappingResolver;
-import net.fabricmc.mappingio.adapter.MappingSourceNsSwitch;
 import net.fabricmc.mappingio.format.proguard.ProGuardFileReader;
 import net.fabricmc.mappingio.format.tiny.Tiny2FileWriter;
 
@@ -58,7 +57,7 @@ public final class InternalMappingResolver {
 
     private volatile Map<String, String> mojmapToOfficial;
     private volatile Map<String, String> officialToMojmap;
-    private volatile Map<String, Map<String, String>> methodMappings; // className -> (mojmapMethod -> officialMethod)
+    private volatile Map<String, Map<String, String>> methodMappings; // className -> (mojmapMethod+descriptor -> officialMethod)
     private volatile Map<String, Map<String, String>> fieldMappings;   // className -> (mojmapField -> officialField)
     private volatile Map<String, String> superclassMappings;           // mojmapClass -> mojmapSuperclass
 
@@ -139,16 +138,36 @@ public final class InternalMappingResolver {
      * @return the official method name, or the input if unknown
      */
     public String resolveMethodName(String mojmapClass, String mojmapMethod) {
+        return resolveMethodName(mojmapClass, mojmapMethod, null);
+    }
+
+    /**
+     * Resolve a Mojmap method name to its official (obfuscated) name within the
+     * given Mojmap class, using an optional descriptor for precise matching.
+     *
+     * @param mojmapClass  the Mojmap class name containing the method
+     * @param mojmapMethod the Mojmap method name
+     * @param descriptor   the JVM method descriptor (e.g. "(Lnet/minecraft/...;)V"),
+     *                     or {@code null} for name-only lookup
+     * @return the official method name, or the input if unknown
+     */
+    public String resolveMethodName(String mojmapClass, String mojmapMethod, String descriptor) {
         ensureTablesLoaded();
         Map<String, String> classMethods = methodMappings.get(mojmapClass);
         if (classMethods != null) {
+            // Try descriptor-qualified lookup first
+            if (descriptor != null) {
+                String qualified = classMethods.get(mojmapMethod + descriptor);
+                if (qualified != null) return qualified;
+            }
+            // Fall back to name-only lookup
             String official = classMethods.get(mojmapMethod);
             if (official != null) return official;
         }
         // Try superclass chain
         String superclass = superclassMappings.get(mojmapClass);
         if (superclass != null && !"java.lang.Object".equals(superclass)) {
-            return resolveMethodName(superclass, mojmapMethod);
+            return resolveMethodName(superclass, mojmapMethod, descriptor);
         }
         return mojmapMethod;
     }
@@ -222,6 +241,17 @@ public final class InternalMappingResolver {
         }
 
         // 3. Download ProGuard mappings and convert to Tiny v2
+        //
+        // IMPORTANT: The Tiny v2 file MUST have "mojmap" as the source namespace
+        // and "official" as the target namespace. This ensures that when the
+        // mappings are injected into Fabric's MappingResolver, calling
+        //   unmapClassName("mojmap", "net.minecraft.server.MinecraftServer")
+        // finds "mojmap" as a registered source namespace and can traverse:
+        //   mojmap → official → intermediary → named
+        //
+        // Do NOT use MappingSourceNsSwitch here — swapping the source would
+        // register "official → mojmap", making "mojmap" only a target namespace
+        // that Fabric's resolver cannot resolve FROM.
         Files.createDirectories(cacheFile.getParent());
         try (Reader proguardReader = new InputStreamReader(
                 URI.create(mappingsUrl).toURL().openStream(), StandardCharsets.UTF_8);
@@ -232,10 +262,7 @@ public final class InternalMappingResolver {
                     proguardReader,
                     "mojmap",
                     "official",
-                    new MappingSourceNsSwitch(
-                            new Tiny2FileWriter(tinyWriter, true),
-                            "official"
-                    )
+                    new Tiny2FileWriter(tinyWriter, true)
             );
         }
 
@@ -263,6 +290,17 @@ public final class InternalMappingResolver {
             Object mappingConfig = launcher.getClass().getMethod("getMappingConfiguration").invoke(launcher);
             Object mappings = mappingConfig.getClass().getMethod("getMappings").invoke(mappingConfig);
 
+            // Log the namespaces already registered in the mapping system
+            // so we can verify the injection target.
+            try {
+                Class<?> mappingVisitorClass = mappings.getClass();
+                java.lang.reflect.Method getSrcNs = mappingVisitorClass.getMethod("getSrcNamespace");
+                java.lang.reflect.Method getDstNs = mappingVisitorClass.getMethod("getDstNamespace");
+                String srcNs = (String) getSrcNs.invoke(mappings);
+                String dstNs = (String) getDstNs.invoke(mappings);
+                LOGGER.fine("Fabric mapping system: src=" + srcNs + " dst=" + dstNs);
+            } catch (Throwable ignored) {}
+
             try (Reader reader = new InputStreamReader(
                     new GZIPInputStream(new FileInputStream(cacheFile.toFile())), StandardCharsets.UTF_8)) {
                 // Use Fabric Loader's INTERNAL Tiny2FileReader whose
@@ -276,8 +314,29 @@ public final class InternalMappingResolver {
                         "read", Reader.class, internalMappingVisitor);
                 readMethod.invoke(null, reader, mappings);
             }
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
-                 | InvocationTargetException e) {
+
+            // Verify the injection succeeded by checking that "mojmap" is now
+            // a known source namespace.
+            try {
+                java.lang.reflect.Method getNamespaces = mappings.getClass().getMethod("getNamespaces");
+                @SuppressWarnings("unchecked")
+                java.util.Collection<String> namespaces = (java.util.Collection<String>) getNamespaces.invoke(mappings);
+                if (namespaces == null || !namespaces.contains("mojmap")) {
+                    LOGGER.warning("Mojmap namespace not found after injection. " +
+                            "Available namespaces: " + namespaces);
+                } else {
+                    LOGGER.fine("Mojmap namespace verified in mapping system");
+                }
+            } catch (Throwable ignored) {}
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Fabric Loader internal classes not found. " +
+                    "This may indicate an incompatible Fabric Loader version. " +
+                    "Mojmap resolution will be unavailable.", e);
+        } catch (NoSuchMethodException e) {
+            throw new IOException("Fabric Loader internal API mismatch. " +
+                    "The getMappings() or Tiny2FileReader.read() method signature " +
+                    "may have changed. Mojmap resolution will be unavailable.", e);
+        } catch (IllegalAccessException | InvocationTargetException e) {
             throw new IOException("Failed to inject mappings via Fabric Loader API", e);
         }
     }
@@ -324,8 +383,9 @@ public final class InternalMappingResolver {
                 return;
             }
             String[] headerParts = header.split("\t");
-            String sourceNs = headerParts[2]; // "official"
-            String targetNs = headerParts[3]; // "mojmap"
+            String sourceNs = headerParts[2]; // "mojmap" (or "official" for legacy caches)
+            String targetNs = headerParts[3]; // "official" (or "mojmap" for legacy caches)
+            boolean mojmapIsSource = "mojmap".equals(sourceNs);
 
             String line;
             String currentOfficialClass = null;
@@ -335,34 +395,51 @@ public final class InternalMappingResolver {
                 if (line.isEmpty()) continue;
 
                 if (line.startsWith("c\t")) {
-                    // Class entry: c\t<official>\t<mojmap>
+                    // Class entry: c\t<source>\t<target>
+                    // If mojmapIsSource: c\t<mojmap>\t<official>
+                    // If !mojmapIsSource: c\t<official>\t<mojmap>
                     String[] parts = line.split("\t");
                     if (parts.length >= 3) {
-                        currentOfficialClass = parts[1];
-                        currentMojmapClass = parts[2];
+                        if (mojmapIsSource) {
+                            currentMojmapClass = parts[1];
+                            currentOfficialClass = parts[2];
+                        } else {
+                            currentOfficialClass = parts[1];
+                            currentMojmapClass = parts[2];
+                        }
                         c2o.put(currentMojmapClass, currentOfficialClass);
                         o2c.put(currentOfficialClass, currentMojmapClass);
                     }
                 } else if (line.startsWith("\tm\t") && currentMojmapClass != null) {
-                    // Method entry: \tm\t<descriptor>\t<officialMethod>\t<mojmapMethod>
-                    // The line starts with a tab, so parts[0]="", parts[1]="m",
-                    // parts[2]=descriptor (e.g. "(Lnet/minecraft/...;)V"),
-                    // parts[3]=officialMethod, parts[4]=mojmapMethod.
+                    // Method entry: \tm\t<descriptor>\t<sourceMethod>\t<targetMethod>
+                    // If mojmapIsSource: \tm\t<desc>\t<mojmapMethod>\t<officialMethod>
+                    // If !mojmapIsSource: \tm\t<desc>\t<officialMethod>\t<mojmapMethod>
+                    //
+                    // We use the mojmap method name as the key (without descriptor)
+                    // because callers don't always have the full descriptor. If a
+                    // class has overloaded methods with different obfuscated names,
+                    // the first one wins — this is a best-effort approach.
                     String[] parts = line.split("\t");
                     if (parts.length >= 5) {
-                        String officialMethod = parts[3];
-                        String mojmapMethod = parts[4];
+                        String officialMethod = mojmapIsSource ? parts[4] : parts[3];
+                        String mojmapMethod = mojmapIsSource ? parts[3] : parts[4];
+                        String descriptor = parts[2];
+                        // Store with descriptor-qualified key for precise lookup
+                        String qualifiedKey = mojmapMethod + descriptor;
                         methods.computeIfAbsent(currentMojmapClass, k -> new HashMap<>())
-                                .put(mojmapMethod, officialMethod);
+                                .put(qualifiedKey, officialMethod);
+                        // Also store without descriptor as fallback
+                        methods.get(currentMojmapClass)
+                                .putIfAbsent(mojmapMethod, officialMethod);
                     }
                 } else if (line.startsWith("\tf\t") && currentMojmapClass != null) {
-                    // Field entry: \tf\t<officialField>\t<mojmapField>
-                    // The line starts with a tab, so parts[0]="", parts[1]="f",
-                    // parts[2]=officialField, parts[3]=mojmapField.
+                    // Field entry: \tf\t<sourceField>\t<targetField>
+                    // If mojmapIsSource: \tf\t<mojmapField>\t<officialField>
+                    // If !mojmapIsSource: \tf\t<officialField>\t<mojmapField>
                     String[] parts = line.split("\t");
                     if (parts.length >= 4) {
-                        String officialField = parts[2];
-                        String mojmapField = parts[3];
+                        String officialField = mojmapIsSource ? parts[3] : parts[2];
+                        String mojmapField = mojmapIsSource ? parts[2] : parts[3];
                         fields.computeIfAbsent(currentMojmapClass, k -> new HashMap<>())
                                 .put(mojmapField, officialField);
                     }
