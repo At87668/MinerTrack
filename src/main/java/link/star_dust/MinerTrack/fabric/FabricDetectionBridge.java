@@ -109,7 +109,7 @@ public class FabricDetectionBridge implements DetectionBridge {
             // The class moved from net.minecraft.util.math.BlockPos to
             // net.minecraft.core.BlockPos in MC 26.1+; FabricReflection.forName
             // handles the migration automatically.
-            Object pos = FabricReflection.newInstance("net.minecraft.util.math.BlockPos",
+            Object pos = FabricReflection.newInstance("net.minecraft.core.BlockPos",
                 new Class<?>[]{int.class, int.class, int.class},
                 new Object[]{x, y, z});
             if (pos == null) return BlockId.AIR;
@@ -252,18 +252,18 @@ public class FabricDetectionBridge implements DetectionBridge {
         try {
             Object w = resolveWorld(world);
             if (w == null) return false;
-            Object pos = FabricReflection.newInstance("net.minecraft.util.math.BlockPos",
+            Object pos = FabricReflection.newInstance("net.minecraft.core.BlockPos",
                 new Class<?>[]{int.class, int.class, int.class},
                 new Object[]{x, y, z});
             if (pos == null) return false;
             Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
             if (state == null) return false;
-            // Check if the block is a FluidBlock (water still) by
+            // Check if the block is a LiquidBlock (water still) by
             // walking the class hierarchy. The Fabric API exposes
-            // FluidBlock as a stable type on every 1.18+ server.
-            Class<?> fluidBlockCls = FabricReflection.forName("net.minecraft.block.FluidBlock");
-            Class<?> blocksCls = FabricReflection.forName("net.minecraft.block.Blocks");
-            Class<?> blockCls = FabricReflection.forName("net.minecraft.block.Block");
+            // LiquidBlock as a stable type on every 1.18+ server.
+            Class<?> fluidBlockCls = FabricReflection.forName("net.minecraft.world.level.block.LiquidBlock");
+            Class<?> blocksCls = FabricReflection.forName("net.minecraft.world.level.block.Blocks");
+            Class<?> blockCls = FabricReflection.forName("net.minecraft.world.level.block.Block");
             Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null || blockCls == null) return false;
             if (fluidBlockCls != null && fluidBlockCls.isInstance(block)) {
@@ -271,7 +271,7 @@ public class FabricDetectionBridge implements DetectionBridge {
                 if (fluidState == null) return false;
                 Object fluid = FabricReflection.callAny(fluidState, "getFluid", new Class<?>[0], new Object[0]);
                 if (fluid == null) return false;
-                Object water = FabricReflection.getField(FabricReflection.forName("net.minecraft.fluid.Fluids"), "WATER");
+                Object water = FabricReflection.getField(FabricReflection.forName("net.minecraft.world.level.material.Fluids"), "WATER");
                 if (water == null) return false;
                 Object still = FabricReflection.callAny(water, "getStill", new Class<?>[0], new Object[0]);
                 return fluid.equals(water) || (still != null && fluid.equals(still));
@@ -408,9 +408,9 @@ public class FabricDetectionBridge implements DetectionBridge {
             }
         } catch (Throwable t) { /* fall through */ }
 
-        // 3. MC 1.18: net.minecraft.registry.Registries.BLOCK
+        // 3. MC 1.18: net.minecraft.core.registries.Registries (reverse-mapped via tryMcMigration)
         try {
-            Class<?> rCls = FabricReflection.forName("net.minecraft.registry.Registries");
+            Class<?> rCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
             if (rCls != null) {
                 java.lang.reflect.Field f = rCls.getField("BLOCK");
                 return f.get(null);
