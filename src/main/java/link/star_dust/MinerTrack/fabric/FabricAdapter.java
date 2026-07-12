@@ -413,16 +413,18 @@ public class FabricAdapter implements PluginAdapter {
             return literal.invoke(null, message);
         } catch (Throwable t) { /* fall through */ }
 
-        // 2. MC 1.19.3+: Text.literal(String)
+        // 2. MC 1.19.3+: Component.literal(String) via FabricReflection
         try {
-            Class<?> textCls = Class.forName("net.minecraft.text.Text");
-            java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
+            Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
+            if (textCls != null) {
+                java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
+                return literal.invoke(null, msg);
+            }
         } catch (Throwable t) { /* fall through */ }
 
-        // 3. MC 1.18-1.19.2: new LiteralText(String)
+        // 3. MC 1.18-1.19.2: new TextComponent(String)
         try {
-            Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+            Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
             return ltCls.getDeclaredConstructor(String.class).newInstance(message);
         } catch (Throwable t) {
             return null;
@@ -437,8 +439,8 @@ public class FabricAdapter implements PluginAdapter {
             return Class.forName("net.minecraft.network.chat.Component");
         } catch (ClassNotFoundException e) {
             try {
-                return Class.forName("net.minecraft.text.Text");
-            } catch (ClassNotFoundException ex) {
+                return FabricReflection.forName("net.minecraft.network.chat.Component");
+            } catch (Throwable ex) {
                 return null;
             }
         }
