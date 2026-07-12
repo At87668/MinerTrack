@@ -277,7 +277,7 @@ public class FabricViolationManager implements ViolationManagerBridge {
             Object withSilent = FabricReflection.callAny(source, "withSilent", new Class<?>[0], new Object[0]);
             if (withSilent == null) withSilent = source;
             FabricReflection.callAny(cmdManager, "executeWithPrefix",
-                new Class<?>[]{FabricReflection.forName("net.minecraft.server.command.ServerCommandSource"), String.class},
+                new Class<?>[]{FabricReflection.forName("net.minecraft.commands.CommandSourceStack"), String.class},
                 new Object[]{withSilent, command});
         } catch (Throwable t) {
             adapter.warning("Failed to execute command '" + command + "': " + t.getMessage());
@@ -339,16 +339,18 @@ public class FabricViolationManager implements ViolationManagerBridge {
             return literal.invoke(null, message);
         } catch (Throwable t) { /* fall through */ }
 
-        // 2. MC 1.19.3+: Text.literal(String)
+        // 2. MC 1.19.3+: Component.literal(String) via FabricReflection
         try {
-            Class<?> textCls = Class.forName("net.minecraft.text.Text");
-            java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
+            Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
+            if (textCls != null) {
+                java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
+                return literal.invoke(null, message);
+            }
         } catch (Throwable t) { /* fall through */ }
 
-        // 3. MC 1.18-1.19.2: new LiteralText(String)
+        // 3. MC 1.18-1.19.2: new TextComponent(String)
         try {
-            Class<?> ltCls = Class.forName("net.minecraft.text.LiteralText");
+            Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
             return ltCls.getDeclaredConstructor(String.class).newInstance(message);
         } catch (Throwable t) {
             return null;
@@ -360,8 +362,8 @@ public class FabricViolationManager implements ViolationManagerBridge {
             return Class.forName("net.minecraft.network.chat.Component");
         } catch (ClassNotFoundException e) {
             try {
-                return Class.forName("net.minecraft.text.Text");
-            } catch (ClassNotFoundException ex) {
+                return FabricReflection.forName("net.minecraft.network.chat.Component");
+            } catch (Throwable ex) {
                 return null;
             }
         }
