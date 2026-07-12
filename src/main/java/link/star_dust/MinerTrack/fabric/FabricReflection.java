@@ -35,20 +35,21 @@ final class FabricReflection {
 
     /** Determine the runtime namespace based on environment */
     private static String getRuntimeNamespace() {
-        try {
-            // Check if we're in a named environment by trying to load a known class.
-            // Use forName() which includes version migration fallback, so this works
-            // on both 1.18-1.21.x (where Component → Text via tryMcMigration) and 26.1+.
-            if (forName("net.minecraft.network.chat.Component") != null) {
-                return "named";
-            }
-        } catch (Throwable ignored) {}
-        try {
-            if (forName("net.minecraft.text.Text") != null) {
-                return "named";
-            }
-        } catch (Throwable ignored) {}
-        // Likely obfuscated, use intermediary as fallback
+        // Class-loading is NOT a reliable way to detect the runtime namespace
+        // on Fabric: Fabric Loader deobfuscates classes at load time regardless
+        // of the actual runtime namespace, so Class.forName("net.minecraft.text.Text")
+        // succeeds even on a production (intermediary) server.
+        //
+        // Instead, we rely on FabricLoader.isDevelopmentEnvironment():
+        //   - Dev (IDE / Gradle):   "named"   (Yarn deobfuscated names)
+        //   - Production (server):  "intermediary"  (Fabric's cross-version obfuscation)
+        //
+        // For MC 26.1+ (unobfuscated server jar), isMojmapRequired() returns false
+        // so the Mojmap resolver is never initialized and mapping resolution is
+        // bypassed entirely — the RUNTIME_NAMESPACE value is irrelevant there.
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            return "named";
+        }
         return "intermediary";
     }
 
@@ -78,44 +79,132 @@ final class FabricReflection {
      * Resolve a Mojmap class name to its runtime (obfuscated) name.
      * Uses the injected {@code "mojmap"} namespace in Fabric's MappingResolver.
      *
+     * <p>Resolution strategy:
+     * <ol>
+     *   <li>Direct {@code mojmap → runtime} via {@link MappingResolver#unmapClassName}.</li>
+     *   <li>If direct fails, try two-step: {@code mojmap → official} via
+     *       {@link InternalMappingResolver}, then {@code official → runtime}
+     *       via Fabric's resolver.</li>
+     * </ol>
+     *
      * @param mojmapName class name in Mojmap format (e.g. "net.minecraft.server.MinecraftServer")
      * @return runtime class name, or the original name if resolution fails
      */
     static String unmapMojmapClassName(String mojmapName) {
+        // Strategy 1: Direct mojmap → runtime.
         try {
             return MAPPING_RESOLVER.unmapClassName("mojmap", mojmapName);
         } catch (Throwable t) {
-            return mojmapName;
+            // Fall through to strategy 2.
         }
+
+        // Strategy 2: Two-step via InternalMappingResolver.
+        InternalMappingResolver resolver = getMojmapResolver();
+        if (resolver != null) {
+            String official = resolver.mojmapToOfficial(mojmapName);
+            if (official != null && !official.equals(mojmapName)) {
+                try {
+                    return MAPPING_RESOLVER.unmapClassName("official", official);
+                } catch (Throwable ignored) {}
+            }
+        }
+
+        return mojmapName;
     }
 
     /**
      * Resolve a Mojmap method name to its runtime (obfuscated) name.
      * Uses the injected {@code "mojmap"} namespace in Fabric's MappingResolver.
      *
+     * <p>Resolution strategy (two-step chain):
+     * <ol>
+     *   <li>Try direct {@code mojmap → runtime} via {@link MappingResolver#mapMethodName}.
+     *       This works when Fabric's resolver can chain through the injected
+     *       {@code mojmap → official} segment into its built-in
+     *       {@code official → intermediary/named} segment.</li>
+     *   <li>If direct resolution fails (e.g. descriptor class-name mismatch across
+     *       namespaces), fall back to {@link InternalMappingResolver} to resolve
+     *       {@code mojmap → official} first, then let Fabric resolve
+     *       {@code official → runtime}.</li>
+     * </ol>
+     *
      * @param methodName the method name in Mojmap format (e.g. "getServer")
      * @param paramTypes the parameter types
      * @return runtime method name, or the original name if resolution fails
      */
     static String unmapMojmapMethodName(String methodName, Class<?>[] paramTypes) {
-        try {
-            String descriptor = buildDescriptor(paramTypes);
-            String result = MAPPING_RESOLVER.mapMethodName(
-                    "mojmap", RUNTIME_NAMESPACE, methodName, descriptor);
-            if (result != null && !result.equals(methodName)) {
-                return result;
-            }
-        } catch (Throwable ignored) {}
+        // Strategy 1: Direct mojmap → runtime via Fabric's MappingResolver.
+        String descriptor = buildDescriptor(paramTypes);
+        String result = tryMapMethod("mojmap", RUNTIME_NAMESPACE, methodName, descriptor);
+        if (result != null) return result;
+
         // Retry with "()V" descriptor — some namespace combos may not
         // map the descriptor correctly cross-namespace.
+        result = tryMapMethod("mojmap", RUNTIME_NAMESPACE, methodName, "()V");
+        if (result != null) return result;
+
+        // Strategy 2: Two-step resolution via InternalMappingResolver.
+        // Resolve mojmap → official first, then official → runtime.
+        InternalMappingResolver resolver = getMojmapResolver();
+        if (resolver != null) {
+            // We need the Mojmap class name to look up the method in our tables.
+            // The caller doesn't provide it, so we try to infer it from the
+            // parameter types.
+            String mojmapClass = inferMojmapClassFromParamTypes(paramTypes);
+            if (mojmapClass != null) {
+                // Try with descriptor first for precise matching
+                String officialMethod = resolver.resolveMethodName(mojmapClass, methodName, descriptor);
+                if (officialMethod == null || officialMethod.equals(methodName)) {
+                    // Fall back to name-only lookup
+                    officialMethod = resolver.resolveMethodName(mojmapClass, methodName);
+                }
+                if (officialMethod != null && !officialMethod.equals(methodName)) {
+                    result = tryMapMethod("official", RUNTIME_NAMESPACE, officialMethod, descriptor);
+                    if (result != null) return result;
+                    result = tryMapMethod("official", RUNTIME_NAMESPACE, officialMethod, "()V");
+                    if (result != null) return result;
+                }
+            }
+        }
+
+        return methodName;
+    }
+
+    /**
+     * Try a single {@link MappingResolver#mapMethodName} call, returning
+     * the resolved name if it differs from the input, or {@code null} on
+     * failure / no-op.
+     */
+    private static String tryMapMethod(String sourceNs, String targetNs,
+                                        String methodName, String descriptor) {
         try {
             String result = MAPPING_RESOLVER.mapMethodName(
-                    "mojmap", RUNTIME_NAMESPACE, methodName, "()V");
+                    sourceNs, targetNs, methodName, descriptor);
             if (result != null && !result.equals(methodName)) {
                 return result;
             }
         } catch (Throwable ignored) {}
-        return methodName;
+        return null;
+    }
+
+    /**
+     * Try to infer the Mojmap class name from the parameter types.
+     * Looks for the first {@code net.minecraft.*} parameter type and
+     * resolves it to its Mojmap equivalent.
+     */
+    private static String inferMojmapClassFromParamTypes(Class<?>[] paramTypes) {
+        for (Class<?> pt : paramTypes) {
+            String name = pt.getName();
+            if (name.startsWith("net.minecraft.")) {
+                try {
+                    String mojmap = MAPPING_RESOLVER.unmapClassName("mojmap", name);
+                    if (mojmap != null && !mojmap.equals(name)) {
+                        return mojmap;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        return null;
     }
 
     /**
@@ -289,6 +378,17 @@ final class FabricReflection {
      * {@link MappingResolver#unmapClassName(String, String)} with the
      * {@code "mojmap"} namespace, then look up the field in the tables.</p>
      *
+     * <p>Resolution strategy:
+     * <ol>
+     *   <li>Convert runtime → mojmap class name via Fabric's resolver
+     *       ({@code unmapClassName("mojmap", runtimeName)} traverses
+     *       {@code mojmap → official → intermediary → named}).</li>
+     *   <li>Look up the field in {@link InternalMappingResolver}'s tables
+     *       (mojmap field → official field).</li>
+     *   <li>If step 1 fails, try two-step: runtime → official via Fabric's
+     *       resolver, then official → mojmap via the tables, then field lookup.</li>
+     * </ol>
+     *
      * @param cls       the runtime class
      * @param fieldName the field name in Mojmap format (e.g. {@code "LIGHTNING_BOLT"})
      * @return the runtime (obfuscated) field name, or the original name if resolution fails
@@ -300,16 +400,28 @@ final class FabricReflection {
         }
         InternalMappingResolver resolver = getMojmapResolver();
         if (resolver != null) {
+            // Strategy 1: runtime → mojmap via Fabric's resolver.
             try {
-                // Convert runtime → mojmap class name via Fabric's resolver.
-                // unmapClassName("mojmap", runtimeName) traverses the chain
-                // mojmap → official → intermediary → named and returns the
-                // Mojmap-equivalent class name.
                 String mojmapClass = MAPPING_RESOLVER.unmapClassName("mojmap", className);
                 if (mojmapClass != null && !mojmapClass.equals(className)) {
                     String official = resolver.resolveFieldName(mojmapClass, fieldName);
                     if (official != null && !official.equals(fieldName)) {
                         return official;
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            // Strategy 2: Two-step via official namespace.
+            // First get the official class name, then look up the field.
+            try {
+                String officialClass = MAPPING_RESOLVER.unmapClassName("official", className);
+                if (officialClass != null && !officialClass.equals(className)) {
+                    String mojmapClass = resolver.officialToMojmap(officialClass);
+                    if (mojmapClass != null && !mojmapClass.equals(officialClass)) {
+                        String official = resolver.resolveFieldName(mojmapClass, fieldName);
+                        if (official != null && !official.equals(fieldName)) {
+                            return official;
+                        }
                     }
                 }
             } catch (Throwable ignored) {}
