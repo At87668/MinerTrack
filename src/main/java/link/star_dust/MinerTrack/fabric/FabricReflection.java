@@ -36,13 +36,20 @@ final class FabricReflection {
     /** Determine the runtime namespace based on environment */
     private static String getRuntimeNamespace() {
         try {
-            // Check if we're in a named environment by trying to load a known class
-            Class.forName("net.minecraft.text.Text");
-            return "named";
-        } catch (ClassNotFoundException e) {
-            // Likely obfuscated, use intermediary as fallback
-            return "intermediary";
-        }
+            // Check if we're in a named environment by trying to load a known class.
+            // Use forName() which includes version migration fallback, so this works
+            // on both 1.18-1.21.x (where Component → Text via tryMcMigration) and 26.1+.
+            if (forName("net.minecraft.network.chat.Component") != null) {
+                return "named";
+            }
+        } catch (Throwable ignored) {}
+        try {
+            if (forName("net.minecraft.text.Text") != null) {
+                return "named";
+            }
+        } catch (Throwable ignored) {}
+        // Likely obfuscated, use intermediary as fallback
+        return "intermediary";
     }
 
     private FabricReflection() {}
@@ -424,9 +431,59 @@ final class FabricReflection {
         if ("net.minecraft.block.BlockState".equals(className)) {
             return tryLoad("net.minecraft.world.level.block.state.BlockState");
         }
-        // Reverse migrations (new name → old, for newer Fabric API versions)
+        // Reverse migrations (Mojmap → Yarn, for 1.18–1.21.x where Mojmap
+        // names are not directly loadable but the Mojmap resolver is active).
         if ("net.minecraft.network.chat.Component".equals(className)) {
             return tryLoad("net.minecraft.text.Text");
+        }
+        if ("net.minecraft.network.chat.TextComponent".equals(className)) {
+            return tryLoad("net.minecraft.text.LiteralText");
+        }
+        if ("net.minecraft.core.registries.Registries".equals(className)) {
+            return tryLoad("net.minecraft.registry.Registries");
+        }
+        if ("net.minecraft.core.registries.BuiltInRegistries".equals(className)) {
+            // BuiltInRegistries is MC 26.1+ only; no Yarn equivalent
+            return null;
+        }
+        if ("net.minecraft.core.BlockPos".equals(className)) {
+            return tryLoad("net.minecraft.util.math.BlockPos");
+        }
+        if ("net.minecraft.world.entity.LightningBolt".equals(className)) {
+            return tryLoad("net.minecraft.entity.LightningEntity");
+        }
+        if ("net.minecraft.world.entity.EntityType".equals(className)) {
+            return tryLoad("net.minecraft.entity.EntityType");
+        }
+        if ("net.minecraft.server.level.ServerLevel".equals(className)) {
+            return tryLoad("net.minecraft.server.world.ServerWorld");
+        }
+        if ("net.minecraft.server.level.ServerPlayer".equals(className)) {
+            return tryLoad("net.minecraft.server.network.ServerPlayerEntity");
+        }
+        if ("net.minecraft.commands.CommandSourceStack".equals(className)) {
+            return tryLoad("net.minecraft.server.command.ServerCommandSource");
+        }
+        if ("net.minecraft.world.level.material.Fluids".equals(className)) {
+            return tryLoad("net.minecraft.fluid.Fluids");
+        }
+        if ("net.minecraft.world.level.material.Fluid".equals(className)) {
+            return tryLoad("net.minecraft.fluid.Fluid");
+        }
+        if ("net.minecraft.world.level.block.LiquidBlock".equals(className)) {
+            return tryLoad("net.minecraft.block.FluidBlock");
+        }
+        if ("net.minecraft.world.level.block.Blocks".equals(className)) {
+            return tryLoad("net.minecraft.block.Blocks");
+        }
+        if ("net.minecraft.world.level.block.Block".equals(className)) {
+            return tryLoad("net.minecraft.block.Block");
+        }
+        if ("net.minecraft.world.level.block.state.BlockState".equals(className)) {
+            return tryLoad("net.minecraft.block.BlockState");
+        }
+        if ("net.minecraft.world.InteractionResult".equals(className)) {
+            return tryLoad("net.minecraft.util.ActionResult");
         }
         return null;
     }
