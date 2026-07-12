@@ -134,7 +134,7 @@ public class FabricMiningListener {
             if (block == null) return BlockId.AIR;
             // Try net.minecraft.core.registries.BuiltInRegistries.BLOCK first (MC 26.1+),
             // then net.minecraft.core.registries.Registries.BLOCK (MC 1.19-1.21),
-            // then net.minecraft.registry.Registries.BLOCK (MC 1.18).
+            // then net.minecraft.core.registries.Registries.BLOCK (MC 1.18-1.21).
             Object blockRegistry = null;
             try {
                 // MC 26.1+: BuiltInRegistries.BLOCK is a Registry<? extends Block>
@@ -162,7 +162,7 @@ public class FabricMiningListener {
 
             if (blockRegistry == null) {
                 try {
-                    Class<?> registriesCls = FabricReflection.forName("net.minecraft.registry.Registries");
+                    Class<?> registriesCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
                     if (registriesCls != null) {
                         java.lang.reflect.Field f = registriesCls.getField("BLOCK");
                         blockRegistry = f.get(null);
