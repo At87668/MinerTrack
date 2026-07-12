@@ -418,7 +418,7 @@ public class FabricAdapter implements PluginAdapter {
             Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
             if (textCls != null) {
                 java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-                return literal.invoke(null, msg);
+                return literal.invoke(null, message);
             }
         } catch (Throwable t) { /* fall through */ }
 
