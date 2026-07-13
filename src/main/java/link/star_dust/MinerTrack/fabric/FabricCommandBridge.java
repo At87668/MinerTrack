@@ -188,17 +188,30 @@ public class FabricCommandBridge implements CommandBridge {
             if (source == null) return;
             Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
             if (server == null) return;
-            Object cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
+            // MC 26.1+: getCommands().performCommand(); 1.18-1.21: getCommandManager().executeWithPrefix()
+            Object cmdManager = FabricReflection.callAny(server, "getCommands", new Class<?>[0], new Object[0]);
+            if (cmdManager == null) {
+                cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
+            }
             if (cmdManager == null) return;
-            FabricReflection.callAny(cmdManager, "executeWithPrefix",
-                new Class<?>[]{source.getClass(), String.class},
-                new Object[]{source, command});
+            // Try performCommand first (MC 26.1+), fall back to executeWithPrefix (1.18-1.21)
+            try {
+                FabricReflection.callAny(cmdManager, "performCommand",
+                    new Class<?>[]{source.getClass(), String.class},
+                    new Object[]{source, command});
+            } catch (Throwable t1) {
+                FabricReflection.callAny(cmdManager, "executeWithPrefix",
+                    new Class<?>[]{source.getClass(), String.class},
+                    new Object[]{source, command});
+            }
         } catch (Throwable t) { /* silent */ }
     }
 
     @Override public boolean isPlayer() {
         try {
-            Object r = FabricReflection.callAny(source, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
+            // MC 26.1+: isPlayer(); 1.18-1.21: isExecutedByPlayer()
+            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
+                new Class<?>[0], new Object[0]);
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) { return false; }
     }
@@ -253,10 +266,10 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return;
-            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
@@ -266,8 +279,7 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public void sendMessageToConsole(String message) {
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return;
             sendFeedback(server, createText(message), true);
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
@@ -275,7 +287,8 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public boolean toggleVerbose() {
         if (source != null) {
-            Object r = FabricReflection.callAny(source, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
+            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
+                new Class<?>[0], new Object[0]);
             if (r instanceof Boolean && (Boolean) r) {
                 UUID id = null;
                 try {
@@ -318,13 +331,33 @@ public class FabricCommandBridge implements CommandBridge {
         if (source == null) return false;
         // 1) Fabric Permission API (LuckPerms if installed)
         if (checkFabricPermission(source, node)) return true;
-        // 2) op-level >= 2 or console bypass
+        // 2) op-level check — MC 26.1+ uses PermissionSet, 1.18-1.21 uses int
         try {
-            Object r = FabricReflection.callAny(source, "isExecutedByPlayer", new Class<?>[0], new Object[0]);
+            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
+                new Class<?>[0], new Object[0]);
             if (r instanceof Boolean && (Boolean) r) {
-                Object lvl = FabricReflection.callAny(source, "hasPermissionLevel",
-                    new Class<?>[]{int.class}, new Object[]{2});
-                return lvl instanceof Boolean && (Boolean) lvl;
+                // Try MC 26.1+ PermissionSet route first
+                Object permSet = FabricReflection.callAny(source, "permissions", new Class<?>[0], new Object[0]);
+                if (permSet != null) {
+                    try {
+                        // PermissionSet.isCommandAllowed(CommandNode)
+                        Object cmdAccess = FabricReflection.callAny(permSet, "isCommandAllowed",
+                            new Class<?>[]{Object.class}, new Object[]{node});
+                        if (cmdAccess instanceof Boolean && (Boolean) cmdAccess) return true;
+                    } catch (Throwable t) { /* fall through */ }
+                }
+                // Fallback: hasPermissionLevel(int) / hasPermission(int)
+                try {
+                    Object lvl = FabricReflection.callAny(source, "hasPermissionLevel",
+                        new Class<?>[]{int.class}, new Object[]{2});
+                    if (lvl instanceof Boolean && (Boolean) lvl) return true;
+                } catch (Throwable t2) {
+                    try {
+                        Object lvl2 = FabricReflection.callAny(source, "hasPermission",
+                            new Class<?>[]{int.class}, new Object[]{2});
+                        if (lvl2 instanceof Boolean && (Boolean) lvl2) return true;
+                    } catch (Throwable t3) { /* fall through */ }
+                }
             }
             return true; // console
         } catch (Throwable t) { return false; }
@@ -333,19 +366,33 @@ public class FabricCommandBridge implements CommandBridge {
     @Override
     public boolean hasPermissionForPlayer(UUID playerId, String node) {
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return false;
-            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return false;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return false;
             if (checkFabricPermission(player, node)) return true;
-            Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
-            if (gameProfile != null) {
-                Object isOp = FabricReflection.call(pm, "isOperator",
-                    new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                if (isOp instanceof Boolean) return (Boolean) isOp;
+            // MC 26.1+: isOp(NameAndId), uses nameAndId(); 1.18-1.21: getGameProfile()→isOp()
+            try {
+                Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
+                if (nameAndId != null) {
+                    Object isOp = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                    if (isOp instanceof Boolean) return (Boolean) isOp;
+                }
+            } catch (Throwable t1) {
+                // Fallback: getGameProfile() → isOp(GameProfile)
+                try {
+                    Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                        new Class<?>[0], new Object[0]);
+                    if (gameProfile != null) {
+                        Object isOp = FabricReflection.call(pm, "isOp",
+                            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                        if (isOp instanceof Boolean) return (Boolean) isOp;
+                    }
+                } catch (Throwable t2) { /* fall through */ }
             }
             return false;
         } catch (Throwable t) { return false; }
