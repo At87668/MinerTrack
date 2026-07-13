@@ -228,15 +228,17 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
-                // MC 26.1+: connection field; 1.18-1.21: networkHandler field
-                Object network = FabricReflection.callAny(player, "connection", new Class<?>[0], new Object[0]);
+                // MC 26.1+: connection field; 1.18-1.21: networkHandler field.
+                // Both are public fields, NOT methods — use getField().
+                Object network = FabricReflection.getField(player, "connection");
                 if (network == null) {
-                    network = FabricReflection.callAny(player, "networkHandler", new Class<?>[0], new Object[0]);
+                    network = FabricReflection.getField(player, "networkHandler");
                 }
                 if (network == null) return;
                 Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
+                if (textCls == null) return;
                 // MC 26.1+: disconnect(Component); 1.18-1.21: disconnect(Text)
                 try {
                     FabricReflection.callAny(network, "disconnect", new Class<?>[]{textCls}, new Object[]{text});
@@ -313,7 +315,11 @@ public class FabricCommandExecutor {
                 Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                     new Class<?>[0], new Object[0]);
                 if (pm == null) return;
-                Object text = literalText(message);
+                // Prepend the plugin prefix so the broadcasted kick / notify
+                // messages are clearly branded in chat (matches Bukkit behaviour).
+                String prefix = langBridge.getPrefix();
+                String fullMsg = prefix.trim() + " " + adapter.applyColors(message);
+                Object text = literalText(fullMsg);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 // MC 26.1+: broadcastSystemMessage(Component, boolean); 1.18-1.21: broadcast(Text, boolean)
