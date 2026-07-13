@@ -148,29 +148,11 @@ public class FabricAdapter implements PluginAdapter {
 
     /**
      * Resolve {@code net.minecraft.server.MinecraftServer} at
-     * runtime. Returns null on a non-Fabric classpath (e.g. when
-     * the mod jar is accidentally loaded on a Bukkit server).
+     * runtime. Uses FabricReflection.getServer() which handles
+     * MC 26.1+ (cached instance) and 1.18-1.21 (static getServer()).
      */
     private Object minecraftServer() {
-        try {
-            Class<?> cls = Class.forName("net.minecraft.server.MinecraftServer");
-            // 1.20+ exposes MinecraftServer.getServer() as a
-            // static method that returns the running server
-            // instance. Earlier 1.18 builds have an instance
-            // field called "instance" or a static method of
-            // the same name. Try getServer() first, then fall
-            // back to a field lookup.
-            try {
-                java.lang.reflect.Method m = cls.getMethod("getServer");
-                return m.invoke(null);
-            } catch (NoSuchMethodException nsme) {
-                java.lang.reflect.Field f = cls.getDeclaredField("instance");
-                f.setAccessible(true);
-                return f.get(null);
-            }
-        } catch (Throwable t) {
-            return null;
-        }
+        return FabricReflection.getServer();
     }
 
     @Override
@@ -189,8 +171,16 @@ public class FabricAdapter implements PluginAdapter {
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
-                // Send via the server's sendMessage. Try single-arg (1.19.4+),
-                // then two-arg (1.18 – 1.19.3).
+                // Send via the server. MC 26.1+: sendSystemMessage(Component)
+                // 1.18-1.21: sendMessage(Text) or sendMessage(Text, boolean)
+                try {
+                    java.lang.reflect.Method m = FabricReflection.findMethodWithMigration(
+                        server.getClass(), "sendSystemMessage", new Class<?>[]{textCls});
+                    if (m != null) {
+                        m.invoke(server, text);
+                        return;
+                    }
+                } catch (Throwable t1) { /* fall through */ }
                 try {
                     java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls);
                     sendMessage.invoke(server, text);
@@ -366,21 +356,14 @@ public class FabricAdapter implements PluginAdapter {
 
     @Override
     public Object getPlayer(UUID uuid) {
-        // The core layer's PathAnalyzer etc. never need a live
-        // Player reference on Fabric (the path state is keyed by
-        // UUID via MiningState). Return null if the player is
-        // offline; the core layer treats null as "skip this tick".
         try {
             Object server = minecraftServer();
             if (server == null) return null;
-            Class<?> serverCls = server.getClass();
-            // ServerNetworkIo and similar internals vary across
-            // 1.18-1.21 versions; the public PlayerManager is
-            // reached via getPlayerManager() in every version.
-            java.lang.reflect.Method getPm = serverCls.getMethod("getPlayerManager");
-            Object pm = getPm.invoke(server);
-            java.lang.reflect.Method getPlayer = pm.getClass().getMethod("getPlayer", UUID.class);
-            return getPlayer.invoke(pm, uuid);
+            // MC 26.1+: getPlayerList(); 1.18-1.21: getPlayerManager()
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
+            if (pm == null) return null;
+            return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
         } catch (Throwable t) {
             return null;
         }
