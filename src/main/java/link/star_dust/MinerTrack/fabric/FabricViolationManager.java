@@ -63,7 +63,9 @@ public class FabricViolationManager implements ViolationManagerBridge {
     public void scheduleGlobalDecayTask(long decayIntervalTicks) {
         this.globalDecayIntervalTicks = decayIntervalTicks;
         FabricEventBus.registerEndServerTick(server -> {
-            Object tickObj = FabricReflection.call(server, "getTicks", new Class<?>[0], new Object[0]);
+            // MC 26.1+: getTickCount(); 1.18-1.21: getTicks()
+            Object tickObj = FabricReflection.callMigrated(server, "getTickCount", "getTicks",
+                new Class<?>[0], new Object[0]);
             long tick = tickObj instanceof Number ? ((Number) tickObj).longValue() : 0L;
             if (lastGlobalDecayRunTick < 0
                     || tick - lastGlobalDecayRunTick >= decayIntervalTicks) {
@@ -183,20 +185,25 @@ public class FabricViolationManager implements ViolationManagerBridge {
     @Override
     public void sendMessageToPlayer(UUID playerId, String message) {
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return;
-            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createTextComponent(message);
             Class<?> textCls = resolveTextComponentClass();
-            // sendMessage(Text/Component, boolean overlay) on the player
-            // (1.18+ signature; 1.20+ is identical).
-            FabricReflection.call(player, "sendMessage",
-                new Class<?>[]{textCls, boolean.class},
-                new Object[]{text, false});
+            // MC 26.1+: sendSystemMessage(Component, boolean overlay); 1.18-1.21: sendMessage(Text, boolean)
+            try {
+                FabricReflection.call(player, "sendSystemMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            } catch (Throwable t1) {
+                FabricReflection.call(player, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            }
         } catch (Throwable t) {
             // Player likely offline; silently drop.
         }
@@ -236,10 +243,10 @@ public class FabricViolationManager implements ViolationManagerBridge {
     @Override
     public String getPlayerName(UUID playerId) {
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return playerId.toString();
-            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return playerId.toString();
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return playerId.toString();
@@ -263,22 +270,30 @@ public class FabricViolationManager implements ViolationManagerBridge {
     @Override
     public void runConsoleCommand(String command) {
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return;
-            Object cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
+            // MC 26.1+: getCommands(); 1.18-1.21: getCommandManager()
+            Object cmdManager = FabricReflection.callMigrated(server, "getCommands", "getCommandManager",
+                new Class<?>[0], new Object[0]);
             if (cmdManager == null) return;
-            // Server's command source (the "console" with full
-            // permission). On 1.18-1.21, MinecraftServer exposes
-            // {@code getCommandSource()} or
-            // {@code getCommandSource().withSilent()}.
-            Object source = FabricReflection.callAny(server, "getCommandSource", new Class<?>[0], new Object[0]);
+            // MC 26.1+: createCommandSourceStack().withSuppressedOutput()
+            // 1.18-1.21: getCommandSource().withSilent()
+            Object source = FabricReflection.callMigrated(server, "createCommandSourceStack",
+                "getCommandSource", new Class<?>[0], new Object[0]);
             if (source == null) return;
-            Object withSilent = FabricReflection.callAny(source, "withSilent", new Class<?>[0], new Object[0]);
-            if (withSilent == null) withSilent = source;
-            FabricReflection.callAny(cmdManager, "executeWithPrefix",
-                new Class<?>[]{FabricReflection.forName("net.minecraft.commands.CommandSourceStack"), String.class},
-                new Object[]{withSilent, command});
+            Object suppressed = FabricReflection.callMigrated(source, "withSuppressedOutput", "withSilent",
+                new Class<?>[0], new Object[0]);
+            if (suppressed == null) suppressed = source;
+            // MC 26.1+: performCommand; 1.18-1.21: executeWithPrefix
+            try {
+                FabricReflection.callAny(cmdManager, "performCommand",
+                    new Class<?>[]{FabricReflection.forName("net.minecraft.commands.CommandSourceStack"), String.class},
+                    new Object[]{suppressed, command});
+            } catch (Throwable t1) {
+                FabricReflection.callAny(cmdManager, "executeWithPrefix",
+                    new Class<?>[]{FabricReflection.forName("net.minecraft.commands.CommandSourceStack"), String.class},
+                    new Object[]{suppressed, command});
+            }
         } catch (Throwable t) {
             adapter.warning("Failed to execute command '" + command + "': " + t.getMessage());
         }
