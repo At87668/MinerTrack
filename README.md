@@ -96,13 +96,18 @@ Look what users have to say:
 ![Image](https://at87668.github.io/MinerTrack/Images/Installation.png)
 
 1. Download the latest version of **MinerTrack** from Modrinth.
-2. Place the .jar file into the plugins folder.
+2. Place the .jar file into the plugins or mods folder.
 3. Restart the server to generate the configuration and necessary files.
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Requirements.png)
 
+**As plugin:**
 - Java 17 or higher
 - Paper, Purpur, Folia or compatible forks (1.18 or newer)  *Not Spigot!*
+**As mod:**
+- Java 17 or higher
+- Fabric 26.1 or newer
+- Fabric API
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Support.png)
 
