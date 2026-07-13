@@ -286,15 +286,27 @@ public class FabricViolationManager implements ViolationManagerBridge {
             Object suppressed = FabricReflection.callMigrated(source, "withSuppressedOutput", "withSilent",
                 new Class<?>[0], new Object[0]);
             if (suppressed == null) suppressed = source;
-            // MC 26.1+: performCommand; 1.18-1.21: executeWithPrefix
+            // MC 26.1+: performPrefixedCommand(CommandSourceStack, String)
+            // 1.18-1.21: executeWithPrefix(CommandSourceStack, String)
+            // Note: MC 26.1's performCommand takes (ParseResults, String), NOT
+            // (CommandSourceStack, String). The correct entry point is
+            // performPrefixedCommand.
+            Class<?> cssCls = FabricReflection.forName("net.minecraft.commands.CommandSourceStack");
+            if (cssCls == null) return;
             try {
-                FabricReflection.callAny(cmdManager, "performCommand",
-                    new Class<?>[]{FabricReflection.forName("net.minecraft.commands.CommandSourceStack"), String.class},
+                FabricReflection.callAny(cmdManager, "performPrefixedCommand",
+                    new Class<?>[]{cssCls, String.class},
                     new Object[]{suppressed, command});
             } catch (Throwable t1) {
-                FabricReflection.callAny(cmdManager, "executeWithPrefix",
-                    new Class<?>[]{FabricReflection.forName("net.minecraft.commands.CommandSourceStack"), String.class},
-                    new Object[]{suppressed, command});
+                try {
+                    FabricReflection.callAny(cmdManager, "performCommand",
+                        new Class<?>[]{cssCls, String.class},
+                        new Object[]{suppressed, command});
+                } catch (Throwable t2) {
+                    FabricReflection.callAny(cmdManager, "executeWithPrefix",
+                        new Class<?>[]{cssCls, String.class},
+                        new Object[]{suppressed, command});
+                }
             }
         } catch (Throwable t) {
             adapter.warning("Failed to execute command '" + command + "': " + t.getMessage());
