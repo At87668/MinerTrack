@@ -373,9 +373,82 @@ public class ConfigMerger {
     }
 
     /**
-     * In-memory {@link CommonYaml} backed by a {@code LinkedHashMap}.
-     * Moved to {@link link.star_dust.MinerTrack.common.MapBackedYaml}
-     * so the platform-neutral {@link CommonYaml#getChild(String)}
-     * default implementation can reference it.
+     * Append missing keys from defaults to the user file without
+     * destroying comments or formatting. Walks the defaults tree;
+     * for each leaf key missing from the user config, appends a
+     * minimal YAML line at the end of the file.
      */
+    private static void appendMissingDefaults(
+            File file, CommonYaml userConfig,
+            CommonYaml defaultConfig, String prefix) throws java.io.IOException {
+
+        StringBuilder sb = new StringBuilder(256);
+        boolean[] any = {false};
+        for (String key : defaultConfig.getKeys(false)) {
+            if (userConfig.contains(key)) {
+                Object dv = defaultConfig.get(key);
+                if (dv instanceof java.util.Map) {
+                    CommonYaml child = userConfig.getChild(key);
+                    CommonYaml defChild = defaultConfig.getChild(key);
+                    if (child != null && defChild != null) {
+                        String childPath = prefix.isEmpty() ? key : prefix + "." + key;
+                        appendMissingDefaults(file, child, defChild, childPath);
+                    }
+                }
+            } else {
+                int depth = prefix.isEmpty() ? 0 : prefix.split("\\.").length;
+                String indent = nSpaces(depth * 2);
+                Object v = defaultConfig.get(key);
+                if (v instanceof java.util.Map) {
+                    sb.append('\n').append(indent).append(key).append(':');
+                    writeMap(sb, (java.util.Map<?, ?>) v, depth + 1);
+                } else if (v instanceof java.util.List) {
+                    sb.append('\n').append(indent).append(key).append(':');
+                    for (Object item : (java.util.List<?>) v)
+                        sb.append('\n').append(indent).append("  - ").append(toYaml(item));
+                } else {
+                    sb.append('\n').append(indent).append(key).append(": ").append(toYaml(v));
+                }
+                any[0] = true;
+            }
+        }
+        if (any[0]) {
+            sb.append('\n');
+            try (java.io.FileWriter fw = new java.io.FileWriter(file, true)) {
+                fw.write(sb.toString());
+            }
+        }
+    }
+
+    private static void writeMap(StringBuilder sb, java.util.Map<?, ?> map, int depth) {
+        String indent = nSpaces(depth * 2);
+        for (java.util.Map.Entry<?, ?> e : map.entrySet()) {
+            Object v = e.getValue();
+            if (v instanceof java.util.Map) {
+                sb.append('\n').append(indent).append(e.getKey()).append(':');
+                writeMap(sb, (java.util.Map<?, ?>) v, depth + 1);
+            } else if (v instanceof java.util.List) {
+                sb.append('\n').append(indent).append(e.getKey()).append(':');
+                for (Object item : (java.util.List<?>) v)
+                    sb.append('\n').append(indent).append("  - ").append(toYaml(item));
+            } else {
+                sb.append('\n').append(indent).append(e.getKey()).append(": ").append(toYaml(v));
+            }
+        }
+    }
+
+    private static String nSpaces(int n) {
+        StringBuilder sb = new StringBuilder(n);
+        for (int i = 0; i < n; i++) sb.append(' ');
+        return sb.toString();
+    }
+
+    private static String toYaml(Object v) {
+        if (v == null) return "null";
+        if (v instanceof Boolean || v instanceof Number) return v.toString();
+        String s = v.toString();
+        if (s.contains(":") || s.contains("#") || s.contains("\"") || s.contains("'"))
+            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return s;
+    }
 }
