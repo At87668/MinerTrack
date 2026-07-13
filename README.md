@@ -99,6 +99,7 @@ Look what users have to say:
 **As plugin:**
 - Java 17 or higher
 - Paper, Purpur, Folia or compatible forks (1.18 or newer)  *Not Spigot!*
+
 **As mod:**
 - Java 17 or higher
 - Fabric 26.1 or newer
