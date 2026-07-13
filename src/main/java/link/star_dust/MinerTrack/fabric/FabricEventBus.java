@@ -49,9 +49,13 @@ final class FabricEventBus {
     }
 
     static void registerBlockBreakAfter(java.util.function.Consumer<Object[]> handler) {
+        // PlayerBlockBreakEvents.AFTER uses After interface:
+        //   void afterBlockBreak(World, PlayerEntity, BlockPos, BlockState, BlockEntity?)
+        // The inner interface compiled name is PlayerBlockBreakEvents$After.
+        // Must use the exact inner class name so the dynamic proxy matches.
         register("net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents",
             "AFTER",
-            "net.fabricmc.fabric.api.event.player.BlockBreakCallback",
+            "net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents$After",
             fromArrayConsumer(handler));
     }
 
