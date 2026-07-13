@@ -419,6 +419,190 @@ final class FabricReflection {
         }
     }
 
+    /**
+     * Read a UUID from a Minecraft entity. MC 26.1+ uses
+     * {@code getUUID()} (uppercase); 1.18–1.21 used {@code getUuid()}.
+     * Tries both.
+     */
+    static Object callUuid(Object target) {
+        if (target == null) return null;
+        Object r = callAny(target, "getUUID", new Class<?>[0], new Object[0]);
+        if (r != null) return r;
+        return callAny(target, "getUuid", new Class<?>[0], new Object[0]);
+    }
+
+    /**
+     * Get the dimension {@code ResourceKey<Level>} of a Minecraft world.
+     * MC 26.1+ renamed the method from {@code getRegistryKey()} to
+     * {@code dimension()}. Tries both.
+     */
+    static Object callDimension(Object world) {
+        if (world == null) return null;
+        Object r = callAny(world, "dimension", new Class<?>[0], new Object[0]);
+        if (r != null) return r;
+        return callAny(world, "getRegistryKey", new Class<?>[0], new Object[0]);
+    }
+
+    /**
+     * Get the value (ResourceLocation) of a {@code ResourceKey} / registry key.
+     * Tries the modern method first, then the legacy one.
+     */
+    static Object callResourceKeyValue(Object key) {
+        if (key == null) return null;
+        // ResourceKey has location() returning Identifier (ResourceLocation)
+        // and a legacy identifier() method on older versions.
+        Object r = callAny(key, "location", new Class<?>[0], new Object[0]);
+        if (r != null) return r;
+        return callAny(key, "getValue", new Class<?>[0], new Object[0]);
+    }
+
+    /**
+     * Read a string value from a Minecraft object, handling both legacy and
+     * modern (MC 26.1+) return types.
+     *
+     * <p>MC 1.18–1.21: {@code Entity.getName()} / {@code GameProfile.getName()}
+     * return {@code String}. MC 26.1+: they return {@code Component} /
+     * {@code String} depending on the method. This helper accepts both:
+     * <ol>
+     *   <li>If the result is already a {@code String}, return it directly.</li>
+     *   <li>Otherwise, try {@code Component.getString()} (MC 26.1+).</li>
+     *   <li>Otherwise, fall back to {@code toString()} and strip the
+     *       {@code literal(...)} / {@code TextComponent{...}} wrapper that
+     *       Component's default {@code toString()} produces.</li>
+     * </ol>
+     *
+     * @return the string, or {@code null} if the source is null
+     */
+    static String readString(Object source) {
+        if (source == null) return null;
+        if (source instanceof String) return (String) source;
+        try {
+            Method m = source.getClass().getMethod("getString");
+            Object r = m.invoke(source);
+            if (r instanceof String) return (String) r;
+        } catch (Throwable ignored) {}
+        String s = source.toString();
+        // Strip "literal(...)" wrapper that Component.toString() produces on MC 26.1+
+        if (s.startsWith("literal(") && s.endsWith(")")) {
+            return s.substring("literal(".length(), s.length() - 1);
+        }
+        return s;
+    }
+
+    /**
+     * Resolve a Minecraft block (or any Registry entry) to its canonical
+     * {@code minecraft:path} id. MC-version-aware.
+     *
+     * <p>Strategy (in order):
+     * <ol>
+     *   <li>Use the {@code DefaultedRegistry.getKey(T)} method which returns
+     *       a non-null {@code Identifier}. MC 26.1+ has this on both
+     *       {@code DefaultedRegistry} (used for the BLOCK registry, since
+     *       {@code BuiltInRegistries.BLOCK} is a {@code DefaultedRegistry})
+     *       and {@code MappedRegistry}. 1.18–1.21 have it on
+     *       {@code SimpleRegistry} and {@code MappedRegistry}.</li>
+     *   <li>Fall back to {@code getId(int)} → reverse-lookup key by id.</li>
+     *   <li>Fall back to {@code block.builtInRegistryHolder().getKey()}.</li>
+     *   <li>Fall back to {@code getResourceKey(T)} → unwrap {@code Optional}.</li>
+     * </ol>
+     *
+     * @param block the Minecraft block instance (or any object registered in
+     *              a registry with a {@code getKey(T)} / {@code getId(T)} method)
+     * @return the canonical {@code minecraft:path} id, or null on failure
+     */
+    static String getBlockId(Object block) {
+        if (block == null) return null;
+
+        // 1. Resolve the BLOCK registry — BuiltInRegistries.BLOCK (MC 26.1+)
+        //    is a DefaultedRegistry, Registries.BLOCK on 1.18-1.21 is a
+        //    ResourceKey (not the registry). We try BuiltInRegistries first,
+        //    then fall back to getResourceKey on the block's builtInRegistryHolder.
+        Object blockRegistry = null;
+        try {
+            Class<?> birCls = forName("net.minecraft.core.registries.BuiltInRegistries");
+            if (birCls != null) {
+                try {
+                    Field f = birCls.getField("BLOCK");
+                    blockRegistry = f.get(null);
+                } catch (Throwable t) { /* fall through */ }
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        if (blockRegistry != null) {
+            // DefaultedRegistry.getKey returns Identifier (non-null on MC 26.1+)
+            try {
+                Method m = blockRegistry.getClass().getMethod("getKey", Object.class);
+                Object id = m.invoke(blockRegistry, block);
+                if (id != null) {
+                    String s = readString(id);
+                    if (s != null) return s;
+                }
+            } catch (Throwable t) { /* fall through */ }
+
+            // MappedRegistry.getKey returns Identifier (may be null for unregistered)
+            try {
+                Method m = findMethod(blockRegistry.getClass(), "getKey", new Class<?>[]{Object.class});
+                if (m != null) {
+                    Object id = m.invoke(blockRegistry, block);
+                    if (id != null) {
+                        String s = readString(id);
+                        if (s != null) return s;
+                    }
+                }
+            } catch (Throwable t) { /* fall through */ }
+
+            // MappedRegistry.getResourceKey(T) returns Optional<ResourceKey<T>>
+            try {
+                Method m = findMethod(blockRegistry.getClass(), "getResourceKey", new Class<?>[]{Object.class});
+                if (m != null) {
+                    Object rv = m.invoke(blockRegistry, block);
+                    if (rv instanceof java.util.Optional) {
+                        java.util.Optional<?> opt = (java.util.Optional<?>) rv;
+                        if (opt.isPresent()) {
+                            Object key = opt.get();
+                            Object loc = callAny(key, "location", new Class<?>[0], new Object[0]);
+                            if (loc != null) {
+                                String s = readString(loc);
+                                if (s != null) return s;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) { /* fall through */ }
+
+            // getId returns int (MC 26.1+); reverse-lookup via byId is risky,
+            // but as a last resort try getId → toString
+            try {
+                Method m = findMethod(blockRegistry.getClass(), "getId", new Class<?>[]{Object.class});
+                if (m != null) {
+                    Object id = m.invoke(blockRegistry, block);
+                    if (id instanceof Integer && (Integer) id >= 0) {
+                        // Don't return a raw int as a "minecraft:" id — it would
+                        // never match user config. Fall through to holder lookup.
+                    }
+                }
+            } catch (Throwable t) { /* fall through */ }
+        }
+
+        // 2. Fall back to the block's builtInRegistryHolder (always available on
+        //    MC 1.19.3+; MC 26.1+ exposes it as a method).
+        try {
+            Object holder = callAny(block, "builtInRegistryHolder", new Class<?>[0], new Object[0]);
+            if (holder != null) {
+                Object key = callAny(holder, "getKey", new Class<?>[0], new Object[0]);
+                if (key != null) {
+                    Object loc = callAny(key, "location", new Class<?>[0], new Object[0]);
+                    if (loc != null) {
+                        String s = readString(loc);
+                        if (s != null) return s;
+                    }
+                }
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        return null;
+    }
+
     /** Construct an instance by reflection. */
     static Object newInstance(String className, Class<?>[] paramTypes, Object[] args) {
         try {
