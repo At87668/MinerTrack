@@ -164,7 +164,7 @@ public class FabricCommandExecutor {
                 // more reliable than the static server() accessor across MC versions.
                 Object player = playerByName(commandSource, name);
                 if (player == null) return null;
-                Object uuid = FabricReflection.callAny(player, "getUuid", new Class<?>[0], new Object[0]);
+                Object uuid = FabricReflection.callUuid(player);
                 return uuid instanceof UUID ? (UUID) uuid : null;
             } catch (Throwable t) {
                 return null;
@@ -176,8 +176,10 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(commandSource, uuid);
                 if (player == null) return uuid.toString();
+                // MC 26.1+: getName() returns Component; use readString() to unwrap.
                 Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
-                return name == null ? uuid.toString() : name.toString();
+                String s = FabricReflection.readString(name);
+                return s == null ? uuid.toString() : s;
             } catch (Throwable t) {
                 return uuid.toString();
             }
@@ -205,8 +207,10 @@ public class FabricCommandExecutor {
                 if (list == null) return names;
                 if (list instanceof java.util.Collection) {
                     for (Object p : (java.util.Collection<?>) list) {
+                        // MC 26.1+: Entity.getName() returns Component; unwrap with readString.
                         Object name = FabricReflection.callAny(p, "getName", new Class<?>[0], new Object[0]);
-                        if (name != null) names.add(name.toString());
+                        String s = FabricReflection.readString(name);
+                        if (s != null) names.add(s);
                     }
                 }
             } catch (Throwable t) {
@@ -263,7 +267,7 @@ public class FabricCommandExecutor {
                 Object world = FabricReflection.callMigrated(player, "level", "getWorld",
                     new Class<?>[0], new Object[0]);
                 if (world == null) return;
-                Object registryKey = FabricReflection.callAny(world, "getRegistryKey", new Class<?>[0], new Object[0]);
+                Object registryKey = FabricReflection.callDimension(world);
                 if (registryKey == null) return;
                 Object server = server();
                 if (server == null) return;
@@ -286,9 +290,16 @@ public class FabricCommandExecutor {
                 Object x = FabricReflection.callAny(player, "getX", new Class<?>[0], new Object[0]);
                 Object y = FabricReflection.callAny(player, "getY", new Class<?>[0], new Object[0]);
                 Object z = FabricReflection.callAny(player, "getZ", new Class<?>[0], new Object[0]);
-                FabricReflection.callAny(lightning, "refreshPositionAfterTeleport",
-                    new Class<?>[]{double.class, double.class, double.class},
-                    new Object[]{x, y, z});
+                // MC 26.1+: setPos(double, double, double) — 1.18-1.21 used refreshPositionAfterTeleport
+                try {
+                    FabricReflection.callAny(lightning, "setPos",
+                        new Class<?>[]{double.class, double.class, double.class},
+                        new Object[]{x, y, z});
+                } catch (Throwable t) {
+                    FabricReflection.callAny(lightning, "refreshPositionAfterTeleport",
+                        new Class<?>[]{double.class, double.class, double.class},
+                        new Object[]{x, y, z});
+                }
             } catch (Throwable t) {
                 // Cosmetic only — silent fallback.
             }
