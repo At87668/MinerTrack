@@ -54,8 +54,14 @@ public class FabricDetectionBridge implements DetectionBridge {
         // SERVER_STARTED exactly once per server boot, after all
         // startup-time worlds are loaded.
         FabricEventBus.registerServerStarted(server -> {
+            // Cache the server instance — MC 26.1+ has no static getServer().
+            FabricReflection.setCachedServer(server);
             try {
-                Object worlds = FabricReflection.callAny(server, "getWorlds", new Class<?>[0], new Object[0]);
+                // MC 26.1+: getAllLevels(); 1.18-1.21: getWorlds()
+                Object worlds = FabricReflection.callAny(server, "getAllLevels", new Class<?>[0], new Object[0]);
+                if (worlds == null || !(worlds instanceof Iterable)) {
+                    worlds = FabricReflection.callAny(server, "getWorlds", new Class<?>[0], new Object[0]);
+                }
                 if (worlds instanceof Iterable) {
                     for (Object w : (Iterable<?>) worlds) {
                         registerWorld(w);
@@ -360,10 +366,13 @@ public class FabricDetectionBridge implements DetectionBridge {
         Object registered = dimensionToWorld.get(worldKey);
         if (registered != null) return registered;
         try {
-            Object server = FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-                "getServer", new Class<?>[0], new Object[0]);
+            Object server = FabricReflection.getServer();
             if (server == null) return null;
-            Object worlds = FabricReflection.callAny(server, "getWorlds", new Class<?>[0], new Object[0]);
+            // MC 26.1+: getAllLevels(); 1.18-1.21: getWorlds()
+            Object worlds = FabricReflection.callAny(server, "getAllLevels", new Class<?>[0], new Object[0]);
+            if (worlds == null || !(worlds instanceof Iterable)) {
+                worlds = FabricReflection.callAny(server, "getWorlds", new Class<?>[0], new Object[0]);
+            }
             if (!(worlds instanceof Iterable)) return null;
             for (Object w : (Iterable<?>) worlds) {
                 Object registryKey = FabricReflection.callAny(w, "getRegistryKey", new Class<?>[0], new Object[0]);
