@@ -104,7 +104,8 @@ public class FabricMiningListener {
 
     private static UUID readUuid(Object player) {
         try {
-            Object uuid = FabricReflection.callAny(player, "getUuid", new Class<?>[0], new Object[0]);
+            // MC 26.1+: Entity.getUUID() (uppercase); 1.18-1.21: getUuid()
+            Object uuid = FabricReflection.callUuid(player);
             return uuid instanceof UUID ? (UUID) uuid : null;
         } catch (Throwable t) {
             return null;
@@ -113,8 +114,11 @@ public class FabricMiningListener {
 
     private static String readPlayerName(Object player) {
         try {
+            // MC 26.1+: Entity.getName() returns Component
+            // 1.18-1.21: returns String
+            // readString() handles both — Component.getString() vs String passthrough
             Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
-            return name == null ? "" : name.toString();
+            return FabricReflection.readString(name);
         } catch (Throwable t) {
             return "";
         }
@@ -122,11 +126,13 @@ public class FabricMiningListener {
 
     private static String readDimensionId(Object world) {
         try {
-            Object registryKey = FabricReflection.callAny(world, "getRegistryKey", new Class<?>[0], new Object[0]);
+            // MC 26.1+: Level.dimension(); 1.18-1.21: getRegistryKey()
+            Object registryKey = FabricReflection.callDimension(world);
             if (registryKey == null)
                 return null;
-            Object value = FabricReflection.callAny(registryKey, "getValue", new Class<?>[0], new Object[0]);
-            return value == null ? null : value.toString();
+            // MC 26.1+: ResourceKey.location(); 1.18-1.21: ResourceKey.getValue()
+            Object value = FabricReflection.callResourceKeyValue(registryKey);
+            return value == null ? null : FabricReflection.readString(value);
         } catch (Throwable t) {
             return null;
         }
@@ -147,82 +153,16 @@ public class FabricMiningListener {
             Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null)
                 return BlockId.AIR;
-            // Try net.minecraft.core.registries.BuiltInRegistries.BLOCK first (MC 26.1+),
-            // then net.minecraft.core.registries.Registries.BLOCK (MC 1.19-1.21),
-            // then net.minecraft.core.registries.Registries.BLOCK (MC 1.18-1.21).
-            Object blockRegistry = null;
-            try {
-                // MC 26.1+: BuiltInRegistries.BLOCK is a Registry<? extends Block>
-                // Registries.BLOCK is a RegistryKey, not the registry itself.
-                Class<?> birCls = FabricReflection.forName("net.minecraft.core.registries.BuiltInRegistries");
-                if (birCls != null) {
-                    try {
-                        java.lang.reflect.Field f = birCls.getField("BLOCK");
-                        blockRegistry = f.get(null);
-                    } catch (Throwable t) {
-                        // Field not found, try other approaches
-                    }
-                }
-            } catch (Throwable t) {
-                /* fall through */ }
-
-            if (blockRegistry == null) {
-                try {
-                    Class<?> registriesCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
-                    if (registriesCls != null) {
-                        java.lang.reflect.Field f = registriesCls.getField("BLOCK");
-                        blockRegistry = f.get(null);
-                    }
-                } catch (Throwable t) {
-                    /* fall through */ }
+            // MC 26.1+: DefaultedRegistry.getKey(T) returns Identifier
+            // 1.18-1.21: SimpleRegistry.getKey(T) returns Identifier
+            // We delegate to FabricReflection.getBlockId() which handles both
+            // versions and falls back to the holder-based lookup if getKey
+            // returns null.
+            String id = FabricReflection.getBlockId(block);
+            if (id != null && !id.isEmpty()) {
+                return id;
             }
-
-            if (blockRegistry == null) {
-                try {
-                    Class<?> registriesCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
-                    if (registriesCls != null) {
-                        java.lang.reflect.Field f = registriesCls.getField("BLOCK");
-                        blockRegistry = f.get(null);
-                    }
-                } catch (Throwable t) {
-                    /* fall through */ }
-            }
-
-            if (blockRegistry == null)
-                return BlockId.AIR;
-
-            // Get the Identifier/ResourceLocation from the registry
-            Object id = FabricReflection.callAny(blockRegistry, "getId",
-                    new Class<?>[] { block.getClass() }, new Object[] { block });
-            if (id == null) {
-                // Try getKey (MC 1.19.3+ style where getId returns int)
-                Object resourceKey = FabricReflection.callAny(block, "builtInRegistryHolder", new Class<?>[0],
-                        new Object[0]);
-                if (resourceKey != null) {
-                    Object key = FabricReflection.callAny(resourceKey, "getKey", new Class<?>[0], new Object[0]);
-                    if (key != null) {
-                        Object loc = FabricReflection.callAny(key, "location", new Class<?>[0], new Object[0]);
-                        if (loc != null)
-                            return loc.toString();
-                    }
-                }
-                // Try block.getDescriptionId() or toString() as last resort
-                // On MC 26.1+, block registry may not have getId(Object) —
-                // try getResourceKey instead.
-                Object rv = FabricReflection.callAny(blockRegistry, "getResourceKey",
-                        new Class<?>[] { block.getClass() }, new Object[] { block });
-                if (rv instanceof java.util.Optional) {
-                    java.util.Optional<?> opt = (java.util.Optional<?>) rv;
-                    if (opt.isPresent()) {
-                        Object key = opt.get();
-                        Object loc = FabricReflection.callAny(key, "location", new Class<?>[0], new Object[0]);
-                        if (loc != null)
-                            return loc.toString();
-                    }
-                }
-                return BlockId.AIR;
-            }
-            return id.toString();
+            return BlockId.AIR;
         } catch (Throwable t) {
             return BlockId.AIR;
         }
