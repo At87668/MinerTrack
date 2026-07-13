@@ -272,7 +272,22 @@ public class FabricCommandBridge implements CommandBridge {
             if (pm == null) return;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
-            sendFeedback(player, createText(message), true);
+            // Direct: MC 26.1+ Player only has sendSystemMessage(Component);
+            // sendSuccess/sendFailure/sendMessage are CommandSourceStack-only.
+            Object text = createText(message);
+            if (text == null) return;
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            try {
+                FabricReflection.callAny(player, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                try {
+                    FabricReflection.callAny(player, "sendMessage",
+                        new Class<?>[]{textCls, boolean.class},
+                        new Object[]{text, false});
+                } catch (Throwable t2) { /* silent */ }
+            }
         } catch (Throwable t) { /* silent */ }
     }
 
@@ -280,7 +295,19 @@ public class FabricCommandBridge implements CommandBridge {
         try {
             Object server = FabricReflection.getServer();
             if (server == null) return;
-            sendFeedback(server, createText(message), true);
+            Object text = createText(message);
+            if (text == null) return;
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text)
+            try {
+                FabricReflection.callAny(server, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                FabricReflection.callAny(server, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            }
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
 
