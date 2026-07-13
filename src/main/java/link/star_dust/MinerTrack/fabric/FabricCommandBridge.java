@@ -294,7 +294,7 @@ public class FabricCommandBridge implements CommandBridge {
                 try {
                     Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
                     if (player != null) {
-                        Object uuid = FabricReflection.callAny(player, "getUuid", new Class<?>[0], new Object[0]);
+                        Object uuid = FabricReflection.callUuid(player);
                         if (uuid instanceof UUID) id = (UUID) uuid;
                     }
                 } catch (Throwable t) { return false; }
@@ -331,22 +331,25 @@ public class FabricCommandBridge implements CommandBridge {
         if (source == null) return false;
         // 1) Fabric Permission API (LuckPerms if installed)
         if (checkFabricPermission(source, node)) return true;
-        // 2) op-level check — MC 26.1+ uses PermissionSet, 1.18-1.21 uses int
+        // 2) op-level check
         try {
             Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
                 new Class<?>[0], new Object[0]);
             if (r instanceof Boolean && (Boolean) r) {
-                // Try MC 26.1+ PermissionSet route first
+                // MC 26.1+: permissions() returns PermissionSet; check via Permission objects.
                 Object permSet = FabricReflection.callAny(source, "permissions", new Class<?>[0], new Object[0]);
                 if (permSet != null) {
                     try {
-                        // PermissionSet.isCommandAllowed(CommandNode)
-                        Object cmdAccess = FabricReflection.callAny(permSet, "isCommandAllowed",
-                            new Class<?>[]{Object.class}, new Object[]{node});
-                        if (cmdAccess instanceof Boolean && (Boolean) cmdAccess) return true;
+                        // Check GAMEMASTER level (which is what "op-level 2" maps to).
+                        Object perm = createGamerMasterPermission();
+                        if (perm != null) {
+                            Method m = permSet.getClass().getMethod("hasPermission", perm.getClass());
+                            Object granted = m.invoke(permSet, perm);
+                            if (granted instanceof Boolean && (Boolean) granted) return true;
+                        }
                     } catch (Throwable t) { /* fall through */ }
                 }
-                // Fallback: hasPermissionLevel(int) / hasPermission(int)
+                // 1.18-1.21 fallback: hasPermissionLevel(int) / hasPermission(int)
                 try {
                     Object lvl = FabricReflection.callAny(source, "hasPermissionLevel",
                         new Class<?>[]{int.class}, new Object[]{2});
@@ -361,6 +364,26 @@ public class FabricCommandBridge implements CommandBridge {
             }
             return true; // console
         } catch (Throwable t) { return false; }
+    }
+
+    /** Create a {@code Permission.HasCommandLevel(PermissionLevel.GAMEMASTERS)} for op-level >= 2 checks. */
+    private static Object createGamerMasterPermission() {
+        try {
+            Class<?> permCls = FabricReflection.forName("net.minecraft.server.permissions.Permission");
+            Class<?> levelCls = FabricReflection.forName("net.minecraft.server.permissions.PermissionLevel");
+            if (permCls == null || levelCls == null) return null;
+            // PermissionLevel.GAMEMASTERS
+            java.lang.reflect.Field gmField = levelCls.getField("GAMEMASTERS");
+            Object gmLevel = gmField.get(null);
+            if (gmLevel == null) return null;
+            // Permission.HasCommandLevel(PermissionLevel) record constructor
+            Class<?> hasCmdCls = FabricReflection.forName(
+                "net.minecraft.server.permissions.Permission$HasCommandLevel");
+            if (hasCmdCls == null) return null;
+            return hasCmdCls.getDeclaredConstructor(levelCls).newInstance(gmLevel);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     @Override
