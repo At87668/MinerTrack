@@ -6,6 +6,12 @@
 build/
 bin/
 
+# Local
+LuckPerms/
+server-26.1.2/
+Papyrus/
+*.jar
+
 # Wiki
 wiki/
 
@@ -25,3 +31,8 @@ Updates.md
 # Eclipse
 .classpath
 .project
+.settings/
+
+# Test
+test/
+test-tmp/

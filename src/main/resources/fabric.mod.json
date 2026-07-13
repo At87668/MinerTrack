@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "minertrack",
+  "version": "${version}",
+  "name": "MinerTrack",
+  "description": "The Advanced Anti-Xray that you need. Have you ever dreamed of a powerful anti-xray?",
+  "authors": [
+    "Author87668"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/plugin/minertrack",
+    "sources": "https://github.com/At87668/MinerTrack",
+    "issues": "https://github.com/At87668/MinerTrack/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/minertrack/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "preLaunch": [
+      "link.star_dust.MinerTrack.fabric.MinerTrackPreLaunch"
+    ],
+    "server": [
+      "link.star_dust.MinerTrack.fabric.FabricPlatform"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.14.0",
+    "minecraft": ">=1.18.2",
+    "java": ">=17",
+    "fabric-api": "*"
+  },
+  "custom": {
+    "modmenu": {
+      "badges": [
+        "fabric"
+      ]
+    }
+  }
+}

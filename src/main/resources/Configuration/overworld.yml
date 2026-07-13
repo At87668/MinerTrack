@@ -1,3 +1,20 @@
+#### MinerTrack Anti-Xray Configuration - Configuration/{world}.yml ##############################
+#
+#   Welcome to MinerTrack anti-xray configuration file for worlds.
+#   This file defines world-class settings specifically optimized for anti-xray detection.
+#
+#  Useful Links:
+#  Get Update: https://modrinth.com/plugin/minertrack
+#  View Source: https://github.com/At87668/MinerTrack
+#  Report Issue: https://github.com/At87668/MinerTrack/issues
+#  Pull Requset: https://github.com/At87668/MinerTrack/pulls
+#  Visit Wiki: https://minertrack.pages.dev/wiki/
+#  Join Discord: https://discord.gg/MzTea2W9cb
+#
+#  Anyway, thanks for using MinerTrack anti-xray! ❤
+#
+##################################################################################
+
 #############################################################################################################################
 ##        ##   This plugin in order to capture XRayer quickly, might generate false positives for players who are lucky!   ##
 ##  Warn  ##   Be careful not to set the VL threshold too low!                                                             ##
@@ -10,18 +27,23 @@
 ##        ##   Therefore, it is recommended to adjust the configuration to suit your needs.                                ##
 #############################################################################################################################
 
+# ! NOTE: DON'T EDIT CONFIG VERSION !
+_config-version: 3
+
 xray:
   enable: true  # Enable X-ray detection
 
   max-height: 32  # Only detect operations below this height
   
   # The type of ore a player has to mine before being able to be checked
-  # List of allowed materials: https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Material.html
+  # Block identifiers use the canonical Minecraft namespace format
+  # (minecraft:<path>) so the same config works on Bukkit and Fabric.
+  # Reference: https://minecraft.wiki/w/Java_Edition_data_values
   rare-ores:
-    - EMERALD_ORE
-    - DEEPSLATE_EMERALD_ORE
-    - DIAMOND_ORE
-    - DEEPSLATE_DIAMOND_ORE
+    - minecraft:emerald_ore
+    - minecraft:deepslate_emerald_ore
+    - minecraft:diamond_ore
+    - minecraft:deepslate_diamond_ore
   
   # Mined length record limit (Unit: block)
   max_path_length: 500

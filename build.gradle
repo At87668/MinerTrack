@@ -5,9 +5,20 @@ plugins {
 }
 
 group 'link.star_dust'
-version '1.10.1.1'
+version '2.0.0.0-dev'
 
 sourceCompatibility = 17
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+        resources {
+            srcDirs = ['src/main/resources']
+        }
+    }
+}
 
 repositories {
     mavenCentral()
@@ -27,17 +38,61 @@ repositories {
         name = 'Apache'
         url = 'https://maven.aliyun.com/repository/apache-snapshots'
     }
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Fabric Local (loader)'
+        url = 'https://maven.fabricmc.net/'
+    }
 }
 
 dependencies {
+    // Paper / Folia platform
     compileOnly 'dev.folia:folia-api:1.20.1-R0.1-SNAPSHOT'
+    // Fabric platform
+    compileOnly 'net.fabricmc.fabric-api:fabric-api:0.77.0+1.18.2'
+    compileOnly 'net.fabricmc:fabric-loader:0.14.22'
+    // Brigadier is bundled with Minecraft; explicit dep for direct type access
+    compileOnly 'com.mojang:brigadier:1.0.18'
     implementation 'org.bstats:bstats-bukkit:3.0.0'
     implementation 'org.json:json:20230227'
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.2'
+    // SnakeYAML is the YAML 1.1 parser used by FabricYamlLoader.
+    // It MUST be bundled in the shadow JAR (Fabric servers don't
+    // ship SnakeYAML on the classpath, unlike Paper / Spigot
+    // which include it transitively through Bukkit). Declaring
+    // it `implementation` puts it on the shadow JAR's
+    // compileClasspath so the `from { configurations.compileClasspath
+    // ... }` block in the `jar` task pulls it in. The `org/yaml/`
+    // exclude that the v1 legacy jar config used (Paper / Spigot
+    // already ship their own SnakeYAML) is therefore removed
+    // below; on Bukkit the bundled copy is harmless because
+    // Bukkit's classloader resolves Bukkit's own first, and on
+    // Fabric we want our copy to win.
+    implementation 'org.yaml:snakeyaml:2.2'
+    // mapping-io provides ProGuardFileReader and Tiny2FileWriter
+    // for converting Mojang's ProGuard mappings to Tiny v2 format.
+    // The Tiny2FileReader used for injection is bundled inside
+    // Fabric Loader (net.fabricmc.loader.impl.lib.mappingio.*).
+    implementation 'net.fabricmc:mapping-io:0.5.0'
 }
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
+}
+
+processResources {
+    // Expand ${version} in BOTH the Bukkit plugin.yml and the
+    // Fabric mod metadata file. Without the second entry the
+    // fabric.mod.json shipped to a Fabric server would still
+    // contain the literal string "${version}", which Fabric's
+    // loader rejects with the "Could not parse version number
+    // component '${version}'" warning logged at startup.
+    filesMatching(['**/plugin.yml', '**/fabric.mod.json']) {
+        expand(version: project.version.toString())
+    }
 }
 
 jar {
@@ -49,7 +104,16 @@ jar {
             'Implementation-Version': project.version
         )
     }
-    exclude 'META-INF/', 'LICENSE.txt', 'LICENSE', 'org/apache/', 'org/spigotmc/', 'org/bukkit/', 'org/yaml/', 'com/', 'net/', 'mojang-translations/', 'javax/'
+    // The `org/yaml/` exclude was removed: SnakeYAML is now
+    // bundled (see the implementation 'org.yaml:snakeyaml:2.2'
+    // declaration above) so the Fabric platform can parse
+    // YAML without depending on a server-bundled copy.
+    // Bukkit's loader resolves Bukkit's own org/yaml/snakeyaml
+    // first (Paper / Spigot bundle it) so the shadowed copy
+    // is never used on the Bukkit path.
+    exclude 'META-INF/', 'LICENSE.txt', 'LICENSE', 'org/apache/', 'org/spigotmc/', 'org/bukkit/', 'com/', 'net/', 'mojang-translations/', 'javax/'
+    exclude 'net/minecraft/'
+    exclude 'net/fabricmc/'
 
     from {
         configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }

@@ -10,15 +10,20 @@
 ##        ##   Therefore, it is recommended to adjust the configuration to suit your needs.                                ##
 #############################################################################################################################
 
+# ! NOTE: DON'T EDIT CONFIG VERSION !
+_config-version: 3
+
 xray:
   enable: true  # Enable X-ray detection
   
   max-height: 128  # Only detect operations below this height
 
   # The type of ore a player has to mine before being able to be checked
-  # List of allowed materials: https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Material.html
+  # Block identifiers use the canonical Minecraft namespace format
+  # (minecraft:<path>) so the same config works on Bukkit and Fabric.
+  # Reference: https://minecraft.wiki/w/Java_Edition_data_values
   rare-ores:
-    - ANCIENT_DEBRIS
+    - minecraft:ancient_debris
   
   # Mined length record limit (Unit: block)
   max_path_length: 500
