@@ -61,21 +61,20 @@ public class FabricCommandExecutor {
 
     // ── Shared server helpers ────────────────────────────────────────────
 
-    /** Resolve MinecraftServer.getServer() reflectively. */
+    /** Resolve MinecraftServer instance (version-aware). */
     private static Object server() {
-        return FabricReflection.callStatic("net.minecraft.server.MinecraftServer",
-            "getServer", new Class<?>[0], new Object[0]);
+        return FabricReflection.getServer();
     }
 
     /** Resolve ServerPlayerEntity from UUID using the command source's server. */
     private static Object playerByUuid(Object source, UUID uuid) {
         if (source == null) return playerByUuid(uuid);
-        // Try ServerCommandSource.getServer().getPlayerManager().getPlayer(UUID)
-        // which is the most reliable path across MC versions.
         try {
             Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
             if (server == null) return playerByUuid(uuid);
-            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            // MC 26.1+: getPlayerList(); 1.18-1.21: getPlayerManager()
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return playerByUuid(uuid);
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
             if (player != null) return player;
@@ -89,7 +88,8 @@ public class FabricCommandExecutor {
     private static Object playerByUuid(UUID uuid) {
         Object server = server();
         if (server == null) return null;
-        Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+        Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+            new Class<?>[0], new Object[0]);
         if (pm == null) return null;
         return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
     }
@@ -100,7 +100,8 @@ public class FabricCommandExecutor {
         try {
             Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
             if (server == null) return playerByName(name);
-            Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return playerByName(name);
             Object player = FabricReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
             if (player != null) return player;
@@ -114,7 +115,8 @@ public class FabricCommandExecutor {
     private static Object playerByName(String name) {
         Object server = server();
         if (server == null) return null;
-        Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+        Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+            new Class<?>[0], new Object[0]);
         if (pm == null) return null;
         return FabricReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
     }
@@ -194,9 +196,12 @@ public class FabricCommandExecutor {
                     ? FabricReflection.callAny(commandSource, "getServer", new Class<?>[0], new Object[0])
                     : server();
                 if (server == null) return names;
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+                Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                    new Class<?>[0], new Object[0]);
                 if (pm == null) return names;
-                Object list = FabricReflection.call(pm, "getPlayerList", new Class<?>[0], new Object[0]);
+                // MC 26.1+: getPlayers(); 1.18-1.21: getPlayerList()
+                Object list = FabricReflection.callMigrated(pm, "getPlayers", "getPlayerList",
+                    new Class<?>[0], new Object[0]);
                 if (list == null) return names;
                 if (list instanceof java.util.Collection) {
                     for (Object p : (java.util.Collection<?>) list) {
@@ -217,17 +222,24 @@ public class FabricCommandExecutor {
         @Override
         public void kickPlayer(UUID playerId, String reason) {
             try {
-                // Resolve the player via UUID using the static server accessor.
-                // The command source is not available here since kickPlayer is
-                // called asynchronously from the command core.
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
-                Object network = FabricReflection.callAny(player, "networkHandler", new Class<?>[0], new Object[0]);
+                // MC 26.1+: connection field; 1.18-1.21: networkHandler field
+                Object network = FabricReflection.callAny(player, "connection", new Class<?>[0], new Object[0]);
+                if (network == null) {
+                    network = FabricReflection.callAny(player, "networkHandler", new Class<?>[0], new Object[0]);
+                }
                 if (network == null) return;
                 Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
-                FabricReflection.callAny(network, "disconnect", new Class<?>[]{textCls}, new Object[]{text});
+                // MC 26.1+: disconnect(Component); 1.18-1.21: disconnect(Text)
+                try {
+                    FabricReflection.callAny(network, "disconnect", new Class<?>[]{textCls}, new Object[]{text});
+                } catch (Throwable t1) {
+                    // On older MC, "disconnect" may take DisconnectionDetails; try onDisconnect
+                    FabricReflection.callAny(network, "onDisconnect", new Class<?>[]{textCls}, new Object[]{text});
+                }
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
             }
@@ -247,13 +259,16 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
-                Object world = FabricReflection.callAny(player, "getWorld", new Class<?>[0], new Object[0]);
+                // MC 26.1+: level(); 1.18-1.21: getWorld()/getEntityWorld()
+                Object world = FabricReflection.callMigrated(player, "level", "getWorld",
+                    new Class<?>[0], new Object[0]);
                 if (world == null) return;
                 Object registryKey = FabricReflection.callAny(world, "getRegistryKey", new Class<?>[0], new Object[0]);
                 if (registryKey == null) return;
                 Object server = server();
                 if (server == null) return;
-                Object serverWorld = FabricReflection.call(server, "getWorld",
+                // MC 26.1+: getLevel(ResourceKey); 1.18-1.21: getWorld(ResourceKey)
+                Object serverWorld = FabricReflection.callMigrated(server, "getLevel", "getWorld",
                     new Class<?>[]{registryKey.getClass()}, new Object[]{registryKey});
                 if (serverWorld == null) return;
                 // Cosmetic-only lightning strike; created via reflection
@@ -284,12 +299,20 @@ public class FabricCommandExecutor {
             try {
                 Object server = server();
                 if (server == null) return;
-                Object pm = FabricReflection.call(server, "getPlayerManager", new Class<?>[0], new Object[0]);
+                Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                    new Class<?>[0], new Object[0]);
                 if (pm == null) return;
                 Object text = literalText(message);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
-                FabricReflection.call(pm, "broadcast", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
+                // MC 26.1+: broadcastSystemMessage(Component, boolean); 1.18-1.21: broadcast(Text, boolean)
+                try {
+                    FabricReflection.call(pm, "broadcastSystemMessage",
+                        new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
+                } catch (Throwable t1) {
+                    FabricReflection.call(pm, "broadcast",
+                        new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
+                }
             } catch (Throwable t) {
                 // No players online.
             }
