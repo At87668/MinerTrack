@@ -188,15 +188,14 @@ public class FabricCommandBridge implements CommandBridge {
             if (source == null) return;
             Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
             if (server == null) return;
-            // MC 26.1+: getCommands().performCommand(); 1.18-1.21: getCommandManager().executeWithPrefix()
-            Object cmdManager = FabricReflection.callAny(server, "getCommands", new Class<?>[0], new Object[0]);
-            if (cmdManager == null) {
-                cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
-            }
+            // MC 26.1+: getCommands(); 1.18-1.21: getCommandManager()
+            Object cmdManager = FabricReflection.callMigrated(server, "getCommands", "getCommandManager",
+                new Class<?>[0], new Object[0]);
             if (cmdManager == null) return;
-            // Try performCommand first (MC 26.1+), fall back to executeWithPrefix (1.18-1.21)
+            // MC 26.1+: performPrefixedCommand(CommandSourceStack, String)
+            // 1.18-1.21: executeWithPrefix(CommandSourceStack, String)
             try {
-                FabricReflection.callAny(cmdManager, "performCommand",
+                FabricReflection.callAny(cmdManager, "performPrefixedCommand",
                     new Class<?>[]{source.getClass(), String.class},
                     new Object[]{source, command});
             } catch (Throwable t1) {
