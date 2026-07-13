@@ -38,6 +38,9 @@ final class FabricReflection {
     // Lazily initialised Mojmap resolver (only for 1.18–1.21.x, used for field lookups)
     private static InternalMappingResolver mojmapResolver;
 
+    /** Cached MinecraftServer instance — MC 26.1+ has no static getServer(). Set by SERVER_STARTED. */
+    private static volatile Object cachedServer;
+
     /** Determine the runtime namespace based on environment */
     private static String getRuntimeNamespace() {
         if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
@@ -47,6 +50,94 @@ final class FabricReflection {
     }
 
     private FabricReflection() {}
+
+    // ── MC 26.1.2 API migration ──────────────────────────────────────────
+
+    /**
+     * Call a method on the MinecraftServer, trying MC 26.1+ name first,
+     * then the legacy 1.18-1.21 name.
+     */
+    static Object callServer(String mc26Method, String legacyMethod, Class<?>[] paramTypes, Object[] args) {
+        Object server = getServer();
+        if (server == null) return null;
+        // Try MC 26.1+ method name first
+        Object result = call(server, mc26Method, paramTypes, args);
+        if (result != null || !mc26Method.equals(legacyMethod)) {
+            // If call returned non-null or methods differ, try legacy as fallback
+            try {
+                if (result == null) {
+                    result = call(server, legacyMethod, paramTypes, args);
+                }
+            } catch (Throwable t) { /* fall through */ }
+            return result;
+        }
+        return null;
+    }
+
+    /**
+     * Call a method on an object, trying the MC 26.1+ name first.
+     * Handles common MC version migrations.
+     */
+    static Object callMigrated(Object target, String mc26Method, String legacyMethod,
+                               Class<?>[] paramTypes, Object[] args) {
+        if (target == null) return null;
+        // Try MC 26.1+ method first
+        try {
+            Method m = findMethod(target.getClass(), mc26Method, paramTypes);
+            if (m != null) {
+                m.setAccessible(true);
+                return m.invoke(target, args);
+            }
+        } catch (Throwable t) { /* fall through */ }
+        // Fall back to legacy method name
+        return call(target, legacyMethod, paramTypes, args);
+    }
+
+    /** Common API migrations as a Map for method name resolution. */
+    private static final java.util.Map<String, String> API_MIGRATIONS = new java.util.HashMap<>();
+    static {
+        API_MIGRATIONS.put("getPlayerManager", "getPlayerList");
+        API_MIGRATIONS.put("getCommandManager", "getCommands");
+        API_MIGRATIONS.put("getWorlds", "getAllLevels");
+        API_MIGRATIONS.put("getWorld", "getLevel");
+        API_MIGRATIONS.put("getCommandSource", "createCommandSourceStack");
+        API_MIGRATIONS.put("withSilent", "withSuppressedOutput");
+        API_MIGRATIONS.put("getTicks", "getTickCount");
+        API_MIGRATIONS.put("isExecutedByPlayer", "isPlayer");
+        API_MIGRATIONS.put("hasPermissionLevel", "hasPermission");
+        API_MIGRATIONS.put("executeWithPrefix", "performCommand");
+    }
+
+    /**
+     * Try to resolve a method on a class by name, automatically trying
+     * MC 26.1+ migration if the original name fails.
+     */
+    static Method findMethodWithMigration(Class<?> cls, String methodName, Class<?>[] paramTypes) {
+        Method m = findMethod(cls, methodName, paramTypes);
+        if (m != null) return m;
+        String migrated = API_MIGRATIONS.get(methodName);
+        if (migrated != null) {
+            return findMethod(cls, migrated, paramTypes);
+        }
+        return null;
+    }
+
+    /** Called by FabricDetectionBridge when SERVER_STARTED fires. */
+    static void setCachedServer(Object server) {
+        cachedServer = server;
+    }
+
+    /**
+     * Get the MinecraftServer instance. MC 26.1+ has no static {@code getServer()}.
+     * Uses cached reference (set during SERVER_STARTED) with a
+     * {@code static getServer()} fallback for older versions.
+     */
+    static Object getServer() {
+        if (cachedServer != null) return cachedServer;
+        // Fallback for 1.18–1.21.x which have static getServer()
+        return callStatic("net.minecraft.server.MinecraftServer",
+            "getServer", new Class<?>[0], new Object[0]);
+    }
 
     /**
      * Get or create the Mojmap resolver. Returns null if Mojmap is not required
