@@ -32,15 +32,24 @@ public class FabricPlatform implements DedicatedServerModInitializer {
     @Override
     public void onInitializeServer() {
         adapter = new FabricAdapter();
+
+        // Load config BEFORE initialising the debug logger so that
+        // the `debug: true` key in config.yml is already on disk
+        // when CoreLogger checks it. FabricAdapter.isDebugEnabled()
+        // reads the file directly; if the file doesn't exist yet
+        // the default (false) is used and debug lines are silently
+        // dropped for the entire server session.
+        violationManager = new FabricViolationManager(adapter);
+        detectionBridge = new FabricDetectionBridge(adapter, adapter.getYamlLoader());
+        detectionBridge.loadGroupConfigs();
+        adapter.clearDebugCache(); // force re-read config.yml
+
         DebugConfig debugConfig = () -> adapter.isDebugEnabled();
         CoreLogger.init(debugConfig, java.util.logging.Logger.getLogger("MinerTrack"));
         if (adapter.isDebugEnabled()) {
             adapter.info("[MinerTrack:DEBUG] Debug mode enabled.");
         }
 
-        violationManager = new FabricViolationManager(adapter);
-        detectionBridge = new FabricDetectionBridge(adapter, adapter.getYamlLoader());
-        detectionBridge.loadGroupConfigs();
         miningCore = new MiningCore(detectionBridge, violationManager);
         detectionBridge.setMiningCore(miningCore);
 
@@ -109,11 +118,44 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         });
 
         arg.suggests((SuggestionProvider) (ctx, builder) -> {
-            String[] split = builder.getInput().split(" ", 2);
-            String prefix = split.length > 1 ? split[1] : "";
+            // The greedy-string argument captures ALL tokens after the
+            // command name. Example: /mt check s → greedy = "check s".
+            // If we suggest "steve", Brigadier replaces the *entire* greedy
+            // string with "steve", losing "check". Fix: the completion
+            // handler should only replace the LAST token (the one being
+            // completed), leaving the earlier tokens unchanged.
+            String greedy = builder.getInput();
+            // Strip the leading command name and space (e.g. "/mt " → "check s")
+            int spaceIdx = greedy.indexOf(' ');
+            if (spaceIdx < 0) {
+                // Only the command name, no args → suggest subcommands
+                List<String> completions = commandExecutor.onTabComplete(
+                    ctx.getSource(), new String[0]);
+                if (completions != null) completions.forEach(builder::suggest);
+                return builder.buildFuture();
+            }
+            String argsStr = greedy.substring(spaceIdx + 1);
+            String[] fullArgs = parseArgs(argsStr);
             List<String> completions = commandExecutor.onTabComplete(
-                ctx.getSource(), parseArgs(prefix));
-            if (completions != null) completions.forEach(builder::suggest);
+                ctx.getSource(), fullArgs);
+
+            if (completions != null && fullArgs.length >= 1) {
+                // Rebuild the prefix that must be preserved: all tokens
+                // before the last one, plus a trailing space.
+                StringBuilder prefix = new StringBuilder();
+                for (int i = 0; i < fullArgs.length - 1; i++) {
+                    if (i > 0) prefix.append(' ');
+                    prefix.append(fullArgs[i]);
+                }
+                if (prefix.length() > 0) prefix.append(' ');
+                final String preserved = prefix.toString();
+
+                for (String c : completions) {
+                    builder.suggest(preserved + c);
+                }
+            } else if (completions != null) {
+                completions.forEach(builder::suggest);
+            }
             return builder.buildFuture();
         });
 
