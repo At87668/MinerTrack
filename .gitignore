@@ -5,9 +5,12 @@
 !**/src/test/**/build/
 build/
 bin/
+
+# Local
 LuckPerms/
 server-26.1.2/
 Papyrus/
+*.jar
 
 # Wiki
 wiki/
