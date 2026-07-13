@@ -94,10 +94,11 @@ public class FabricDetectionBridge implements DetectionBridge {
     private String dimensionIdForWorld(Object world) {
         if (world == null) return null;
         try {
-            Object registryKey = FabricReflection.callAny(world, "getRegistryKey", new Class<?>[0], new Object[0]);
+            // MC 26.1+: Level.dimension(); 1.18-1.21: getRegistryKey()
+            Object registryKey = FabricReflection.callDimension(world);
             if (registryKey == null) return null;
-            Object value = FabricReflection.callAny(registryKey, "getValue", new Class<?>[0], new Object[0]);
-            return value == null ? null : value.toString();
+            Object value = FabricReflection.callResourceKeyValue(registryKey);
+            return value == null ? null : FabricReflection.readString(value);
         } catch (Throwable t) {
             return null;
         }
@@ -121,29 +122,14 @@ public class FabricDetectionBridge implements DetectionBridge {
             if (pos == null) return BlockId.AIR;
             Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
             if (state == null) return BlockId.AIR;
+            // Delegate the block-id resolution to FabricReflection.getBlockId()
+            // which uses DefaultedRegistry.getKey(T) / MappedRegistry.getKey(T)
+            // to return the canonical "minecraft:path" id. Falls back to the
+            // builtInRegistryHolder().getKey() chain on older MC versions.
             Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null) return BlockId.AIR;
-            // Resolve block registry: try BuiltInRegistries.BLOCK (MC 26.1+),
-            // Registries.BLOCK (MC 1.19-1.21), Registries.BLOCK_REGISTRY (MC 1.18).
-            Object blockRegistry = tryResolveBlockRegistry();
-            if (blockRegistry == null) return BlockId.AIR;
-            Object id = FabricReflection.callAny(blockRegistry, "getId",
-                new Class<?>[]{block.getClass()}, new Object[]{block});
-            if (id == null) {
-                // getId may return int on newer MC; try getResourceKey
-                Object rv = FabricReflection.callAny(blockRegistry, "getResourceKey",
-                    new Class<?>[]{block.getClass()}, new Object[]{block});
-                if (rv instanceof java.util.Optional) {
-                    java.util.Optional<?> opt = (java.util.Optional<?>) rv;
-                    if (opt.isPresent()) {
-                        Object key = opt.get();
-                        Object loc = FabricReflection.callAny(key, "location", new Class<?>[0], new Object[0]);
-                        if (loc != null) return loc.toString();
-                    }
-                }
-                return BlockId.AIR;
-            }
-            return id.toString();
+            String id = FabricReflection.getBlockId(block);
+            return (id != null && !id.isEmpty()) ? id : BlockId.AIR;
         } catch (Exception e) {
             return BlockId.AIR;
         }
@@ -375,10 +361,10 @@ public class FabricDetectionBridge implements DetectionBridge {
             }
             if (!(worlds instanceof Iterable)) return null;
             for (Object w : (Iterable<?>) worlds) {
-                Object registryKey = FabricReflection.callAny(w, "getRegistryKey", new Class<?>[0], new Object[0]);
+                Object registryKey = FabricReflection.callDimension(w);
                 if (registryKey == null) continue;
-                Object value = FabricReflection.callAny(registryKey, "getValue", new Class<?>[0], new Object[0]);
-                if (value != null && worldKey.equalsIgnoreCase(value.toString())) {
+                Object value = FabricReflection.callResourceKeyValue(registryKey);
+                if (value != null && worldKey.equalsIgnoreCase(FabricReflection.readString(value))) {
                     return w;
                 }
             }
@@ -388,44 +374,7 @@ public class FabricDetectionBridge implements DetectionBridge {
     }
 
     // ── Block registry resolution ────────────────────────────────────
-
-    /**
-     * Resolve the Block registry instance at runtime, trying all known
-     * MC version paths:
-     * <ol>
-     *   <li>{@code BuiltInRegistries.BLOCK} (MC 26.1+, {@code core/registries} package)
-     *   <li>{@code Registries.BLOCK} (MC 1.19-1.21, {@code core/registries} package)
-     *   <li>{@code Registries.BLOCK} (MC 1.18, {@code registry} package)
-     * </ol>
-     */
-    private static Object tryResolveBlockRegistry() {
-        // 1. MC 26.1+: net.minecraft.core.registries.BuiltInRegistries.BLOCK
-        try {
-            Class<?> birCls = FabricReflection.forName("net.minecraft.core.registries.BuiltInRegistries");
-            if (birCls != null) {
-                java.lang.reflect.Field f = birCls.getField("BLOCK");
-                return f.get(null);
-            }
-        } catch (Throwable t) { /* fall through */ }
-
-        // 2. MC 1.19-1.21: net.minecraft.core.registries.Registries.BLOCK
-        try {
-            Class<?> rCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
-            if (rCls != null) {
-                java.lang.reflect.Field f = rCls.getField("BLOCK");
-                return f.get(null);
-            }
-        } catch (Throwable t) { /* fall through */ }
-
-        // 3. MC 1.18: net.minecraft.core.registries.Registries (reverse-mapped via tryMcMigration)
-        try {
-            Class<?> rCls = FabricReflection.forName("net.minecraft.core.registries.Registries");
-            if (rCls != null) {
-                java.lang.reflect.Field f = rCls.getField("BLOCK");
-                return f.get(null);
-            }
-        } catch (Throwable t) { /* fall through */ }
-
-        return null;
-    }
+    // (Block-id resolution is now handled by FabricReflection.getBlockId(),
+    // which uses DefaultedRegistry.getKey(T) / MappedRegistry.getKey(T)
+    // and falls back to the builtInRegistryHolder chain.)
 }
