@@ -444,15 +444,19 @@ final class FabricReflection {
     }
 
     /**
-     * Get the value (ResourceLocation) of a {@code ResourceKey} / registry key.
-     * Tries the modern method first, then the legacy one.
+     * Get the value (Identifier / ResourceLocation) of a {@code ResourceKey}.
+     * MC 26.1+ renamed {@code location()} to {@code identifier()}.
+     * 1.18-1.21 used {@code getValue()}. Tries all three in order.
      */
     static Object callResourceKeyValue(Object key) {
         if (key == null) return null;
-        // ResourceKey has location() returning Identifier (ResourceLocation)
-        // and a legacy identifier() method on older versions.
-        Object r = callAny(key, "location", new Class<?>[0], new Object[0]);
+        // 1) MC 26.1+: ResourceKey.identifier()
+        Object r = callAny(key, "identifier", new Class<?>[0], new Object[0]);
         if (r != null) return r;
+        // 2) MC 1.19-1.21: ResourceKey.location() (returned Identifier)
+        r = callAny(key, "location", new Class<?>[0], new Object[0]);
+        if (r != null) return r;
+        // 3) MC 1.18: ResourceKey.getValue() (returned Identifier)
         return callAny(key, "getValue", new Class<?>[0], new Object[0]);
     }
 
@@ -560,7 +564,7 @@ final class FabricReflection {
                         java.util.Optional<?> opt = (java.util.Optional<?>) rv;
                         if (opt.isPresent()) {
                             Object key = opt.get();
-                            Object loc = callAny(key, "location", new Class<?>[0], new Object[0]);
+                            Object loc = callResourceKeyValue(key);
                             if (loc != null) {
                                 String s = readString(loc);
                                 if (s != null) return s;
@@ -591,7 +595,7 @@ final class FabricReflection {
             if (holder != null) {
                 Object key = callAny(holder, "getKey", new Class<?>[0], new Object[0]);
                 if (key != null) {
-                    Object loc = callAny(key, "location", new Class<?>[0], new Object[0]);
+                    Object loc = callResourceKeyValue(key);
                     if (loc != null) {
                         String s = readString(loc);
                         if (s != null) return s;
