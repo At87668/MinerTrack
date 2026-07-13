@@ -81,7 +81,13 @@ public class ViolationEngine {
             try {
                 for (java.util.Map.Entry<String, Object> entry : section.entrySet()) {
                     try {
-                        int threshold = Integer.parseInt(entry.getKey());
+                        // SnakeYAML parses numeric YAML keys as Integer, not
+                        // String. entry.getKey() is typed String (erased to
+                        // Object at runtime), so Integer.parseInt(entry.getKey())
+                        // would throw ClassCastException when the key is
+                        // actually an Integer. Use String.valueOf() to safely
+                        // convert any key type to String first.
+                        int threshold = Integer.parseInt(String.valueOf(entry.getKey()));
                         if (threshold > oldLevel && threshold <= newLevel) {
                             Object commandsRaw = entry.getValue();
                             if (commandsRaw instanceof Iterable<?>) {
