@@ -16,7 +16,9 @@ import java.util.function.Supplier;
  * for player-facing info, {@code sendFailure(Text)} for errors, and
  * {@code sendMessage(Text, boolean)} for player entities.
  *
- * <p>Permission: Fabric Permission API (LP) -> op-level -> console bypass.
+ * <p>Permission: fabric-permissions-api (delegates to LuckPerms if installed,
+ * falls back to op-level >= 2 otherwise). Called via reflection to avoid
+ * compile-time coupling to Minecraft types that aren't on our classpath.
  * Text: Text.literal() (1.19.3+) / LiteralText (1.18-1.19.2) fallback.
  */
 public class FabricCommandBridge implements CommandBridge {
@@ -333,83 +335,49 @@ public class FabricCommandBridge implements CommandBridge {
     }
 
     // ── Permission checks ──────────────────────────────────────────
+    //
+    // Use Lucko's fabric-permissions-api (me.lucko.fabric.api.permissions.v0.Permissions)
+    // via reflection. This is a zero-weight API that delegates to LuckPerms when
+    // installed, or falls back to op-level >= 2. Called via reflection to avoid
+    // compile-time coupling to Minecraft types (GameProfile, ServerCommandSource)
+    // that aren't on our classpath.
+    //
+    // The jar is bundled as an `implementation` dep (me.lucko:fabric-permissions-api:0.3.3)
+    // and shaded into the shadow JAR, so the class is available at runtime on Fabric.
 
-    /** Resolve Fabric Permission API Actor class (lazy lookup). LP hooks in automatically. */
-    private static Class<?> resolveActorCls() {
-        return FabricReflection.forName("net.fabricmc.fabric.api.permission.v1.Actor");
+    /** Permissions.check(Object source, String node, int defaultOpLevel) — cached Method ref. */
+    private static volatile Method permissionsCheckMethod;
+
+    private static Method getPermissionsCheckMethod() {
+        if (permissionsCheckMethod != null) return permissionsCheckMethod;
+        try {
+            Class<?> permsCls = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
+            permissionsCheckMethod = permsCls.getMethod("check", Object.class, String.class, int.class);
+        } catch (Throwable t) {
+            permissionsCheckMethod = null;
+        }
+        return permissionsCheckMethod;
     }
 
-    private boolean checkFabricPermission(Object target, String node) {
-        Class<?> actorCls = resolveActorCls();
-        if (actorCls == null) return false;
+    /**
+     * Call {@code Permissions.check(source, node, defaultOpLevel)} reflectively.
+     * Returns true if the source has the permission (via LP or op-level fallback).
+     */
+    private static boolean checkPermission(Object source, String node, int defaultOpLevel) {
+        Method m = getPermissionsCheckMethod();
+        if (m == null) return false;
         try {
-            Object ctx = FabricReflection.callStatic(actorCls.getName(), "suspendingFallback",
-                new Class<?>[]{Object.class}, new Object[]{target});
-            if (ctx == null) return false;
-            Object result = FabricReflection.callAny(ctx, "checkPermission",
-                new Class<?>[]{String.class, int.class}, new Object[]{node, 2});
+            Object result = m.invoke(null, source, node, defaultOpLevel);
             return result instanceof Boolean && (Boolean) result;
-        } catch (Throwable t) { return false; }
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @Override
     public boolean hasPermission(String node) {
         if (source == null) return false;
-        // 1) Fabric Permission API (LuckPerms if installed)
-        if (checkFabricPermission(source, node)) return true;
-        // 2) op-level check
-        try {
-            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
-                new Class<?>[0], new Object[0]);
-            if (r instanceof Boolean && (Boolean) r) {
-                // MC 26.1+: permissions() returns PermissionSet; check via Permission objects.
-                Object permSet = FabricReflection.callAny(source, "permissions", new Class<?>[0], new Object[0]);
-                if (permSet != null) {
-                    try {
-                        // Check GAMEMASTER level (which is what "op-level 2" maps to).
-                        Object perm = createGamerMasterPermission();
-                        if (perm != null) {
-                            Method m = permSet.getClass().getMethod("hasPermission", perm.getClass());
-                            Object granted = m.invoke(permSet, perm);
-                            if (granted instanceof Boolean && (Boolean) granted) return true;
-                        }
-                    } catch (Throwable t) { /* fall through */ }
-                }
-                // 1.18-1.21 fallback: hasPermissionLevel(int) / hasPermission(int)
-                try {
-                    Object lvl = FabricReflection.callAny(source, "hasPermissionLevel",
-                        new Class<?>[]{int.class}, new Object[]{2});
-                    if (lvl instanceof Boolean && (Boolean) lvl) return true;
-                } catch (Throwable t2) {
-                    try {
-                        Object lvl2 = FabricReflection.callAny(source, "hasPermission",
-                            new Class<?>[]{int.class}, new Object[]{2});
-                        if (lvl2 instanceof Boolean && (Boolean) lvl2) return true;
-                    } catch (Throwable t3) { /* fall through */ }
-                }
-            }
-            return true; // console
-        } catch (Throwable t) { return false; }
-    }
-
-    /** Create a {@code Permission.HasCommandLevel(PermissionLevel.GAMEMASTERS)} for op-level >= 2 checks. */
-    private static Object createGamerMasterPermission() {
-        try {
-            Class<?> permCls = FabricReflection.forName("net.minecraft.server.permissions.Permission");
-            Class<?> levelCls = FabricReflection.forName("net.minecraft.server.permissions.PermissionLevel");
-            if (permCls == null || levelCls == null) return null;
-            // PermissionLevel.GAMEMASTERS
-            java.lang.reflect.Field gmField = levelCls.getField("GAMEMASTERS");
-            Object gmLevel = gmField.get(null);
-            if (gmLevel == null) return null;
-            // Permission.HasCommandLevel(PermissionLevel) record constructor
-            Class<?> hasCmdCls = FabricReflection.forName(
-                "net.minecraft.server.permissions.Permission$HasCommandLevel");
-            if (hasCmdCls == null) return null;
-            return hasCmdCls.getDeclaredConstructor(levelCls).newInstance(gmLevel);
-        } catch (Throwable t) {
-            return null;
-        }
+        return checkPermission(source, node, 2);
     }
 
     @Override
@@ -422,29 +390,10 @@ public class FabricCommandBridge implements CommandBridge {
             if (pm == null) return false;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return false;
-            if (checkFabricPermission(player, node)) return true;
-            // MC 26.1+: isOp(NameAndId), uses nameAndId(); 1.18-1.21: getGameProfile()→isOp()
-            try {
-                Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
-                if (nameAndId != null) {
-                    Object isOp = FabricReflection.call(pm, "isOp",
-                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
-                    if (isOp instanceof Boolean) return (Boolean) isOp;
-                }
-            } catch (Throwable t1) {
-                // Fallback: getGameProfile() → isOp(GameProfile)
-                try {
-                    Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                        new Class<?>[0], new Object[0]);
-                    if (gameProfile != null) {
-                        Object isOp = FabricReflection.call(pm, "isOp",
-                            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                        if (isOp instanceof Boolean) return (Boolean) isOp;
-                    }
-                } catch (Throwable t2) { /* fall through */ }
-            }
+            return checkPermission(player, node, 2);
+        } catch (Throwable t) {
             return false;
-        } catch (Throwable t) { return false; }
+        }
     }
 
     // ── Text/Component class resolution ─────────────────────────────

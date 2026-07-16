@@ -8,7 +8,7 @@ bin/
 
 # Local
 LuckPerms/
-server-26.1.2/
+server-*/
 Papyrus/
 *.jar
 
