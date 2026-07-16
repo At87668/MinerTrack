@@ -11,6 +11,7 @@ LuckPerms/
 server-*/
 Papyrus/
 *.jar
+tools/
 
 # Wiki
 wiki/
