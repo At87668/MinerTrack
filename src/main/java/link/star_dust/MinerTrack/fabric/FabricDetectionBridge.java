@@ -57,7 +57,7 @@ public class FabricDetectionBridge implements DetectionBridge {
             // Cache the server instance — MC 26.1+ has no static getServer().
             FabricReflection.setCachedServer(server);
             try {
-                // MC 26.1+: getAllLevels(); 1.18-1.21: getWorlds()
+                // 1.18.2+: getAllLevels(); also try getWorlds() for older mappings
                 Object worlds = FabricReflection.callAny(server, "getAllLevels", new Class<?>[0], new Object[0]);
                 if (worlds == null || !(worlds instanceof Iterable)) {
                     worlds = FabricReflection.callAny(server, "getWorlds", new Class<?>[0], new Object[0]);
