@@ -421,55 +421,76 @@ public class FabricCommandBridge implements CommandBridge {
         return permissionsApiAvailable;
     }
 
-    /** Permissions.check(Object source, String node, int defaultOpLevel) — cached Method ref. */
+    /**
+     * Permissions.check() has multiple typed overloads (CommandSourceStack,
+     * Entity, ServerCommandSource, etc.) — none accept plain Object.
+     * We cannot know the exact source type at compile time, so we find
+     * the first 3-arg "check" method whose param[1] is String and param[2]
+     * is int/Integer, then invoke it directly.
+     */
     private static volatile Method permissionsCheckMethod;
 
-    private static Method getPermissionsCheckMethod() {
+    private static Method findPermissionsCheckMethod() {
         if (permissionsCheckMethod != null) return permissionsCheckMethod;
         if (!isPermissionsApiAvailable()) return null;
         try {
             Class<?> permsCls = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
-            permissionsCheckMethod = permsCls.getMethod("check", Object.class, String.class, int.class);
+            for (Method m : permsCls.getDeclaredMethods()) {
+                if (!m.getName().equals("check")) continue;
+                Class<?>[] pts = m.getParameterTypes();
+                if (pts.length != 3) continue;
+                if (pts[1] != String.class) continue;
+                if (pts[2] != int.class && pts[2] != Integer.class) continue;
+                // Found: check(?, String, int)
+                permissionsCheckMethod = m;
+                return m;
+            }
         } catch (Throwable t) {
             permissionsCheckMethod = null;
         }
-        return permissionsCheckMethod;
+        return null;
     }
 
     /**
      * Call {@code Permissions.check(source, node, defaultOpLevel)} reflectively.
      * Returns true if the source has the permission (via LP or op-level fallback).
-     * Falls back to vanilla op-level when the API is absent.
+     * Falls back to vanilla op-level when the API is absent or invocation fails.
      */
     private static boolean checkPermission(Object source, String node, int defaultOpLevel) {
-        Method m = getPermissionsCheckMethod();
+        Method m = findPermissionsCheckMethod();
         if (m != null) {
             try {
                 Object result = m.invoke(null, source, node, defaultOpLevel);
                 return result instanceof Boolean && (Boolean) result;
             } catch (Throwable t) {
-                return false;
+                // Invocation failed — fall through to vanilla check
             }
         }
-        // fabric-permissions-api not on classpath — fall back to vanilla op-level.
+        // fabric-permissions-api not on classpath, or invocation failed —
+        // fall back to vanilla op-level.
         return checkVanillaOpLevel(source, defaultOpLevel);
     }
 
-    /** Vanilla op-level check used when fabric-permissions-api is absent. */
+    /**
+     * Vanilla op-level check used when fabric-permissions-api is absent.
+     *
+     * <p>Uses plain {@link Class#getMethod(String, Class...)} (which traverses
+     * the superclass hierarchy) to try the two common method names across all
+     * Minecraft versions.  This avoids the Mojmap-resolution layer entirely
+     * so the check works regardless of mapping namespace or version.</p>
+     */
     private static boolean checkVanillaOpLevel(Object source, int minLevel) {
-        try {
-            // 1.18-1.21: hasPermissionLevel(int) / hasPermission(int)
-            Object r = FabricReflection.callAny(source, "hasPermissionLevel",
-                new Class<?>[]{int.class}, new Object[]{minLevel});
-            if (r instanceof Boolean && (Boolean) r) return true;
-        } catch (Throwable t) { /* fall through */ }
-        try {
-            Object r = FabricReflection.callAny(source, "hasPermission",
-                new Class<?>[]{int.class}, new Object[]{minLevel});
-            return r instanceof Boolean && (Boolean) r;
-        } catch (Throwable t) {
-            return false;
+        if (source == null) return false;
+        // Try common method names. Mojmap uses hasPermission(int), Yarn uses
+        // hasPermissionLevel(int). getMethod() walks superclasses too.
+        for (String name : new String[]{"hasPermission", "hasPermissionLevel"}) {
+            try {
+                Method m = source.getClass().getMethod(name, int.class);
+                Object r = m.invoke(source, minLevel);
+                if (r instanceof Boolean && (Boolean) r) return true;
+            } catch (Throwable t) { /* try next name */ }
         }
+        return false;
     }
 
     @Override
