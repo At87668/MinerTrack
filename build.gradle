@@ -72,10 +72,11 @@ dependencies {
     // Bukkit's classloader resolves Bukkit's own first, and on
     // Fabric we want our copy to win.
     implementation 'org.yaml:snakeyaml:2.2'
-    // fabric-permissions-api: delegates to LuckPerms (or op-level fallback)
-    // on Fabric. Bundled in the shadow JAR so Fabric servers without LP
-    // still get working permission checks via op-level.
-    implementation 'me.lucko:fabric-permissions-api:0.3.3'
+    // fabric-permissions-api: delegates to LuckPerms (or op-level fallback).
+    // compileOnly — NOT bundled in the JAR. LuckPerms provides its own
+    // copy of this API that matches the server's Minecraft version.
+    // The fabric.mod.json "recommends" luckperms as a soft dependency.
+    compileOnly 'me.lucko:fabric-permissions-api:0.3.3'
     // mapping-io provides ProGuardFileReader and Tiny2FileWriter
     // for converting Mojang's ProGuard mappings to Tiny v2 format.
     // The Tiny2FileReader used for injection is bundled inside
@@ -118,6 +119,7 @@ jar {
     exclude 'META-INF/', 'LICENSE.txt', 'LICENSE', 'org/apache/', 'org/spigotmc/', 'org/bukkit/', 'com/', 'net/', 'mojang-translations/', 'javax/'
     exclude 'net/minecraft/'
     exclude 'net/fabricmc/'
+    exclude 'me/lucko/'
 
     from {
         configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }

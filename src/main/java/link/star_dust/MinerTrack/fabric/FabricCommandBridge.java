@@ -342,14 +342,30 @@ public class FabricCommandBridge implements CommandBridge {
     // compile-time coupling to Minecraft types (GameProfile, ServerCommandSource)
     // that aren't on our classpath.
     //
-    // The jar is bundled as an `implementation` dep (me.lucko:fabric-permissions-api:0.3.3)
-    // and shaded into the shadow JAR, so the class is available at runtime on Fabric.
+    // fabric-permissions-api is compileOnly — NOT bundled in the JAR.
+    // LuckPerms ships its own version-matched copy at runtime. When LP is absent,
+    // we fall back to vanilla op-level checks.
+
+    /** Cached: true if me.lucko.fabric.api.permissions.v0.Permissions is on the classpath. */
+    private static volatile Boolean permissionsApiAvailable;
+
+    private static boolean isPermissionsApiAvailable() {
+        if (permissionsApiAvailable != null) return permissionsApiAvailable;
+        try {
+            Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
+            permissionsApiAvailable = true;
+        } catch (Throwable t) {
+            permissionsApiAvailable = false;
+        }
+        return permissionsApiAvailable;
+    }
 
     /** Permissions.check(Object source, String node, int defaultOpLevel) — cached Method ref. */
     private static volatile Method permissionsCheckMethod;
 
     private static Method getPermissionsCheckMethod() {
         if (permissionsCheckMethod != null) return permissionsCheckMethod;
+        if (!isPermissionsApiAvailable()) return null;
         try {
             Class<?> permsCls = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
             permissionsCheckMethod = permsCls.getMethod("check", Object.class, String.class, int.class);
@@ -362,13 +378,34 @@ public class FabricCommandBridge implements CommandBridge {
     /**
      * Call {@code Permissions.check(source, node, defaultOpLevel)} reflectively.
      * Returns true if the source has the permission (via LP or op-level fallback).
+     * Falls back to vanilla op-level when the API is absent.
      */
     private static boolean checkPermission(Object source, String node, int defaultOpLevel) {
         Method m = getPermissionsCheckMethod();
-        if (m == null) return false;
+        if (m != null) {
+            try {
+                Object result = m.invoke(null, source, node, defaultOpLevel);
+                return result instanceof Boolean && (Boolean) result;
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+        // fabric-permissions-api not on classpath — fall back to vanilla op-level.
+        return checkVanillaOpLevel(source, defaultOpLevel);
+    }
+
+    /** Vanilla op-level check used when fabric-permissions-api is absent. */
+    private static boolean checkVanillaOpLevel(Object source, int minLevel) {
         try {
-            Object result = m.invoke(null, source, node, defaultOpLevel);
-            return result instanceof Boolean && (Boolean) result;
+            // 1.18-1.21: hasPermissionLevel(int) / hasPermission(int)
+            Object r = FabricReflection.callAny(source, "hasPermissionLevel",
+                new Class<?>[]{int.class}, new Object[]{minLevel});
+            if (r instanceof Boolean && (Boolean) r) return true;
+        } catch (Throwable t) { /* fall through */ }
+        try {
+            Object r = FabricReflection.callAny(source, "hasPermission",
+                new Class<?>[]{int.class}, new Object[]{minLevel});
+            return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) {
             return false;
         }

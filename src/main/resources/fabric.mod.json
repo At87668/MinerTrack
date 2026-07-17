@@ -29,6 +29,9 @@
     "java": ">=17",
     "fabric-api": "*"
   },
+  "recommends": {
+    "luckperms": ">=5.0"
+  },
   "custom": {
     "modmenu": {
       "badges": [
