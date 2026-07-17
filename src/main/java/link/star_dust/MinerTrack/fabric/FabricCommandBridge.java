@@ -79,15 +79,16 @@ public class FabricCommandBridge implements CommandBridge {
 
     /**
      * Send a Text component to a CommandSourceStack using the correct
-     * Fabric feedback API, with fallbacks for older versions and player
-     * entities.
+     * Fabric feedback API, with fallbacks for older versions.
      *
-     * <p>Priority order (1.19+ CommandSourceStack):
+     * <p>Priority order:
      * <ol>
-     *   <li>{@code sendSuccess(Supplier<Text>, boolean)} — player-facing info
-     *   <li>{@code sendFailure(Text)} — error messages (red text)
-     *   <li>{@code sendMessage(Text, boolean)} — player entities
-     *   <li>{@code sendMessage(Text)} — legacy fallback
+     *   <li>{@code sendSuccess(Supplier<Component>, boolean)} — 1.21.1+
+     *   <li>{@code sendSuccess(Component, boolean)} — 1.18.2
+     *   <li>{@code sendFailure(Component)} — all versions
+     *   <li>{@code sendSystemMessage(Component)} — 1.21.1+ CommandSourceStack
+     *   <li>{@code sendMessage(Component, UUID)} — 1.18.2 CommandSourceStack
+     *   <li>{@code sendMessage(Text, boolean)} — player entity fallback
      * </ol>
      */
     private static void sendFeedback(Object target, Object text, boolean isSuccess) {
@@ -97,13 +98,11 @@ public class FabricCommandBridge implements CommandBridge {
             if (textCls == null) return;
             Class<?> targetCls = target.getClass();
 
-            // 1) Try sendSuccess(Supplier<Text>, boolean) — 1.19+ CommandSourceStack
-            //    This is the correct method for player-facing messages. When the
-            //    source is a player, the message appears in their chat. When it's
-            //    the console, it also goes to the server log.
+            // 1a) sendSuccess(Supplier<Component>, boolean) — 1.21.1+
             if (isSuccess) {
                 try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess", new Class<?>[]{Supplier.class, boolean.class});
+                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                        new Class<?>[]{Supplier.class, boolean.class});
                     if (m != null) {
                         Object supplier = createTextSupplier((String) invokeToString(text));
                         if (supplier != null) {
@@ -111,61 +110,70 @@ public class FabricCommandBridge implements CommandBridge {
                             return;
                         }
                     }
-                } catch (Throwable t) {
-                    // Reflection failed, try next fallback
-                }
+                } catch (Throwable t) { /* fall through */ }
+
+                // 1b) sendSuccess(Component, boolean) — 1.18.2
+                try {
+                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                        new Class<?>[]{textCls, boolean.class});
+                    if (m != null) {
+                        m.invoke(target, text, false);
+                        return;
+                    }
+                } catch (Throwable t) { /* fall through */ }
             }
 
-            // 2) Try sendFailure(Text) — 1.19+ CommandSourceStack error messages
-            //    This sends red-colored text to the command source (player or console).
+            // 2) sendFailure(Component) — same signature on all versions
             if (!isSuccess) {
                 try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendFailure", new Class<?>[]{textCls});
+                    Method m = FabricReflection.findMethod(targetCls, "sendFailure",
+                        new Class<?>[]{textCls});
                     if (m != null) {
                         m.invoke(target, text);
                         return;
                     }
-                } catch (Throwable t) {
-                    // Reflection failed, try next fallback
-                }
+                } catch (Throwable t) { /* fall through */ }
             }
 
-            // 3) Try sendMessage(Text, boolean) — 1.18-1.19.3 player entities
-            //    The boolean parameter is the 'overlay' flag (false = chat).
+            // 3) sendSystemMessage(Component) — 1.21.1+ CommandSourceStack
             try {
-                Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, boolean.class});
-                if (m != null) {
-                    m.invoke(target, text, false);
-                    return;
-                }
-            } catch (Throwable t) {
-                // Reflection failed, try next fallback
-            }
-
-            // 4) Try sendMessage(Text) — 1.18 ServerCommandSource / MinecraftServer
-            try {
-                Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls});
+                Method m = FabricReflection.findMethod(targetCls, "sendSystemMessage",
+                    new Class<?>[]{textCls});
                 if (m != null) {
                     m.invoke(target, text);
                     return;
                 }
-            } catch (Throwable t) {
-                // Reflection failed, try next fallback
-            }
+            } catch (Throwable t) { /* fall through */ }
 
-            // 5) Try sendMessage(Component) — 26.1+ Adventure API (Component in network.chat)
+            // 4) sendMessage(Component, UUID) — 1.18.2 sendSuccess delegates to this
             try {
-                Class<?> componentCls = resolveTextComponentClass();
-                if (componentCls != null && !componentCls.equals(textCls)) {
-                    Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{componentCls});
-                    if (m != null) {
-                        m.invoke(target, text);
-                        return;
-                    }
+                Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                    new Class<?>[]{textCls, UUID.class});
+                if (m != null) {
+                    m.invoke(target, text, java.util.UUID.randomUUID());
+                    return;
                 }
-            } catch (Throwable t) {
-                // Reflection failed, will fall through to println
-            }
+            } catch (Throwable t) { /* fall through */ }
+
+            // 5) sendMessage(Text, boolean) — player entity / legacy
+            try {
+                Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class});
+                if (m != null) {
+                    m.invoke(target, text, false);
+                    return;
+                }
+            } catch (Throwable t) { /* fall through */ }
+
+            // 6) sendMessage(Text) — last-resort legacy
+            try {
+                Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                    new Class<?>[]{textCls});
+                if (m != null) {
+                    m.invoke(target, text);
+                    return;
+                }
+            } catch (Throwable t) { /* fall through */ }
 
         } catch (Throwable t) {
             // Outer catch: unexpected errors, fall through to println
@@ -190,28 +198,58 @@ public class FabricCommandBridge implements CommandBridge {
             if (source == null) return;
             Object server = FabricReflection.callAny(source, "getServer", new Class<?>[0], new Object[0]);
             if (server == null) return;
-            // MC 26.1+: getCommands(); 1.18-1.21: getCommandManager()
-            Object cmdManager = FabricReflection.callMigrated(server, "getCommands", "getCommandManager",
-                new Class<?>[0], new Object[0]);
+            // MC 26.1+: getCommands(); 1.18-1.21: getCommands() — same name on ALL versions!
+            Object cmdManager = FabricReflection.callAny(server, "getCommands", new Class<?>[0], new Object[0]);
+            if (cmdManager == null) {
+                // Legacy fallback for old mappings that reported getCommandManager
+                cmdManager = FabricReflection.callAny(server, "getCommandManager", new Class<?>[0], new Object[0]);
+            }
             if (cmdManager == null) return;
-            // MC 26.1+: performPrefixedCommand(CommandSourceStack, String)
-            // 1.18-1.21: executeWithPrefix(CommandSourceStack, String)
+            // MC 1.21.1+: performPrefixedCommand(CommandSourceStack, String) — void
+            // MC 1.18.2:  performCommand(CommandSourceStack, String) — int
+            Class<?> cssCls = resolveCommandSourceStackClass();
+            if (cssCls == null) return;
             try {
                 FabricReflection.callAny(cmdManager, "performPrefixedCommand",
-                    new Class<?>[]{source.getClass(), String.class},
+                    new Class<?>[]{cssCls, String.class},
                     new Object[]{source, command});
             } catch (Throwable t1) {
-                FabricReflection.callAny(cmdManager, "executeWithPrefix",
-                    new Class<?>[]{source.getClass(), String.class},
-                    new Object[]{source, command});
+                try {
+                    FabricReflection.callAny(cmdManager, "performCommand",
+                        new Class<?>[]{cssCls, String.class},
+                        new Object[]{source, command});
+                } catch (Throwable t2) {
+                    FabricReflection.callAny(cmdManager, "executeWithPrefix",
+                        new Class<?>[]{cssCls, String.class},
+                        new Object[]{source, command});
+                }
             }
         } catch (Throwable t) { /* silent */ }
     }
 
+    private static Class<?> resolveCommandSourceStackClass() {
+        return FabricReflection.forName("net.minecraft.commands.CommandSourceStack");
+    }
+
     @Override public boolean isPlayer() {
         try {
-            // MC 26.1+: isPlayer(); 1.18-1.21: isExecutedByPlayer()
-            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
+            // 1.21.1+: isPlayer()
+            Object r = FabricReflection.callAny(source, "isPlayer",
+                new Class<?>[0], new Object[0]);
+            if (r instanceof Boolean && (Boolean) r) return true;
+        } catch (Throwable t) { /* fall through */ }
+        // 1.18.2: check if getEntity() returns a non-null player
+        try {
+            Object entity = FabricReflection.callAny(source, "getEntity",
+                new Class<?>[0], new Object[0]);
+            if (entity != null) {
+                Class<?> serverPlayer = FabricReflection.forName("net.minecraft.server.level.ServerPlayer");
+                if (serverPlayer != null && serverPlayer.isInstance(entity)) return true;
+            }
+        } catch (Throwable t) { /* fall through */ }
+        // Legacy fallback
+        try {
+            Object r = FabricReflection.callAny(source, "isExecutedByPlayer",
                 new Class<?>[0], new Object[0]);
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) { return false; }
@@ -274,22 +312,32 @@ public class FabricCommandBridge implements CommandBridge {
             if (pm == null) return;
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
-            // Direct: MC 26.1+ Player only has sendSystemMessage(Component);
-            // sendSuccess/sendFailure/sendMessage are CommandSourceStack-only.
             Object text = createText(message);
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
+
+            // 1. 1.21.1+: sendSystemMessage(Component)
             try {
                 FabricReflection.callAny(player, "sendSystemMessage",
                     new Class<?>[]{textCls}, new Object[]{text});
-            } catch (Throwable t1) {
-                try {
-                    FabricReflection.callAny(player, "sendMessage",
-                        new Class<?>[]{textCls, boolean.class},
-                        new Object[]{text, false});
-                } catch (Throwable t2) { /* silent */ }
-            }
+                return;
+            } catch (Throwable t1) { /* fall through */ }
+
+            // 2. 1.18.2: sendMessage(Component, UUID)
+            try {
+                FabricReflection.callAny(player, "sendMessage",
+                    new Class<?>[]{textCls, UUID.class},
+                    new Object[]{text, playerId});
+                return;
+            } catch (Throwable t1) { /* fall through */ }
+
+            // 3. Legacy: sendMessage(Text, boolean)
+            try {
+                FabricReflection.callAny(player, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            } catch (Throwable t2) { /* silent */ }
         } catch (Throwable t) { /* silent */ }
     }
 
@@ -301,26 +349,39 @@ public class FabricCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
-            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text)
+            // 1. 1.21.1+: sendSystemMessage(Component)
             try {
                 FabricReflection.callAny(server, "sendSystemMessage",
                     new Class<?>[]{textCls}, new Object[]{text});
-            } catch (Throwable t1) {
+                return;
+            } catch (Throwable t1) { /* fall through */ }
+            // 2. 1.18.2: sendMessage(Component, UUID)
+            try {
                 FabricReflection.callAny(server, "sendMessage",
-                    new Class<?>[]{textCls, boolean.class},
-                    new Object[]{text, false});
-            }
+                    new Class<?>[]{textCls, UUID.class},
+                    new Object[]{text, java.util.UUID.randomUUID()});
+                return;
+            } catch (Throwable t1) { /* fall through */ }
+            // 3. Legacy: sendMessage(Text, boolean)
+            FabricReflection.callAny(server, "sendMessage",
+                new Class<?>[]{textCls, boolean.class},
+                new Object[]{text, false});
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
 
     @Override public boolean toggleVerbose() {
         if (source != null) {
-            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
-                new Class<?>[0], new Object[0]);
-            if (r instanceof Boolean && (Boolean) r) {
+            if (isPlayer()) {
                 UUID id = null;
                 try {
-                    Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
+                    // 1.21.1+: getPlayer()
+                    Object player = FabricReflection.callAny(source, "getPlayer",
+                        new Class<?>[0], new Object[0]);
+                    // 1.18.2: getEntity() returns Entity
+                    if (player == null) {
+                        player = FabricReflection.callAny(source, "getEntity",
+                            new Class<?>[0], new Object[0]);
+                    }
                     if (player != null) {
                         Object uuid = FabricReflection.callUuid(player);
                         if (uuid instanceof UUID) id = (UUID) uuid;
