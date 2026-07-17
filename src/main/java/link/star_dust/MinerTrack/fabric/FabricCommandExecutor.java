@@ -277,17 +277,34 @@ public class FabricCommandExecutor {
                 Object serverWorld = FabricReflection.callMigrated(server, "getLevel", "getWorld",
                     new Class<?>[]{registryKey.getClass()}, new Object[]{registryKey});
                 if (serverWorld == null) return;
-                // Cosmetic-only lightning strike; created via reflection
-                Object lightning = FabricReflection.newInstance("net.minecraft.world.entity.LightningBolt",
-                    new Class<?>[]{
-                        FabricReflection.forName("net.minecraft.world.entity.EntityType"),
-                        FabricReflection.forName("net.minecraft.server.level.ServerLevel")
-                    },
-                    new Object[]{
-                        FabricReflection.forName("net.minecraft.world.entity.EntityType")
-                            .getField("LIGHTNING_BOLT").get(null),
-                        serverWorld
-                    });
+                // Cosmetic-only lightning strike; created via reflection.
+                // MC 1.21.1+: LightningBolt(EntityType<?>, ServerLevel)
+                // MC 1.18.2:  LightningBolt(EntityType<?>, Level)
+                Object lightning = null;
+                try {
+                    lightning = FabricReflection.newInstance("net.minecraft.world.entity.LightningBolt",
+                        new Class<?>[]{
+                            FabricReflection.forName("net.minecraft.world.entity.EntityType"),
+                            FabricReflection.forName("net.minecraft.server.level.ServerLevel")
+                        },
+                        new Object[]{
+                            FabricReflection.forName("net.minecraft.world.entity.EntityType")
+                                .getField("LIGHTNING_BOLT").get(null),
+                            serverWorld
+                        });
+                } catch (Throwable t) {
+                    // 1.18.2 fallback: Level
+                    lightning = FabricReflection.newInstance("net.minecraft.world.entity.LightningBolt",
+                        new Class<?>[]{
+                            FabricReflection.forName("net.minecraft.world.entity.EntityType"),
+                            FabricReflection.forName("net.minecraft.world.level.Level")
+                        },
+                        new Object[]{
+                            FabricReflection.forName("net.minecraft.world.entity.EntityType")
+                                .getField("LIGHTNING_BOLT").get(null),
+                            serverWorld
+                        });
+                }
                 if (lightning == null) return;
                 Object x = FabricReflection.callAny(player, "getX", new Class<?>[0], new Object[0]);
                 Object y = FabricReflection.callAny(player, "getY", new Class<?>[0], new Object[0]);
@@ -322,14 +339,35 @@ public class FabricCommandExecutor {
                 Object text = literalText(fullMsg);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
-                // MC 26.1+: broadcastSystemMessage(Component, boolean); 1.18-1.21: broadcast(Text, boolean)
+
+                // 1.21.1+: broadcastSystemMessage(Component, boolean)
                 try {
                     FabricReflection.call(pm, "broadcastSystemMessage",
                         new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
-                } catch (Throwable t1) {
+                    return;
+                } catch (Throwable t1) { /* fall through */ }
+
+                // 1.18.2: broadcastMessage(Component, ChatType, UUID)
+                // Need to resolve ChatType.CHAT reflectively
+                try {
+                    Class<?> chatTypeCls = FabricReflection.forName("net.minecraft.network.chat.ChatType");
+                    if (chatTypeCls != null) {
+                        Object chatType = FabricReflection.getField(chatTypeCls, "CHAT");
+                        if (chatType == null) chatType = FabricReflection.getField(chatTypeCls, "SYSTEM");
+                        if (chatType != null) {
+                            FabricReflection.call(pm, "broadcastMessage",
+                                new Class<?>[]{textCls, chatTypeCls, UUID.class},
+                                new Object[]{text, chatType, java.util.UUID.randomUUID()});
+                            return;
+                        }
+                    }
+                } catch (Throwable t1) { /* fall through */ }
+
+                // Last resort: broadcast(Text, boolean) on old mappings
+                try {
                     FabricReflection.call(pm, "broadcast",
                         new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
-                }
+                } catch (Throwable t1) { /* silent */ }
             } catch (Throwable t) {
                 // No players online.
             }
