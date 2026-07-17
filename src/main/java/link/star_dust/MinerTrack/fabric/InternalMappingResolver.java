@@ -386,13 +386,22 @@ public final class InternalMappingResolver {
             String header = br.readLine();
             if (header == null || !header.startsWith("tiny\t2")) {
                 LOGGER.warning("Invalid Tiny v2 header in " + cacheFile);
+                this.mojmapToOfficialClasses = c2o;
+                this.officialToMojmapClasses = o2c;
+                this.methodMappings = methods;
+                this.fieldMappings = fields;
                 return;
             }
             
             String[] headerParts = header.split("\t");
-            // Expected: tiny 2 mojmap official
-            if (headerParts.length < 4 || !"mojmap".equals(headerParts[2]) || !"official".equals(headerParts[3])) {
-                LOGGER.warning("Unexpected namespace order in Tiny file. Expected mojmap->official.");
+            // Expected: tiny 2 0 mojmap official  (5 columns)
+            if (headerParts.length < 5 || !"mojmap".equals(headerParts[3]) || !"official".equals(headerParts[4])) {
+                LOGGER.warning("Unexpected namespace order in Tiny file (header=" + header
+                        + "). Expected mojmap->official.");
+                this.mojmapToOfficialClasses = c2o;
+                this.officialToMojmapClasses = o2c;
+                this.methodMappings = methods;
+                this.fieldMappings = fields;
                 return;
             }
 
