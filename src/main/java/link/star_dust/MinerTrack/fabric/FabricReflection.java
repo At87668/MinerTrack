@@ -142,6 +142,12 @@ final class FabricReflection {
     /**
      * Get or create the Mojmap resolver. Returns null if Mojmap is not required
      * for the current Minecraft version or if the resolver could not be initialised.
+     *
+     * <p>The resolver is usable even when Fabric Loader injection fails, because
+     * {@link InternalMappingResolver#loadAndInject()} now loads internal tables
+     * before attempting injection. Two-step resolution (mojmap→official via
+     * InternalMappingResolver, then official→runtime via Fabric's MappingResolver)
+     * works independently of a successful mojmap namespace injection.</p>
      */
     private static synchronized InternalMappingResolver getMojmapResolver() {
         if (mojmapResolver != null) return mojmapResolver;
@@ -155,6 +161,12 @@ final class FabricReflection {
             mojmapResolver.loadAndInject();
             return mojmapResolver;
         } catch (Exception e) {
+            // If the resolver itself was constructed and has tables loaded,
+            // return it anyway — two-step resolution can still work.
+            if (mojmapResolver != null && mojmapResolver.isCached()) {
+                LOGGER.warning("Mojmap resolver injection failed but tables are available: " + e.getMessage());
+                return mojmapResolver;
+            }
             LOGGER.warning("Mojmap resolver not available: " + e.getMessage());
             return null;
         }
@@ -176,20 +188,34 @@ final class FabricReflection {
      * @return runtime class name, or the original name if resolution fails
      */
     static String unmapMojmapClassName(String mojmapName) {
-        // Strategy 1: Direct mojmap → runtime.
+        // Strategy 1: Direct mojmap → runtime via Fabric's MappingResolver.
+        // On intermediary servers, the mojmap namespace was never injected,
+        // so Fabric returns the input unchanged. We detect this and fall
+        // through to Strategy 2.
+        String direct = mojmapName;
+        boolean directWorked = false;
         try {
-            return getMappingResolver().unmapClassName("mojmap", mojmapName);
+            direct = getMappingResolver().unmapClassName("mojmap", mojmapName);
+            if (!mojmapName.equals(direct)) {
+                directWorked = true;
+                return direct;
+            }
         } catch (Throwable t) {
             // Fall through to strategy 2.
         }
 
-        // Strategy 2: Two-step via InternalMappingResolver.
+        // Strategy 2: Two-step via InternalMappingResolver (mojmap→official→runtime).
+        // This works even when mojmap namespace injection failed, because
+        // InternalMappingResolver has its own Tiny v2 parsing tables.
         InternalMappingResolver resolver = getMojmapResolver();
         if (resolver != null) {
             String official = resolver.mojmapToOfficial(mojmapName);
             if (official != null && !official.equals(mojmapName)) {
                 try {
-                    return getMappingResolver().unmapClassName("official", official);
+                    String runtime = getMappingResolver().unmapClassName("official", official);
+                    if (!official.equals(runtime)) {
+                        return runtime;
+                    }
                 } catch (Throwable ignored) {}
             }
         }
@@ -274,15 +300,40 @@ final class FabricReflection {
      * Try to infer the Mojmap class name from the parameter types.
      * Looks for the first {@code net.minecraft.*} parameter type and
      * resolves it to its Mojmap equivalent.
+     *
+     * <p>Uses three strategies:
+     * <ol>
+     *   <li>Direct mojmap unmap via Fabric's MappingResolver (works when
+     *       mojmap namespace was injected).</li>
+     *   <li>Two-step: convert runtime → official via Fabric, then
+     *       official → mojmap via {@link InternalMappingResolver}
+     *       (works even when mojmap namespace injection failed).</li>
+     *   <li>Direct official → mojmap via InternalMappingResolver
+     *       (for intermediary-runtime servers where Fabric maps to
+     *       "official" first).</li>
+     * </ol>
      */
     private static String inferMojmapClassFromParamTypes(Class<?>[] paramTypes) {
+        InternalMappingResolver resolver = getMojmapResolver();
         for (Class<?> pt : paramTypes) {
             String name = pt.getName();
             if (name.startsWith("net.minecraft.")) {
+                // Strategy 1: Direct mojmap unmap via Fabric
                 try {
                     String mojmap = getMappingResolver().unmapClassName("mojmap", name);
                     if (mojmap != null && !mojmap.equals(name)) {
                         return mojmap;
+                    }
+                } catch (Throwable ignored) {}
+
+                // Strategy 2: Runtime → official via Fabric, then official → mojmap via resolver
+                try {
+                    String official = getMappingResolver().unmapClassName("official", name);
+                    if (official != null && !official.equals(name) && resolver != null) {
+                        String mojmap = resolver.officialToMojmap(official);
+                        if (mojmap != null && !mojmap.equals(official)) {
+                            return mojmap;
+                        }
                     }
                 } catch (Throwable ignored) {}
             }
@@ -328,17 +379,34 @@ final class FabricReflection {
      * Build a JVM method descriptor using Mojmap class names for parameter types.
      * This is required for looking up methods in {@link InternalMappingResolver}
      * because its internal tables use Mojmap namespace descriptors.
+     *
+     * <p>Tries direct mojmap unmap first, then two-step (runtime→official→mojmap)
+     * via InternalMappingResolver for intermediary servers.</p>
      */
     private static String buildMojmapDescriptor(Class<?>[] paramTypes) {
+        InternalMappingResolver resolver = getMojmapResolver();
         StringBuilder sb = new StringBuilder("(");
         for (Class<?> paramType : paramTypes) {
             String name = paramType.getName();
             if (name.startsWith("net.minecraft.")) {
+                // Strategy 1: Direct mojmap unmap via Fabric
                 try {
-                    // Convert runtime class name back to Mojmap for the descriptor
-                    name = getMappingResolver().unmapClassName("mojmap", name);
-                } catch (Throwable e) {
-                    // Keep original if conversion fails
+                    String mojmap = getMappingResolver().unmapClassName("mojmap", name);
+                    if (mojmap != null && !mojmap.equals(name)) {
+                        name = mojmap;
+                    }
+                } catch (Throwable e) { /* keep original */ }
+                // Strategy 2: Two-step via InternalMappingResolver
+                if (name.equals(paramType.getName()) && resolver != null) {
+                    try {
+                        String official = getMappingResolver().unmapClassName("official", name);
+                        if (official != null && !official.equals(name)) {
+                            String mojmap = resolver.officialToMojmap(official);
+                            if (mojmap != null && !mojmap.equals(official)) {
+                                name = mojmap;
+                            }
+                        }
+                    } catch (Throwable e) { /* keep original */ }
                 }
             }
             sb.append(descriptorForType(name));
@@ -680,23 +748,21 @@ final class FabricReflection {
     /**
      * Resolve a Mojmap field name to its runtime (obfuscated) name.
      *
-     * <p>Fabric's {@link MappingResolver} has no field resolution API.
-     * We use the manual Tiny v2 parsing tables in {@link InternalMappingResolver},
-     * which map {@code official → mojmap}. We first convert the runtime class
-     * name to its Mojmap equivalent, look up the field to get its Official name,
-     * and then convert that Official name to the Runtime name.</p>
-     *
-     * <p>Resolution strategy:
+     * <p>Fabric's {@link MappingResolver} has no field-level mapping API.
+     * We use a multi-step resolution strategy:
      * <ol>
-     *   <li>Convert runtime → mojmap class name via Fabric's resolver.</li>
+     *   <li>Convert runtime class → mojmap class via Fabric's resolver.</li>
      *   <li>Look up the field in {@link InternalMappingResolver}'s tables
      *       (mojmap field → official field).</li>
-     *   <li>Convert official field → runtime field via Fabric's resolver.</li>
+     *   <li>Convert official class → runtime class via Fabric resolver,
+     *       then do type-based field lookup on the runtime class using the
+     *       mojmap field name as a candidate (works in dev/named environments).
+     *       Falls back to type-constrained field scanning for intermediary.</li>
      * </ol>
      *
      * @param cls       the runtime class
      * @param fieldName the field name in Mojmap format (e.g. {@code "LIGHTNING_BOLT"})
-     * @return the runtime (obfuscated) field name, or the original name if resolution fails
+     * @return the runtime field name, or the original name if resolution fails
      */
     private static String resolveMojmapFieldName(Class<?> cls, String fieldName) {
         String className = cls.getName();
@@ -709,17 +775,45 @@ final class FabricReflection {
                 // 1. Runtime Class -> Mojmap Class
                 String mojmapClass = getMappingResolver().unmapClassName("mojmap", className);
                 if (mojmapClass != null && !mojmapClass.equals(className)) {
-                    // 2. Mojmap Field -> Official Field
+                    // 2. Mojmap Field -> Official Field (via internal Tiny v2 tables)
                     String officialField = resolver.resolveFieldName(mojmapClass, fieldName);
                     if (officialField != null && !officialField.equals(fieldName)) {
-                        // 3. Official Field -> Runtime Field (CRITICAL FIX)
-                        return getMappingResolver().unmapClassName("official", officialField);
+                        // 3a. Try the official field name directly on the runtime class.
+                        //     On intermediary servers, Fabric often keeps field names
+                        //     as their official (obfuscated) names.
+                        try {
+                            cls.getDeclaredField(officialField);
+                            return officialField;
+                        } catch (NoSuchFieldException ignored) {}
+                        try {
+                            cls.getField(officialField);
+                            return officialField;
+                        } catch (NoSuchFieldException ignored) {}
+
+                        // 3b. Enumerate fields on the runtime class, resolve each
+                        //     through official→mojmap, and match back to our target.
+                        for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
+                            String runtimeName = f.getName();
+                            // Try official → mojmap to see if this field is ours
+                            String candidateMojmap = resolver.officialToMojmapField(mojmapClass, runtimeName);
+                            if (fieldName.equals(candidateMojmap)) {
+                                return runtimeName;
+                            }
+                        }
+                        for (java.lang.reflect.Field f : cls.getFields()) {
+                            String runtimeName = f.getName();
+                            String candidateMojmap = resolver.officialToMojmapField(mojmapClass, runtimeName);
+                            if (fieldName.equals(candidateMojmap)) {
+                                return runtimeName;
+                            }
+                        }
                     }
                 }
             } catch (Throwable e) {
                 LOGGER.warning("Field resolution failed for " + fieldName + ": " + e.getMessage());
             }
         }
+        // 4. Fallback: return mojmap name — works in dev/named environments.
         return fieldName;
     }
 
