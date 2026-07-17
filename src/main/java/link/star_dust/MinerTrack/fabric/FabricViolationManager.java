@@ -194,16 +194,25 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (player == null) return;
             Object text = createTextComponent(message);
             Class<?> textCls = resolveTextComponentClass();
-            // MC 26.1+: sendSystemMessage(Component, boolean overlay); 1.18-1.21: sendMessage(Text, boolean)
+            // 1.21.1+: sendSystemMessage(Component)
             try {
                 FabricReflection.call(player, "sendSystemMessage",
-                    new Class<?>[]{textCls, boolean.class},
-                    new Object[]{text, false});
-            } catch (Throwable t1) {
+                    new Class<?>[]{textCls}, new Object[]{text});
+                return;
+            } catch (Throwable t1) { /* fall through */ }
+            // 1.18.2: sendMessage(Component, UUID)
+            try {
+                FabricReflection.call(player, "sendMessage",
+                    new Class<?>[]{textCls, UUID.class},
+                    new Object[]{text, playerId});
+                return;
+            } catch (Throwable t1) { /* fall through */ }
+            // Legacy: sendMessage(Text, boolean)
+            try {
                 FabricReflection.call(player, "sendMessage",
                     new Class<?>[]{textCls, boolean.class},
                     new Object[]{text, false});
-            }
+            } catch (Throwable t1) { /* silent */ }
         } catch (Throwable t) {
             // Player likely offline; silently drop.
         }
@@ -274,25 +283,26 @@ public class FabricViolationManager implements ViolationManagerBridge {
         try {
             Object server = FabricReflection.getServer();
             if (server == null) return;
-            // MC 26.1+: getCommands(); 1.18-1.21: getCommandManager()
-            Object cmdManager = FabricReflection.callMigrated(server, "getCommands", "getCommandManager",
+            // MC 1.18.2+: getCommands() — same name on ALL versions
+            Object cmdManager = FabricReflection.callAny(server, "getCommands",
                 new Class<?>[0], new Object[0]);
+            if (cmdManager == null) {
+                // Legacy fallback
+                cmdManager = FabricReflection.callAny(server, "getCommandManager",
+                    new Class<?>[0], new Object[0]);
+            }
             if (cmdManager == null) return;
-            // MC 26.1+: createCommandSourceStack().withSuppressedOutput()
-            // 1.18-1.21: getCommandSource().withSilent()
-            Object source = FabricReflection.callMigrated(server, "createCommandSourceStack",
-                "getCommandSource", new Class<?>[0], new Object[0]);
+            // createCommandSourceStack() exists on both 1.18.2 and 1.21.1
+            Object source = FabricReflection.callAny(server, "createCommandSourceStack",
+                new Class<?>[0], new Object[0]);
             if (source == null) return;
-            Object suppressed = FabricReflection.callMigrated(source, "withSuppressedOutput", "withSilent",
+            // withSuppressedOutput() exists on both 1.18.2 and 1.21.1
+            Object suppressed = FabricReflection.callAny(source, "withSuppressedOutput",
                 new Class<?>[0], new Object[0]);
             if (suppressed == null) suppressed = source;
-            // MC 26.1+: performPrefixedCommand(CommandSourceStack, String)
-            // 1.18-1.21: executeWithPrefix(CommandSourceStack, String)
-            // Note: MC 26.1's performCommand takes (ParseResults, String), NOT
-            // (CommandSourceStack, String). The correct entry point is
-            // performPrefixedCommand.
             Class<?> cssCls = FabricReflection.forName("net.minecraft.commands.CommandSourceStack");
             if (cssCls == null) return;
+            // 1.21.1+: performPrefixedCommand; 1.18.2: performCommand
             try {
                 FabricReflection.callAny(cmdManager, "performPrefixedCommand",
                     new Class<?>[]{cssCls, String.class},
