@@ -399,13 +399,12 @@ public class FabricCommandBridge implements CommandBridge {
     //
     // Use Lucko's fabric-permissions-api (me.lucko.fabric.api.permissions.v0.Permissions)
     // via reflection. This is a zero-weight API that delegates to LuckPerms when
-    // installed, or falls back to op-level >= 2. Called via reflection to avoid
-    // compile-time coupling to Minecraft types (GameProfile, ServerCommandSource)
-    // that aren't on our classpath.
+    // installed, or falls back to op-level / operator checks.
     //
     // fabric-permissions-api is compileOnly — NOT bundled in the JAR.
     // LuckPerms ships its own version-matched copy at runtime. When LP is absent,
-    // we fall back to vanilla op-level checks.
+    // or the LP API invocation fails for any reason, we fall back to a layered
+    // vanilla check that works across all Minecraft versions (1.18 – 26.x).
 
     /** Cached: true if me.lucko.fabric.api.permissions.v0.Permissions is on the classpath. */
     private static volatile Boolean permissionsApiAvailable;
@@ -423,10 +422,9 @@ public class FabricCommandBridge implements CommandBridge {
 
     /**
      * Permissions.check() has multiple typed overloads (CommandSourceStack,
-     * Entity, ServerCommandSource, etc.) — none accept plain Object.
-     * We cannot know the exact source type at compile time, so we find
-     * the first 3-arg "check" method whose param[1] is String and param[2]
-     * is int/Integer, then invoke it directly.
+     * Entity, ServerCommandSource, etc.) — none accept plain Object. We
+     * iterate all declared+public methods to find the first 3-arg "check"
+     * whose param[1] is String and param[2] is int/Integer.
      */
     private static volatile Method permissionsCheckMethod;
 
@@ -435,15 +433,14 @@ public class FabricCommandBridge implements CommandBridge {
         if (!isPermissionsApiAvailable()) return null;
         try {
             Class<?> permsCls = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
+            // Try declared methods first, then public (inherited) methods as fallback.
             for (Method m : permsCls.getDeclaredMethods()) {
-                if (!m.getName().equals("check")) continue;
-                Class<?>[] pts = m.getParameterTypes();
-                if (pts.length != 3) continue;
-                if (pts[1] != String.class) continue;
-                if (pts[2] != int.class && pts[2] != Integer.class) continue;
-                // Found: check(?, String, int)
-                permissionsCheckMethod = m;
-                return m;
+                Method found = tryMatchCheckMethod(m);
+                if (found != null) { permissionsCheckMethod = found; return found; }
+            }
+            for (Method m : permsCls.getMethods()) {
+                Method found = tryMatchCheckMethod(m);
+                if (found != null) { permissionsCheckMethod = found; return found; }
             }
         } catch (Throwable t) {
             permissionsCheckMethod = null;
@@ -451,38 +448,57 @@ public class FabricCommandBridge implements CommandBridge {
         return null;
     }
 
+    private static Method tryMatchCheckMethod(Method m) {
+        if (!m.getName().equals("check")) return null;
+        Class<?>[] pts = m.getParameterTypes();
+        if (pts.length != 3) return null;
+        if (pts[1] != String.class) return null;
+        if (pts[2] != int.class && pts[2] != Integer.class) return null;
+        return m;
+    }
+
     /**
      * Call {@code Permissions.check(source, node, defaultOpLevel)} reflectively.
      * Returns true if the source has the permission (via LP or op-level fallback).
-     * Falls back to vanilla op-level when the API is absent or invocation fails.
+     * Falls back to vanilla check when the API is absent or invocation fails.
      */
     private static boolean checkPermission(Object source, String node, int defaultOpLevel) {
         Method m = findPermissionsCheckMethod();
         if (m != null) {
             try {
                 Object result = m.invoke(null, source, node, defaultOpLevel);
-                return result instanceof Boolean && (Boolean) result;
+                if (result instanceof Boolean && (Boolean) result) return true;
+                // LP returned false — fall through to vanilla check.
+                // (LP may be installed but the player isn't in its database yet,
+                //  or LP's version of the API behaves differently.)
             } catch (Throwable t) {
-                // Invocation failed — fall through to vanilla check
+                // Invocation failed (classloader mismatch, type error, etc.) —
+                // fall through to vanilla check.
             }
         }
-        // fabric-permissions-api not on classpath, or invocation failed —
-        // fall back to vanilla op-level.
         return checkVanillaOpLevel(source, defaultOpLevel);
     }
 
     /**
-     * Vanilla op-level check used when fabric-permissions-api is absent.
+     * Vanilla op-level / operator check — the catch-all fallback.
      *
-     * <p>Uses plain {@link Class#getMethod(String, Class...)} (which traverses
-     * the superclass hierarchy) to try the two common method names across all
-     * Minecraft versions.  This avoids the Mojmap-resolution layer entirely
-     * so the check works regardless of mapping namespace or version.</p>
+     * <p>Layered approach:
+     * <ol>
+     *   <li>If the source is NOT a player (console / command block / RCON),
+     *       always return {@code true}.</li>
+     *   <li>Try {@code hasPermission(int)} / {@code hasPermissionLevel(int)}
+     *       via plain {@link Class#getMethod} (works on 1.18–1.21).</li>
+     *   <li>Check player operator status via PlayerList (works on all versions
+     *       including MC 26.x where the old permission methods are gone).</li>
+     * </ol>
      */
     private static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
-        // Try common method names. Mojmap uses hasPermission(int), Yarn uses
-        // hasPermissionLevel(int). getMethod() walks superclasses too.
+
+        // ── Layer 1: non-player → always allowed ──────────────────
+        if (!isSourcePlayer(source)) return true;
+
+        // ── Layer 2: hasPermission(int) / hasPermissionLevel(int) ──
         for (String name : new String[]{"hasPermission", "hasPermissionLevel"}) {
             try {
                 Method m = source.getClass().getMethod(name, int.class);
@@ -490,6 +506,67 @@ public class FabricCommandBridge implements CommandBridge {
                 if (r instanceof Boolean && (Boolean) r) return true;
             } catch (Throwable t) { /* try next name */ }
         }
+
+        // ── Layer 3: PlayerList.isOp() (works on all versions) ─────
+        return isSourceOperator(source);
+    }
+
+    /** Check if the command source is a player (not console / command block). */
+    private static boolean isSourcePlayer(Object source) {
+        // MC 26.1+: isPlayer()
+        try {
+            Method m = source.getClass().getMethod("isPlayer");
+            Object r = m.invoke(source);
+            if (r instanceof Boolean && (Boolean) r) return true;
+        } catch (Throwable t) { /* fall through */ }
+        // 1.18-1.21: isExecutedByPlayer()
+        try {
+            Method m = source.getClass().getMethod("isExecutedByPlayer");
+            Object r = m.invoke(source);
+            return r instanceof Boolean && (Boolean) r;
+        } catch (Throwable t) { return false; }
+    }
+
+    /** Check if the player behind this command source is an operator (>= level 2). */
+    private static boolean isSourceOperator(Object source) {
+        try {
+            // Resolve the underlying player from the source.
+            Object player = FabricReflection.callAny(source, "getPlayer",
+                new Class<?>[0], new Object[0]);
+            if (player == null) {
+                player = FabricReflection.callAny(source, "getEntity",
+                    new Class<?>[0], new Object[0]);
+            }
+            if (player == null) return false;
+
+            Object server = FabricReflection.getServer();
+            if (server == null) return false;
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
+            if (pm == null) return false;
+
+            // MC 26.1+: isOp(NameAndId) — player.nameAndId() returns NameAndId record
+            try {
+                Object nameAndId = FabricReflection.callAny(player, "nameAndId",
+                    new Class<?>[0], new Object[0]);
+                if (nameAndId != null) {
+                    Object isOp = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                    if (isOp instanceof Boolean && (Boolean) isOp) return true;
+                }
+            } catch (Throwable t) { /* fall through */ }
+
+            // 1.18-1.21: isOp(GameProfile) — player.getGameProfile()
+            try {
+                Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                    new Class<?>[0], new Object[0]);
+                if (gameProfile != null) {
+                    Object isOp = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                    if (isOp instanceof Boolean) return (Boolean) isOp;
+                }
+            } catch (Throwable t) { /* fall through */ }
+        } catch (Throwable t) { /* fall through */ }
         return false;
     }
 
