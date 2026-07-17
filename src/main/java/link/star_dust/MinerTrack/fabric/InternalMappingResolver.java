@@ -86,6 +86,11 @@ public final class InternalMappingResolver {
      * Ensures the Mojmap mappings are downloaded (if not already cached) and
      * injected into Fabric Loader's mapping system. Safe to call multiple times.
      *
+     * <p>If Fabric Loader injection fails, the internal tables are still loaded
+     * so that {@link #mojmapToOfficial(String)}, {@link #resolveMethodName(String, String)},
+     * and {@link #resolveFieldName(String, String)} remain usable for two-step
+     * resolution in {@link FabricReflection}.</p>
+     *
      * @throws IOException if download or file I/O fails
      */
     public void loadAndInject() throws IOException {
@@ -95,31 +100,56 @@ public final class InternalMappingResolver {
             downloadMappings();
         }
 
-        injectMappings();
-        injected = true;
-        LOGGER.info("Mojmap mappings injected for Minecraft " + mcVersion);
+        // Load internal tables FIRST — these are needed even if injection fails.
+        ensureTablesLoaded();
+
+        // Then try injection into Fabric Loader. On failure, the internal
+        // tables are still available for mojmap→official resolution, and
+        // FabricReflection will use the two-step chain (mojmap→official→runtime).
+        try {
+            injectMappings();
+            injected = true;
+            LOGGER.info("Mojmap mappings injected for Minecraft " + mcVersion);
+        } catch (IOException e) {
+            LOGGER.warning("Failed to inject mappings via Fabric Loader API: " + e.getMessage()
+                    + " — two-step resolution (mojmap→official→intermediary) will be used instead.");
+            // injected stays false, but tables are loaded.
+        }
     }
 
     /**
      * Resolve a Mojmap-deobfuscated class name to its official (obfuscated) name.
+     *
+     * <p>Accepts class names with either dots ({@code net.minecraft.server.MinecraftServer})
+     * or slashes ({@code net/minecraft/server/MinecraftServer}) and normalizes to
+     * the slashed form used internally by the Tiny v2 tables.</p>
      *
      * @param mojmapClassName fully qualified Mojmap class name
      * @return the official (obfuscated) class name, or the input if unknown
      */
     public String mojmapToOfficial(String mojmapClassName) {
         ensureTablesLoaded();
-        return mojmapToOfficialClasses.getOrDefault(mojmapClassName, mojmapClassName);
+        String normalized = mojmapClassName.replace('.', '/');
+        String official = mojmapToOfficialClasses.getOrDefault(normalized, mojmapClassName);
+        // Normalize result back to dotted form for callers
+        if (official.equals(mojmapClassName)) return mojmapClassName;
+        return official.replace('/', '.');
     }
 
     /**
      * Resolve an official (obfuscated) class name to its Mojmap-deobfuscated name.
+     *
+     * <p>Accepts class names with either dots or slashes.</p>
      *
      * @param officialClassName fully qualified official class name
      * @return the Mojmap class name, or the input if unknown
      */
     public String officialToMojmap(String officialClassName) {
         ensureTablesLoaded();
-        return officialToMojmapClasses.getOrDefault(officialClassName, officialClassName);
+        String normalized = officialClassName.replace('.', '/');
+        String mojmap = officialToMojmapClasses.getOrDefault(normalized, officialClassName);
+        if (mojmap.equals(officialClassName)) return officialClassName;
+        return mojmap.replace('/', '.');
     }
 
     /**
@@ -142,6 +172,10 @@ public final class InternalMappingResolver {
      * (e.g. {@code Lnet/minecraft/server/MinecraftServer;}) to match the keys
      * stored in the internal tables.</p>
      *
+     * <p>The {@code mojmapClass} parameter accepts either dot-separated
+     * ({@code net.minecraft.server.MinecraftServer}) or slash-separated
+     * ({@code net/minecraft/server/MinecraftServer}) forms.</p>
+     *
      * @param mojmapClass  the Mojmap class name containing the method
      * @param mojmapMethod the Mojmap method name
      * @param descriptor   the JVM method descriptor in Mojmap namespace,
@@ -150,7 +184,12 @@ public final class InternalMappingResolver {
      */
     public String resolveMethodName(String mojmapClass, String mojmapMethod, String descriptor) {
         ensureTablesLoaded();
-        Map<String, String> classMethods = methodMappings.get(mojmapClass);
+        String normalized = mojmapClass.replace('.', '/');
+        Map<String, String> classMethods = methodMappings.get(normalized);
+        if (classMethods == null && !normalized.equals(mojmapClass)) {
+            // Try the original dotted form too (defensive)
+            classMethods = methodMappings.get(mojmapClass);
+        }
         if (classMethods != null) {
             // Try descriptor-qualified lookup first
             if (descriptor != null) {
@@ -168,18 +207,51 @@ public final class InternalMappingResolver {
      * Resolve a Mojmap field name to its official (obfuscated) name within the
      * given Mojmap class.
      *
+     * <p>The {@code mojmapClass} parameter accepts either dot-separated or
+     * slash-separated forms.</p>
+     *
      * @param mojmapClass the Mojmap class name containing the field
      * @param mojmapField the Mojmap field name
      * @return the official field name, or the input if unknown
      */
     public String resolveFieldName(String mojmapClass, String mojmapField) {
         ensureTablesLoaded();
-        Map<String, String> classFields = fieldMappings.get(mojmapClass);
+        String normalized = mojmapClass.replace('.', '/');
+        Map<String, String> classFields = fieldMappings.get(normalized);
+        if (classFields == null && !normalized.equals(mojmapClass)) {
+            classFields = fieldMappings.get(mojmapClass);
+        }
         if (classFields != null) {
             String official = classFields.get(mojmapField);
             if (official != null) return official;
         }
         return mojmapField;
+    }
+
+    /**
+     * Reverse-resolve an official (obfuscated) field name back to its Mojmap name
+     * within the given Mojmap class. Used by {@link FabricReflection#resolveMojmapFieldName}
+     * to identify which Mojmap field corresponds to a runtime field.
+     *
+     * @param mojmapClass   the Mojmap class name (slash or dot separated)
+     * @param officialField the official (obfuscated) field name
+     * @return the Mojmap field name, or the input if unknown
+     */
+    public String officialToMojmapField(String mojmapClass, String officialField) {
+        ensureTablesLoaded();
+        String normalized = mojmapClass.replace('.', '/');
+        Map<String, String> classFields = fieldMappings.get(normalized);
+        if (classFields == null && !normalized.equals(mojmapClass)) {
+            classFields = fieldMappings.get(mojmapClass);
+        }
+        if (classFields != null) {
+            for (Map.Entry<String, String> e : classFields.entrySet()) {
+                if (e.getValue().equals(officialField)) {
+                    return e.getKey();
+                }
+            }
+        }
+        return officialField;
     }
 
     /**
