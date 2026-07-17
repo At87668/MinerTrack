@@ -517,20 +517,55 @@ final class FabricReflection {
     static String getBlockId(Object block) {
         if (block == null) return null;
 
-        // 1. Resolve the BLOCK registry — BuiltInRegistries.BLOCK (MC 26.1+)
-        //    is a DefaultedRegistry, Registries.BLOCK on 1.18-1.21 is a
-        //    ResourceKey (not the registry). We try BuiltInRegistries first,
-        //    then fall back to getResourceKey on the block's builtInRegistryHolder.
+        // ── 1. Resolve the BLOCK registry instance ─────────────────
+        // MC 26.1+:  BuiltInRegistries.BLOCK is a DefaultedRegistry
+        // 1.18-1.21: Registry.BLOCK is a DefaultedRegistry (also at core.Registry on 1.18)
+        // We try all known paths in order.
         Object blockRegistry = null;
+
+        // 1a. BuiltInRegistries.BLOCK (MC 26.1+ / 1.19.3+)
         try {
             Class<?> birCls = forName("net.minecraft.core.registries.BuiltInRegistries");
             if (birCls != null) {
-                try {
-                    Field f = birCls.getField("BLOCK");
-                    blockRegistry = f.get(null);
-                } catch (Throwable t) { /* fall through */ }
+                Field f = birCls.getField("BLOCK");
+                blockRegistry = f.get(null);
             }
         } catch (Throwable t) { /* fall through */ }
+
+        // 1b. Registry.BLOCK (1.18.2 — net.minecraft.core.Registry)
+        if (blockRegistry == null) {
+            try {
+                Class<?> regCls = forName("net.minecraft.core.Registry");
+                if (regCls != null) {
+                    Field f = regCls.getField("BLOCK");
+                    blockRegistry = f.get(null);
+                }
+            } catch (Throwable t) { /* fall through */ }
+        }
+
+        // 1c. Registries.BLOCK — on 1.19+ this is a ResourceKey, not the registry
+        //     instance. Still try as last resort for edge-case modded setups.
+        if (blockRegistry == null) {
+            try {
+                Class<?> regsCls = forName("net.minecraft.core.registries.Registries");
+                if (regsCls == null) {
+                    regsCls = forName("net.minecraft.registry.Registries");
+                }
+                if (regsCls != null) {
+                    Field f = regsCls.getField("BLOCK");
+                    Object maybeReg = f.get(null);
+                    // Only use if it looks like a registry (has getKey/getId methods)
+                    if (maybeReg != null) {
+                        try {
+                            maybeReg.getClass().getMethod("getKey", Object.class);
+                            blockRegistry = maybeReg;
+                        } catch (NoSuchMethodException e) {
+                            // It's a ResourceKey, not a registry — skip
+                        }
+                    }
+                }
+            } catch (Throwable t) { /* fall through */ }
+        }
 
         if (blockRegistry != null) {
             // DefaultedRegistry.getKey returns Identifier (non-null on MC 26.1+)
