@@ -1,6 +1,7 @@
 package link.star_dust.MinerTrack.fabric;
 
 import link.star_dust.MinerTrack.common.CommandBridge;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 
 import java.lang.reflect.Method;
 import java.util.Set;
@@ -397,86 +398,122 @@ public class FabricCommandBridge implements CommandBridge {
 
     // ── Permission checks ──────────────────────────────────────────
     //
-    // Use Lucko's fabric-permissions-api (me.lucko.fabric.api.permissions.v0.Permissions)
-    // via reflection. This is a zero-weight API that delegates to LuckPerms when
-    // installed, or falls back to op-level / operator checks.
+    // Use Lucko's fabric-permissions-api (me.lucko.fabric.api.permissions.v0.Permissions).
+    // Permissions.check() has typed overloads (CommandSourceStack, Entity, etc.)
+    // whose signatures reference Minecraft types not on our compile classpath,
+    // so we use reflection. The root cause of previous failures: a single cached
+    // Method with a fixed parameter type (e.g. Entity) would be invoked with a
+    // different runtime type (e.g. CommandSourceStack), throwing IAE silently.
+    //
+    // Fix: cache ALL candidate check() overloads at init time, then at each
+    // call iterate all of them and invoke the one whose param[0].isInstance(source).
     //
     // fabric-permissions-api is compileOnly — NOT bundled in the JAR.
     // LuckPerms ships its own version-matched copy at runtime. When LP is absent,
-    // or the LP API invocation fails for any reason, we fall back to a layered
-    // vanilla check that works across all Minecraft versions (1.18 – 26.x).
+    // we fall back to a layered vanilla check that works on all MC versions.
 
-    /** Cached: true if me.lucko.fabric.api.permissions.v0.Permissions is on the classpath. */
-    private static volatile Boolean permissionsApiAvailable;
+    /** Cached list of all Permissions.check() overloads matching signature (?, String, int). */
+    private static volatile java.util.List<Method> allCheckMethods;
 
-    private static boolean isPermissionsApiAvailable() {
-        if (permissionsApiAvailable != null) return permissionsApiAvailable;
-        try {
-            Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
-            permissionsApiAvailable = true;
-        } catch (Throwable t) {
-            permissionsApiAvailable = false;
-        }
-        return permissionsApiAvailable;
-    }
-
-    /**
-     * Permissions.check() has multiple typed overloads (CommandSourceStack,
-     * Entity, ServerCommandSource, etc.) — none accept plain Object. We
-     * iterate all declared+public methods to find the first 3-arg "check"
-     * whose param[1] is String and param[2] is int/Integer.
-     */
-    private static volatile Method permissionsCheckMethod;
-
-    private static Method findPermissionsCheckMethod() {
-        if (permissionsCheckMethod != null) return permissionsCheckMethod;
-        if (!isPermissionsApiAvailable()) return null;
+    private static java.util.List<Method> findAllCheckMethods() {
+        if (allCheckMethods != null) return allCheckMethods;
+        java.util.List<Method> result = new java.util.ArrayList<>();
         try {
             Class<?> permsCls = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
-            // Try declared methods first, then public (inherited) methods as fallback.
-            for (Method m : permsCls.getDeclaredMethods()) {
-                Method found = tryMatchCheckMethod(m);
-                if (found != null) { permissionsCheckMethod = found; return found; }
-            }
+            // Gather from both declared and public methods (inherited static imports).
             for (Method m : permsCls.getMethods()) {
-                Method found = tryMatchCheckMethod(m);
-                if (found != null) { permissionsCheckMethod = found; return found; }
+                if (m.getName().equals("check") && m.getParameterCount() == 3) {
+                    Class<?>[] pts = m.getParameterTypes();
+                    if (pts[1] == String.class && (pts[2] == int.class || pts[2] == Integer.class)) {
+                        result.add(m);
+                    }
+                }
+            }
+            for (Method m : permsCls.getDeclaredMethods()) {
+                if (m.getName().equals("check") && m.getParameterCount() == 3) {
+                    Class<?>[] pts = m.getParameterTypes();
+                    if (pts[1] == String.class && (pts[2] == int.class || pts[2] == Integer.class)) {
+                        // Avoid duplicates
+                        boolean dup = false;
+                        for (Method existing : result) {
+                            if (existing.equals(m)) { dup = true; break; }
+                        }
+                        if (!dup) result.add(m);
+                    }
+                }
             }
         } catch (Throwable t) {
-            permissionsCheckMethod = null;
+            result = java.util.Collections.emptyList();
         }
-        return null;
-    }
-
-    private static Method tryMatchCheckMethod(Method m) {
-        if (!m.getName().equals("check")) return null;
-        Class<?>[] pts = m.getParameterTypes();
-        if (pts.length != 3) return null;
-        if (pts[1] != String.class) return null;
-        if (pts[2] != int.class && pts[2] != Integer.class) return null;
-        return m;
+        allCheckMethods = result;
+        return result;
     }
 
     /**
-     * Call {@code Permissions.check(source, node, defaultOpLevel)} reflectively.
-     * Returns true if the source has the permission (via LP or op-level fallback).
-     * Falls back to vanilla check when the API is absent or invocation fails.
+     * Call {@code Permissions.check(source, node, defaultOpLevel)} via reflection,
+     * trying each cached overload until param[0].isInstance(source) matches.
+     * Returns true if LP grants the permission, false if LP is absent / invocation
+     * fails / LP explicitly denies.
      */
-    private static boolean checkPermission(Object source, String node, int defaultOpLevel) {
-        Method m = findPermissionsCheckMethod();
-        if (m != null) {
+    private static boolean checkLPPermission(Object source, String node, int defaultOpLevel) {
+        for (Method m : findAllCheckMethods()) {
+            Class<?> sourceType = m.getParameterTypes()[0];
+            if (!sourceType.isInstance(source)) continue;
             try {
                 Object result = m.invoke(null, source, node, defaultOpLevel);
-                if (result instanceof Boolean && (Boolean) result) return true;
-                // LP returned false — fall through to vanilla check.
-                // (LP may be installed but the player isn't in its database yet,
-                //  or LP's version of the API behaves differently.)
+                return result instanceof Boolean && (Boolean) result;
             } catch (Throwable t) {
-                // Invocation failed (classloader mismatch, type error, etc.) —
-                // fall through to vanilla check.
+                return false;
             }
         }
-        return checkVanillaOpLevel(source, defaultOpLevel);
+        return false;
+    }
+
+    @Override
+    public boolean hasPermission(String node) {
+        if (source == null) return false;
+        // 1) Try LP via fabric-permissions-api (isInstance-matched reflection)
+        if (checkLPPermission(source, node, 2)) return true;
+        // 2) Fall back to vanilla op-level / operator check
+        return checkVanillaOpLevel(source, 2);
+    }
+
+    @Override
+    public boolean hasPermissionForPlayer(UUID playerId, String node) {
+        try {
+            Object server = FabricReflection.getServer();
+            if (server == null) return false;
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
+            if (pm == null) return false;
+            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            if (player == null) return false;
+            // 1) Try LP via fabric-permissions-api
+            if (checkLPPermission(player, node, 2)) return true;
+            // 2) Fall back to vanilla operator check
+            // MC 26.1+: isOp(NameAndId)
+            try {
+                Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
+                if (nameAndId != null) {
+                    Object isOp = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                    if (isOp instanceof Boolean) return (Boolean) isOp;
+                }
+            } catch (Throwable t1) { /* fall through */ }
+            // 1.18-1.21: isOp(GameProfile)
+            try {
+                Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                    new Class<?>[0], new Object[0]);
+                if (gameProfile != null) {
+                    Object isOp = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                    if (isOp instanceof Boolean) return (Boolean) isOp;
+                }
+            } catch (Throwable t2) { /* fall through */ }
+            return false;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /**
@@ -568,28 +605,6 @@ public class FabricCommandBridge implements CommandBridge {
             } catch (Throwable t) { /* fall through */ }
         } catch (Throwable t) { /* fall through */ }
         return false;
-    }
-
-    @Override
-    public boolean hasPermission(String node) {
-        if (source == null) return false;
-        return checkPermission(source, node, 2);
-    }
-
-    @Override
-    public boolean hasPermissionForPlayer(UUID playerId, String node) {
-        try {
-            Object server = FabricReflection.getServer();
-            if (server == null) return false;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                new Class<?>[0], new Object[0]);
-            if (pm == null) return false;
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) return false;
-            return checkPermission(player, node, 2);
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     // ── Text/Component class resolution ─────────────────────────────
