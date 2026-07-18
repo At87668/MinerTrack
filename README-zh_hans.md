@@ -105,8 +105,15 @@
 
 ![Image](./Images/Requirements.png)
 
+**作为插件:**
 * Java 17 或更高版本
 * 仅支持 Paper、Purpur、Folia 或兼容分支（支持 1.18 及以上）*请注意, 本插件不支持 Spigot!*
+
+**作为模组:**
+* Java 17 或更高版本
+* Fabric 26.1 或更高版本
+* Fabric API
+* LuckPerms 5.0.0 及以上（若您需要权限节点功能）
 
 ---
 

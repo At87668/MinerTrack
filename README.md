@@ -105,6 +105,7 @@ Look what users have to say:
 - Java 17 or higher
 - Fabric 26.1 or newer
 - Fabric API
+- LuckPerms 5.0.0+ (If you need permission node function)
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Support.png)
 
