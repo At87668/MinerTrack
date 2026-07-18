@@ -27,6 +27,7 @@ final class FabricReflection {
     private static final Map<String,String> MOJANG_CLASS_TO_OFFICIAL;
     private static final Map<String,Map<String,String>> MOJANG_METHODS;
     private static final Map<String,Map<String,String>> MOJANG_FIELDS;
+    private static final Map<String,String> RUNTIME_TO_MOJANG;
 
     static {
         Map<String,String> c = new HashMap<>();
@@ -213,6 +214,62 @@ final class FabricReflection {
         f.put("net/minecraft/server/level/ServerPlayer",spf);
 
         MOJANG_FIELDS = Collections.unmodifiableMap(f);
+
+        // Build reverse map: runtime class name (slashed) → Mojang class name (slashed)
+        // On production (intermediary), cls.getName() returns intermediary names like
+        // net.minecraft.class_3222, but MOJANG_METHODS/MOJANG_FIELDS are keyed by Mojang
+        // names like net/minecraft/server/level/ServerPlayer. This table bridges the gap.
+        Map<String,String> rtm = new HashMap<>();
+        if (!IS_DEV) {
+            MappingResolver mr = FabricLoader.getInstance().getMappingResolver();
+            for (Map.Entry<String,String> e : MOJANG_CLASS_TO_OFFICIAL.entrySet()) {
+                String mojang = e.getKey();
+                String official = e.getValue();
+                try {
+                    String intermediary = mr.unmapClassName("official", official);
+                    if (!intermediary.equals(official)) {
+                        rtm.put(intermediary, mojang);
+                    }
+                } catch (Throwable t) {}
+                rtm.put(mojang, mojang);
+            }
+        } else {
+            for (String mojang : MOJANG_CLASS_TO_OFFICIAL.keySet()) {
+                rtm.put(mojang, mojang);
+            }
+        }
+        // Hardcoded intermediary→mojang fallbacks (for when MappingResolver is unavailable
+        // or the intermediary names differ from what the resolver returns)
+        rtm.put("net/minecraft/class_3218", "net/minecraft/server/level/ServerLevel");
+        rtm.put("net/minecraft/class_3222", "net/minecraft/server/level/ServerPlayer");
+        rtm.put("net/minecraft/class_3225", "net/minecraft/server/level/ServerPlayerGameMode");
+        rtm.put("net/minecraft/class_3324", "net/minecraft/server/players/PlayerList");
+        rtm.put("net/minecraft/class_3244", "net/minecraft/server/network/ServerGamePacketListenerImpl");
+        rtm.put("net/minecraft/class_2168", "net/minecraft/commands/CommandSourceStack");
+        rtm.put("net/minecraft/class_1538", "net/minecraft/world/entity/LightningBolt");
+        rtm.put("net/minecraft/class_1299", "net/minecraft/world/entity/EntityType");
+        rtm.put("net/minecraft/class_1297", "net/minecraft/world/entity/Entity");
+        rtm.put("net/minecraft/class_1657", "net/minecraft/world/entity/player/Player");
+        rtm.put("net/minecraft/class_1937", "net/minecraft/world/level/Level");
+        rtm.put("net/minecraft/class_2248", "net/minecraft/world/level/block/Block");
+        rtm.put("net/minecraft/class_2246", "net/minecraft/world/level/block/Blocks");
+        rtm.put("net/minecraft/class_2680", "net/minecraft/world/level/block/state/BlockState");
+        rtm.put("net/minecraft/class_2404", "net/minecraft/world/level/block/LiquidBlock");
+        rtm.put("net/minecraft/class_3612", "net/minecraft/world/level/material/Fluids");
+        rtm.put("net/minecraft/class_3611", "net/minecraft/world/level/material/Fluid");
+        rtm.put("net/minecraft/class_1934", "net/minecraft/world/level/GameType");
+        rtm.put("net/minecraft/class_2338", "net/minecraft/core/BlockPos");
+        rtm.put("net/minecraft/class_2378", "net/minecraft/core/Registry");
+        rtm.put("net/minecraft/class_7923", "net/minecraft/core/registries/Registries");
+        rtm.put("net/minecraft/class_7922", "net/minecraft/core/registries/BuiltInRegistries");
+        rtm.put("net/minecraft/class_2561", "net/minecraft/network/chat/Component");
+        rtm.put("net/minecraft/class_2556", "net/minecraft/network/chat/ChatType");
+        rtm.put("net/minecraft/class_5250", "net/minecraft/network/chat/MutableComponent");
+        rtm.put("net/minecraft/class_1269", "net/minecraft/world/InteractionResult");
+        rtm.put("net/minecraft/class_243", "net/minecraft/world/phys/Vec3");
+        rtm.put("net/minecraft/class_241", "net/minecraft/world/phys/Vec2");
+        rtm.put("net/minecraft/class_3442", "net/minecraft/stats/ServerStatsCounter");
+        RUNTIME_TO_MOJANG = Collections.unmodifiableMap(rtm);
     }
 
     private FabricReflection() {}
@@ -448,26 +505,30 @@ final class FabricReflection {
 
         // Try official->intermediary via MappingResolver
         if (!IS_DEV) {
-            // Find the mojang class for this className
-            String mojangClass = className.replace('.','/');
-            Map<String,String> methodMap = MOJANG_METHODS.get(mojangClass);
-            if (methodMap != null) {
-                String officialMethod = methodMap.get(name);
-                if (officialMethod != null) {
-                    try {
-                        String intermediary = resolver().mapMethodName("official","intermediary",officialMethod,desc.toString());
-                        if (intermediary != null && !intermediary.equals(officialMethod)) {
-                            try {
-                                Method mt = cls.getMethod(intermediary, paramTypes);
-                                if (mt != null) return mt;
-                            } catch (NoSuchMethodException ignored) {}
-                            try {
-                                Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
-                                mt.setAccessible(true);
-                                return mt;
-                            } catch (NoSuchMethodException ignored) {}
-                        }
-                    } catch (Throwable t) {}
+            // Resolve the runtime class name to the corresponding Mojang class
+            // (e.g. net/minecraft/class_3222 → net/minecraft/server/level/ServerPlayer)
+            // because MOJANG_METHODS is keyed by Mojang class names.
+            String runtimeMojangKey = RUNTIME_TO_MOJANG.get(className.replace('.','/'));
+            if (runtimeMojangKey != null) {
+                Map<String,String> methodMap = MOJANG_METHODS.get(runtimeMojangKey);
+                if (methodMap != null) {
+                    String officialMethod = methodMap.get(name);
+                    if (officialMethod != null) {
+                        try {
+                            String intermediary = resolver().mapMethodName("official","intermediary",officialMethod,desc.toString());
+                            if (intermediary != null && !intermediary.equals(officialMethod)) {
+                                try {
+                                    Method mt = cls.getMethod(intermediary, paramTypes);
+                                    if (mt != null) return mt;
+                                } catch (NoSuchMethodException ignored) {}
+                                try {
+                                    Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
+                                    mt.setAccessible(true);
+                                    return mt;
+                                } catch (NoSuchMethodException ignored) {}
+                            }
+                        } catch (Throwable t) {}
+                    }
                 }
             }
         }
@@ -489,13 +550,17 @@ final class FabricReflection {
 
         // Try official name via MappingResolver
         if (!IS_DEV) {
-            String mojangClass = cls.getName().replace('.','/');
-            Map<String,String> fieldMap = MOJANG_FIELDS.get(mojangClass);
-            if (fieldMap != null) {
-                String officialField = fieldMap.get(name);
-                if (officialField != null) {
-                    try { return cls.getDeclaredField(officialField); } catch (NoSuchFieldException ignored) {}
-                    try { return cls.getField(officialField); } catch (NoSuchFieldException ignored) {}
+            // Resolve the runtime class name to the corresponding Mojang class
+            // (same fix as in findMethod — cls.getName() returns intermediary name on production)
+            String runtimeMojangKey = RUNTIME_TO_MOJANG.get(cls.getName().replace('.','/'));
+            if (runtimeMojangKey != null) {
+                Map<String,String> fieldMap = MOJANG_FIELDS.get(runtimeMojangKey);
+                if (fieldMap != null) {
+                    String officialField = fieldMap.get(name);
+                    if (officialField != null) {
+                        try { return cls.getDeclaredField(officialField); } catch (NoSuchFieldException ignored) {}
+                        try { return cls.getField(officialField); } catch (NoSuchFieldException ignored) {}
+                    }
                 }
             }
         }
