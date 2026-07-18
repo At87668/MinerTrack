@@ -9,6 +9,7 @@
 ![Support Versiopn](https://img.shields.io/badge/Support_Version-26.x_%7C_1.21.x_%7C_1.20.x_%7C_1.19.x_%7C_1.18.x-&?color=069F00)
 
 [![Support Server](https://img.shields.io/discord/1302190990639235122.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/MzTea2W9cb)
+[![Support me on Patreon](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3DAuthor87668%26type%3Dpledges&style=for-the-badge)](https://patreon.com/Author87668/join)
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Overview.png)
 
@@ -119,9 +120,7 @@ If you encounter any issues or have suggestions for new features, feel free to r
 
 **Join Discord: https://discord.gg/MzTea2W9cb**
 
+**Support Project: https://patreon.com/Author87668/join**
+
 
 [![bStats](https://bstats.org/signatures/bukkit/MinerTrack.svg)](https://bstats.org/plugin/bukkit/MinerTrack/23790)
-
----
-
-### *If you want to support my work, you can subscribe my [Patreon](https://www.patreon.com/Author87668/join) membership.*

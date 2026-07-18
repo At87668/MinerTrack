@@ -9,6 +9,7 @@
 ![Support Versiopn](https://img.shields.io/badge/Support_Version-26.x_%7C_1.21.x_%7C_1.20.x_%7C_1.19.x_%7C_1.18.x-&?color=069F00)
 
 [![Support Server](https://img.shields.io/discord/1302190990639235122.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/MzTea2W9cb)
+[![Support me on Patreon](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3DAuthor87668%26type%3Dpledges&style=for-the-badge)](https://patreon.com/Author87668/join)
 
 [English](./README.md) | [简体中文](./README-zh_hans.md)
 
@@ -120,9 +121,6 @@
 * **提交Pull Request**: [https://github.com/At87668/MinerTrack/pulls](https://github.com/At87668/MinerTrack/pulls)
 * **访问 Wiki**: [https://minertrack.pages.dev/wiki/](https://minertrack.pages.dev/wiki/)
 * **加入 Discord**: [https://discord.gg/MzTea2W9cb](https://discord.gg/MzTea2W9cb)
+* **支持项目**: [https://patreon.com/Author87668/join](https://patreon.com/Author87668/join)
 
 [![bStats](https://bstats.org/signatures/bukkit/MinerTrack.svg)](https://bstats.org/plugin/bukkit/MinerTrack/23790)
-
----
-
-### *如果您想要支持我的工作, 可以订阅我的 [Patreon](https://www.patreon.com/Author87668/join) 会员资格.*
