@@ -368,8 +368,10 @@ final class FabricReflection {
     static String readString(Object source) {
         if (source == null) return null;
         if (source instanceof String) return (String) source;
-        try { Method m = source.getClass().getMethod("getString"); Object r = m.invoke(source); if (r instanceof String) return (String) r; }
+        try { Method m = findMethod(source.getClass(), "getString", new Class<?>[0]); if (m != null) { Object r = m.invoke(source); if (r instanceof String) return (String) r; } }
         catch (Throwable ignored) {}
+        // Scan toString() after a deserialization-friendly invocation fails
+        try { Method m = findMethod(source.getClass(), "getString", new Class<?>[0]); if (m == null) { Object ts = source.getClass().getMethod("toString").invoke(source); if (ts instanceof String) return (String) ts; } } catch (Throwable ignored2) {}
         String s = source.toString();
         if (s.startsWith("literal(") && s.endsWith(")")) return s.substring("literal(".length(), s.length() - 1);
         return s;
@@ -378,12 +380,22 @@ final class FabricReflection {
     static String getBlockId(Object block) {
         if (block == null) return null;
         Object blockRegistry = null;
-        try { Class<?> birCls = forName("net.minecraft.core.registries.BuiltInRegistries"); if (birCls != null) { Field f = birCls.getField("BLOCK"); blockRegistry = f.get(null); } } catch (Throwable t) {}
-        if (blockRegistry == null) { try { Class<?> regCls = forName("net.minecraft.core.Registry"); if (regCls != null) { Field f = regCls.getField("BLOCK"); blockRegistry = f.get(null); } } catch (Throwable t) {} }
-        if (blockRegistry == null) { try { Class<?> regsCls = forName("net.minecraft.core.registries.Registries"); if (regsCls == null) regsCls = forName("net.minecraft.registry.Registries"); if (regsCls != null) { Field f = regsCls.getField("BLOCK"); Object mr = f.get(null); if (mr != null) { try { mr.getClass().getMethod("getKey", Object.class); blockRegistry = mr; } catch (NoSuchMethodException e) {} } } } catch (Throwable t) {} }
+        try { Class<?> birCls = forName("net.minecraft.core.registries.BuiltInRegistries"); if (birCls != null) { Field f = findField(birCls, "BLOCK"); if (f != null) blockRegistry = f.get(null); } } catch (Throwable t) {}
+        if (blockRegistry == null) { try { Class<?> regCls = forName("net.minecraft.core.Registry"); if (regCls != null) { Field f = findField(regCls, "BLOCK"); if (f != null) blockRegistry = f.get(null); } } catch (Throwable t) {} }
+        if (blockRegistry == null) { try { Class<?> regsCls = forName("net.minecraft.core.registries.Registries"); if (regsCls == null) regsCls = forName("net.minecraft.registry.Registries"); if (regsCls != null) { Field f = findField(regsCls, "BLOCK"); if (f != null) { Object mr = f.get(null); if (mr != null) { try { Method m = findMethod(mr.getClass(), "getKey", new Class<?>[]{Object.class}); if (m != null) blockRegistry = mr; } catch (Throwable e) {} } } } } catch (Throwable t) {} }
         if (blockRegistry != null) {
-            try { Method m = blockRegistry.getClass().getMethod("getKey", Object.class); Object id = m.invoke(blockRegistry, block); if (id != null) { String s = readString(id); if (s != null) return s; } } catch (Throwable t) {}
+            try { Method m = findMethod(blockRegistry.getClass(), "getKey", new Class<?>[]{Object.class}); if (m != null) { Object id = m.invoke(blockRegistry, block); if (id != null) { String s = readString(id); if (s != null) return s; } } } catch (Throwable t) {}
             try { Method m = findMethod(blockRegistry.getClass(), "getResourceKey", new Class<?>[]{Object.class}); if (m != null) { Object rv = m.invoke(blockRegistry, block); if (rv instanceof java.util.Optional) { java.util.Optional<?> opt = (java.util.Optional<?>) rv; if (opt.isPresent()) { Object key = opt.get(); Object loc = callResourceKeyValue(key); if (loc != null) { String s = readString(loc); if (s != null) return s; } } } } } catch (Throwable t) {}
+        }
+        // Last resort: scan all methods in registry for one that takes Object and returns Identifier-like
+        if (blockRegistry != null) {
+            try {
+                for (Method m : blockRegistry.getClass().getDeclaredMethods()) {
+                    if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == Object.class) {
+                        try { Object id = m.invoke(blockRegistry, block); if (id != null) { String s = readString(id); if (s != null && s.contains(":")) return s; } } catch (Throwable t2) {}
+                    }
+                }
+            } catch (Throwable t) {}
         }
         try { Object holder = callAny(block, "builtInRegistryHolder", new Class<?>[0], new Object[0]); if (holder != null) { Object key = callAny(holder, "getKey", new Class<?>[0], new Object[0]); if (key != null) { Object loc = callResourceKeyValue(key); if (loc != null) { String s = readString(loc); if (s != null) return s; } } } } catch (Throwable t) {}
         return null;
@@ -514,20 +526,39 @@ final class FabricReflection {
                 if (methodMap != null) {
                     String officialMethod = methodMap.get(name);
                     if (officialMethod != null) {
+                        // Strategy A: resolve official→intermediary via MappingResolver
+                        // (requires correct descriptor — may fail when return type != V)
+                        String intermediary = null;
                         try {
-                            String intermediary = resolver().mapMethodName("official","intermediary",officialMethod,desc.toString());
-                            if (intermediary != null && !intermediary.equals(officialMethod)) {
-                                try {
-                                    Method mt = cls.getMethod(intermediary, paramTypes);
-                                    if (mt != null) return mt;
-                                } catch (NoSuchMethodException ignored) {}
-                                try {
-                                    Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
-                                    mt.setAccessible(true);
-                                    return mt;
-                                } catch (NoSuchMethodException ignored) {}
-                            }
+                            intermediary = resolver().mapMethodName("official","intermediary",officialMethod,desc.toString());
                         } catch (Throwable t) {}
+                        if (intermediary != null && !intermediary.equals(officialMethod)) {
+                            try {
+                                Method mt = cls.getMethod(intermediary, paramTypes);
+                                if (mt != null) return mt;
+                            } catch (NoSuchMethodException ignored) {}
+                            try {
+                                Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
+                                mt.setAccessible(true);
+                                return mt;
+                            } catch (NoSuchMethodException ignored) {}
+                        }
+                        // Strategy B: try official method name directly on class
+                        // (works when the runtime uses official/ProGuard method names)
+                        try {
+                            Method mt = cls.getDeclaredMethod(officialMethod, paramTypes);
+                            mt.setAccessible(true);
+                            return mt;
+                        } catch (NoSuchMethodException ignored) {}
+                        // Strategy C: parameter-type scan — iterate all declared
+                        // methods matching by exact parameter types (last resort
+                        // when mapMethodName fails due to unknown return type)
+                        for (Method m : cls.getDeclaredMethods()) {
+                            if (paramTypesMatch(m.getParameterTypes(), paramTypes)) {
+                                m.setAccessible(true);
+                                return m;
+                            }
+                        }
                     }
                 }
             }
@@ -537,6 +568,15 @@ final class FabricReflection {
         Class<?> superCls = cls.getSuperclass();
         if (superCls != null && superCls != Object.class) return findMethod(superCls, name, paramTypes);
         return null;
+    }
+
+    /** Check if two parameter-type arrays match (supports subtype match). */
+    private static boolean paramTypesMatch(Class<?>[] candidate, Class<?>[] expected) {
+        if (candidate.length != expected.length) return false;
+        for (int i = 0; i < candidate.length; i++) {
+            if (!candidate[i].isAssignableFrom(expected[i])) return false;
+        }
+        return true;
     }
 
     // -- Field lookup (uses hardcoded mojang->official table) --
