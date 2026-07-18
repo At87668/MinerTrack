@@ -323,7 +323,7 @@ final class FabricReflection {
     // -- Reflection primitives --
 
     static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
-        try { Class<?> cls = forName(className); if (cls == null) return null; Method mt = findMethod(cls, methodName, paramTypes); if (mt == null) return null; mt.setAccessible(true); return mt.invoke(null, args); }
+        try { Class<?> cls = forName(className); if (cls == null) return null; Method mt = findMethod(cls, methodName, paramTypes); if (mt == null) return null; if (!java.lang.reflect.Modifier.isStatic(mt.getModifiers())) return null; mt.setAccessible(true); return mt.invoke(null, args); }
         catch (IllegalAccessException | InvocationTargetException e) { return null; }
     }
 
@@ -550,15 +550,18 @@ final class FabricReflection {
                             mt.setAccessible(true);
                             return mt;
                         } catch (NoSuchMethodException ignored) {}
-                        // Strategy C: parameter-type scan — iterate all declared
-                        // methods matching by exact parameter types (last resort
-                        // when mapMethodName fails due to unknown return type)
+                        // Strategy C: parameter-type scan — iterate all declared methods
+                        // matching by exact parameter types. Prefer static methods first
+                        // (callStatic needs static), then fall back to instance methods.
+                        Method instanceFallback = null;
                         for (Method m : cls.getDeclaredMethods()) {
                             if (paramTypesMatch(m.getParameterTypes(), paramTypes)) {
                                 m.setAccessible(true);
-                                return m;
+                                if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) return m;
+                                if (instanceFallback == null) instanceFallback = m;
                             }
                         }
+                        if (instanceFallback != null) return instanceFallback;
                     }
                 }
             }
