@@ -40,7 +40,7 @@ public class FabricAdapter implements PluginAdapter {
         String v;
         try {
             v = FabricLoader.getInstance()
-                    .getModContainer("MinerTrack")
+                    .getModContainer("minertrack")
                     .map(c -> c.getMetadata().getVersion().getFriendlyString())
                     .orElse("unknown");
         } catch (Throwable t) {
