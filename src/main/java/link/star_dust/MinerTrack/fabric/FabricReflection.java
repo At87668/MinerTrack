@@ -1,15 +1,219 @@
 package link.star_dust.MinerTrack.fabric;
 
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.MappingResolver;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 final class FabricReflection {
 
     private static volatile Object cachedServer;
+    private static final boolean IS_DEV = FabricLoader.getInstance().isDevelopmentEnvironment();
+
+    private static MappingResolver resolver() { return FabricLoader.getInstance().getMappingResolver(); }
+
+    // -- Hardcoded mappings (mojang -> official), cross-referenced from Mojang ProGuard + Fabric intermediary --
+    // Class:  mojang.FQN -> official class name (short name or FQN)
+    // Method: mojang method name -> official method name (within a class)
+    // Field:  mojang field name -> official field name (within a class)
+    // These never change for 1.18-1.21.x. MC 26+ ships unobfuscated so forName succeeds directly.
+
+    private static final Map<String,String> MOJANG_CLASS_TO_OFFICIAL;
+    private static final Map<String,Map<String,String>> MOJANG_METHODS;
+    private static final Map<String,Map<String,String>> MOJANG_FIELDS;
+
+    static {
+        Map<String,String> c = new HashMap<>();
+        c.put("net/minecraft/server/MinecraftServer","net/minecraft/server/MinecraftServer");
+        c.put("net/minecraft/server/level/ServerPlayer","adx");
+        c.put("net/minecraft/server/level/ServerLevel","adw");
+        c.put("net/minecraft/server/players/PlayerList","agn");
+        c.put("net/minecraft/commands/CommandSourceStack","dm");
+        c.put("net/minecraft/world/entity/LightningBolt","axx");
+        c.put("net/minecraft/world/entity/EntityType","axo");
+        c.put("net/minecraft/world/entity/Entity","axk");
+        c.put("net/minecraft/world/entity/player/Player","byr");
+        c.put("net/minecraft/world/level/Level","cav");
+        c.put("net/minecraft/world/level/block/Block","cdq");
+        c.put("net/minecraft/world/level/block/Blocks","cdr");
+        c.put("net/minecraft/world/level/block/state/BlockState","cov");
+        c.put("net/minecraft/world/level/block/LiquidBlock","chu");
+        c.put("net/minecraft/world/level/material/Fluids","diy");
+        c.put("net/minecraft/world/level/material/Fluid","diw");
+        c.put("net/minecraft/world/level/GameType","cas");
+        c.put("net/minecraft/core/BlockPos","gj");
+        c.put("net/minecraft/core/Registry","hb");
+        c.put("net/minecraft/core/registries/BuiltInRegistries","lt");
+        c.put("net/minecraft/core/registries/Registries","lu");
+        c.put("net/minecraft/network/chat/Component","qk");
+        c.put("net/minecraft/network/chat/ChatType","qh");
+        c.put("net/minecraft/network/chat/MutableComponent","qq");
+        c.put("net/minecraft/world/InteractionResult","awh");
+        c.put("net/minecraft/world/phys/Vec3","axw");
+        c.put("net/minecraft/world/phys/Vec2","axv");
+        c.put("net/minecraft/server/level/ServerPlayerGameMode","ady");
+        c.put("net/minecraft/server/network/ServerGamePacketListenerImpl","aeo");
+        c.put("net/minecraft/stats/ServerStatsCounter","ahq");
+        MOJANG_CLASS_TO_OFFICIAL = Collections.unmodifiableMap(c);
+
+        Map<String,Map<String,String>> m = new HashMap<>();
+
+        // MinecraftServer methods
+        Map<String,String> ms = new HashMap<>();
+        ms.put("getPlayerList","a"); ms.put("getAllLevels","A"); ms.put("getCommands","aC");
+        ms.put("getServer","getServer"); ms.put("createCommandSourceStack","a");
+        ms.put("getTickCount","W"); ms.put("getTicks","W"); ms.put("getLevel","d");
+        ms.put("getWorld","d"); ms.put("getPlayerManager","a"); ms.put("getCommandManager","aC");
+        ms.put("getWorlds","A"); ms.put("getCommandSource","a");
+        m.put("net/minecraft/server/MinecraftServer",ms);
+
+        // ServerPlayer methods
+        Map<String,String> sp = new HashMap<>();
+        sp.put("getName","W"); sp.put("getUUID","dn"); sp.put("getUuid","dn");
+        sp.put("getX","t"); sp.put("getY","u"); sp.put("getZ","v");
+        sp.put("getGameProfile","fp"); sp.put("nameAndId","nameAndId");
+        sp.put("sendSystemMessage","c"); sp.put("sendMessage","c");
+        m.put("net/minecraft/server/level/ServerPlayer",sp);
+
+        // ServerLevel methods
+        Map<String,String> sl = new HashMap<>();
+        sl.put("getBlockState","c"); sl.put("dimension","E"); sl.put("getRegistryKey","E");
+        m.put("net/minecraft/server/level/ServerLevel",sl);
+
+        // PlayerList methods
+        Map<String,String> pl = new HashMap<>();
+        pl.put("getPlayer","a"); pl.put("getPlayerByName","d"); pl.put("getPlayers","o");
+        pl.put("getPlayerList","o"); pl.put("isOp","d"); pl.put("broadcastSystemMessage","a");
+        pl.put("broadcastMessage","a"); pl.put("broadcast","a");
+        m.put("net/minecraft/server/players/PlayerList",pl);
+
+        // Entity methods
+        Map<String,String> ent = new HashMap<>();
+        ent.put("getUUID","cn"); ent.put("getUuid","cn"); ent.put("getName","W");
+        ent.put("getX","t"); ent.put("getY","u"); ent.put("getZ","v");
+        ent.put("setPos","e"); ent.put("refreshPositionAfterTeleport","e");
+        m.put("net/minecraft/world/entity/Entity",ent);
+
+        // LightningBolt methods
+        Map<String,String> lb = new HashMap<>();
+        lb.put("setPos","e");
+        m.put("net/minecraft/world/entity/LightningBolt",lb);
+
+        // Level methods
+        Map<String,String> lv = new HashMap<>();
+        lv.put("getBlockState","c"); lv.put("isClient","F");
+        lv.put("dimension","E"); lv.put("getRegistryKey","E");
+        m.put("net/minecraft/world/level/Level",lv);
+
+        // Registry methods
+        Map<String,String> reg = new HashMap<>();
+        reg.put("getKey","e"); reg.put("getResourceKey","f");
+        m.put("net/minecraft/core/Registry",reg);
+
+        // BlockState methods
+        Map<String,String> bs = new HashMap<>();
+        bs.put("getBlock","b"); bs.put("getFluidState","l");
+        m.put("net/minecraft/world/level/block/state/BlockState",bs);
+
+        // FluidState methods
+        // (FluidState is not in our class table but accessed via getFluidState() on BlockState)
+
+        // Block methods
+        Map<String,String> blk = new HashMap<>();
+        blk.put("builtInRegistryHolder","a");
+        m.put("net/minecraft/world/level/block/Block",blk);
+
+        // Component methods
+        Map<String,String> comp = new HashMap<>();
+        comp.put("getString","getString");
+        m.put("net/minecraft/network/chat/Component",comp);
+
+        // ResourceKey methods
+        // ResourceKey is not in our table; accessed via callResourceKeyValue which tries identifier/location/getValue
+
+        // Commands methods (the class name changes; accessed via MinecraftServer.getCommands())
+        Map<String,String> cmds = new HashMap<>();
+        cmds.put("performCommand","a"); cmds.put("performPrefixedCommand","a");
+        cmds.put("executeWithPrefix","a");
+        m.put("net/minecraft/commands/Commands",cmds);
+
+        // CommandSourceStack methods
+        Map<String,String> css = new HashMap<>();
+        css.put("isPlayer","l"); css.put("isExecutedByPlayer","l");
+        css.put("getPlayer","h"); css.put("getEntity","n");
+        css.put("getServer","j"); css.put("withSuppressedOutput","g");
+        css.put("withSilent","g"); css.put("sendSystemMessage","a");
+        css.put("sendMessage","a"); css.put("sendSuccess","a");
+        css.put("hasPermission","b"); css.put("hasPermissionLevel","b");
+        m.put("net/minecraft/commands/CommandSourceStack",css);
+
+        // ServerGamePacketListenerImpl methods
+        Map<String,String> sgpl = new HashMap<>();
+        sgpl.put("disconnect","a"); sgpl.put("onDisconnect","a");
+        m.put("net/minecraft/server/network/ServerGamePacketListenerImpl",sgpl);
+
+        // Fluid methods
+        Map<String,String> fluid = new HashMap<>();
+        fluid.put("getStill","getStill");
+        m.put("net/minecraft/world/level/material/Fluid",fluid);
+
+        MOJANG_METHODS = Collections.unmodifiableMap(m);
+
+        Map<String,Map<String,String>> f = new HashMap<>();
+
+        // EntityType fields
+        Map<String,String> et = new HashMap<>();
+        et.put("LIGHTNING_BOLT","M");
+        f.put("net/minecraft/world/entity/EntityType",et);
+
+        // BuiltInRegistries fields
+        Map<String,String> bir = new HashMap<>();
+        bir.put("BLOCK","a");
+        f.put("net/minecraft/core/registries/BuiltInRegistries",bir);
+
+        // Registry fields
+        Map<String,String> rf = new HashMap<>();
+        rf.put("BLOCK","f");
+        f.put("net/minecraft/core/Registry",rf);
+
+        // Registries fields
+        Map<String,String> regs = new HashMap<>();
+        regs.put("BLOCK","b");
+        f.put("net/minecraft/core/registries/Registries",regs);
+
+        // Blocks fields
+        Map<String,String> blks = new HashMap<>();
+        blks.put("WATER","O");
+        f.put("net/minecraft/world/level/block/Blocks",blks);
+
+        // Fluids fields
+        Map<String,String> fls = new HashMap<>();
+        fls.put("WATER","c");
+        f.put("net/minecraft/world/level/material/Fluids",fls);
+
+        // ChatType fields
+        Map<String,String> ct = new HashMap<>();
+        ct.put("CHAT","a"); ct.put("SYSTEM","b");
+        f.put("net/minecraft/network/chat/ChatType",ct);
+
+        // InteractionResult fields
+        Map<String,String> ir = new HashMap<>();
+        ir.put("PASS","a"); ir.put("SUCCESS","b"); ir.put("FAIL","c");
+        f.put("net/minecraft/world/InteractionResult",ir);
+
+        // ServerPlayer fields
+        Map<String,String> spf = new HashMap<>();
+        spf.put("connection","b");
+        f.put("net/minecraft/server/level/ServerPlayer",spf);
+
+        MOJANG_FIELDS = Collections.unmodifiableMap(f);
+    }
 
     private FabricReflection() {}
 
@@ -17,12 +221,11 @@ final class FabricReflection {
 
     static Object getServer() {
         if (cachedServer != null) return cachedServer;
-        return callStatic("net.minecraft.server.MinecraftServer", "getServer", new Class<?>[0], new Object[0]);
+        return callStatic("net.minecraft.server.MinecraftServer","getServer",new Class<?>[0],new Object[0]);
     }
 
     static Object callServer(String mc26Method, String legacyMethod, Class<?>[] paramTypes, Object[] args) {
-        Object server = getServer();
-        if (server == null) return null;
+        Object server = getServer(); if (server == null) return null;
         Object result = call(server, mc26Method, paramTypes, args);
         if (result != null || !mc26Method.equals(legacyMethod)) {
             try { if (result == null) result = call(server, legacyMethod, paramTypes, args); } catch (Throwable t) {}
@@ -31,56 +234,50 @@ final class FabricReflection {
         return null;
     }
 
-    static Object callMigrated(Object target, String mc26Method, String legacyMethod, Class<?>[] paramTypes, Object[] args) {
+    static Object callMigrated(Object target, String mc26Method, String legacyMethod,
+                               Class<?>[] paramTypes, Object[] args) {
         if (target == null) return null;
-        try { Method m = findMethod(target.getClass(), mc26Method, paramTypes); if (m != null) { m.setAccessible(true); return m.invoke(target, args); } }
+        try { Method mt = findMethod(target.getClass(), mc26Method, paramTypes); if (mt != null) { mt.setAccessible(true); return mt.invoke(target, args); } }
         catch (Throwable t) {}
         return call(target, legacyMethod, paramTypes, args);
     }
 
     private static final Map<String, String> API_MIGRATIONS = new HashMap<>();
     static {
-        API_MIGRATIONS.put("getPlayerManager", "getPlayerList");
-        API_MIGRATIONS.put("getCommandManager", "getCommands");
-        API_MIGRATIONS.put("getWorlds", "getAllLevels");
-        API_MIGRATIONS.put("getWorld", "getLevel");
-        API_MIGRATIONS.put("getCommandSource", "createCommandSourceStack");
-        API_MIGRATIONS.put("withSilent", "withSuppressedOutput");
-        API_MIGRATIONS.put("getTicks", "getTickCount");
-        API_MIGRATIONS.put("isExecutedByPlayer", "isPlayer");
-        API_MIGRATIONS.put("hasPermissionLevel", "hasPermission");
-        API_MIGRATIONS.put("executeWithPrefix", "performCommand");
+        API_MIGRATIONS.put("getPlayerManager","getPlayerList");
+        API_MIGRATIONS.put("getCommandManager","getCommands");
+        API_MIGRATIONS.put("getWorlds","getAllLevels");
+        API_MIGRATIONS.put("getWorld","getLevel");
+        API_MIGRATIONS.put("getCommandSource","createCommandSourceStack");
+        API_MIGRATIONS.put("withSilent","withSuppressedOutput");
+        API_MIGRATIONS.put("getTicks","getTickCount");
+        API_MIGRATIONS.put("isExecutedByPlayer","isPlayer");
+        API_MIGRATIONS.put("hasPermissionLevel","hasPermission");
+        API_MIGRATIONS.put("executeWithPrefix","performCommand");
     }
 
     static Method findMethodWithMigration(Class<?> cls, String methodName, Class<?>[] paramTypes) {
-        Method m = findMethod(cls, methodName, paramTypes);
-        if (m != null) return m;
+        Method mt = findMethod(cls, methodName, paramTypes); if (mt != null) return mt;
         String migrated = API_MIGRATIONS.get(methodName);
         if (migrated != null) return findMethod(cls, migrated, paramTypes);
         return null;
     }
 
+    // -- Reflection primitives --
+
     static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
-        try {
-            Class<?> cls = forName(className); if (cls == null) return null;
-            try { Method m = cls.getDeclaredMethod(methodName, paramTypes); m.setAccessible(true); return m.invoke(null, args); }
-            catch (NoSuchMethodException e) { Method m = cls.getMethod(methodName, paramTypes); m.setAccessible(true); return m.invoke(null, args); }
-        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) { return null; }
+        try { Class<?> cls = forName(className); if (cls == null) return null; Method mt = findMethod(cls, methodName, paramTypes); if (mt == null) return null; mt.setAccessible(true); return mt.invoke(null, args); }
+        catch (IllegalAccessException | InvocationTargetException e) { return null; }
     }
 
     static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
         if (target == null) return null;
-        try {
-            Class<?> cls = target.getClass();
-            try { Method m = cls.getMethod(methodName, paramTypes); return m.invoke(target, args); }
-            catch (NoSuchMethodException e) { Method m = cls.getDeclaredMethod(methodName, paramTypes); m.setAccessible(true); return m.invoke(target, args); }
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) { return null; }
+        try { Method mt = findMethod(target.getClass(), methodName, paramTypes); if (mt == null) return null; mt.setAccessible(true); return mt.invoke(target, args); }
+        catch (IllegalAccessException | InvocationTargetException e) { return null; }
     }
 
     static Object callAny(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
-        if (target == null) return null;
-        try { Method m = findMethod(target.getClass(), methodName, paramTypes); if (m == null) return null; m.setAccessible(true); return m.invoke(target, args); }
-        catch (IllegalAccessException | InvocationTargetException e) { return null; }
+        return call(target, methodName, paramTypes, args);
     }
 
     @SuppressWarnings("unchecked")
@@ -89,6 +286,8 @@ final class FabricReflection {
         try { Field f = findField(target.getClass(), fieldName); if (f == null) return null; f.setAccessible(true); return (T) f.get(target); }
         catch (IllegalAccessException e) { return null; }
     }
+
+    // -- Version-aware helpers --
 
     static Object callUuid(Object target) {
         if (target == null) return null;
@@ -138,11 +337,29 @@ final class FabricReflection {
         catch (NoSuchMethodException | IllegalAccessException | InstantiationException | InvocationTargetException e) { return null; }
     }
 
+    // -- Class resolution --
+
     static Class<?> forName(String className) {
         try { return Class.forName(className); } catch (ClassNotFoundException e) { return tryMcMigration(className); }
     }
 
     private static Class<?> tryMcMigration(String className) {
+        // Try mojang→intermediary via official table + MappingResolver
+        if (!IS_DEV) {
+            String key = className.replace('.','/');
+            String official = MOJANG_CLASS_TO_OFFICIAL.get(key);
+            if (official != null) {
+                try {
+                    String intermediary = resolver().unmapClassName("official", official);
+                    if (!official.equals(intermediary)) {
+                        Class<?> cls = tryLoad(intermediary.replace('/','.'));
+                        if (cls != null) return cls;
+                    }
+                } catch (Throwable t) {}
+            }
+        }
+
+        // Fallback: try intermediary class_NNNN names directly
         if ("net.minecraft.server.level.ServerLevel".equals(className)) return tryLoad("net.minecraft.class_3218");
         if ("net.minecraft.server.level.ServerPlayer".equals(className)) return tryLoad("net.minecraft.class_3222");
         if ("net.minecraft.server.level.ServerPlayerGameMode".equals(className)) return tryLoad("net.minecraft.class_3225");
@@ -196,18 +413,94 @@ final class FabricReflection {
 
     static Class<?> mc(String className) { return forName("net.minecraft." + className); }
 
+    // -- Method lookup (uses mojang->official table + MappingResolver for intermediary) --
+
     static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
         if (cls == null) return null;
-        try { return cls.getMethod(name, paramTypes); } catch (NoSuchMethodException ignored) {}
-        try { return cls.getDeclaredMethod(name, paramTypes); } catch (NoSuchMethodException ignored) {}
+        String className = cls.getName();
+
+        // Build descriptor from parameter types
+        StringBuilder desc = new StringBuilder("(");
+        for (Class<?> p : paramTypes) {
+            if (p == boolean.class) desc.append("Z");
+            else if (p == byte.class) desc.append("B");
+            else if (p == char.class) desc.append("C");
+            else if (p == short.class) desc.append("S");
+            else if (p == int.class) desc.append("I");
+            else if (p == long.class) desc.append("J");
+            else if (p == float.class) desc.append("F");
+            else if (p == double.class) desc.append("D");
+            else desc.append("L").append(p.getName().replace('.','/')).append(";");
+        }
+        desc.append(")V");
+
+        // Try mojang name directly first (works in dev/named, and for MC 26+)
+        String runtimeName = name;
+        try {
+            Method mt = cls.getMethod(runtimeName, paramTypes);
+            if (mt != null) return mt;
+        } catch (NoSuchMethodException ignored) {}
+        try {
+            Method mt = cls.getDeclaredMethod(runtimeName, paramTypes);
+            mt.setAccessible(true);
+            return mt;
+        } catch (NoSuchMethodException ignored) {}
+
+        // Try official->intermediary via MappingResolver
+        if (!IS_DEV) {
+            // Find the mojang class for this className
+            String mojangClass = className.replace('.','/');
+            Map<String,String> methodMap = MOJANG_METHODS.get(mojangClass);
+            if (methodMap != null) {
+                String officialMethod = methodMap.get(name);
+                if (officialMethod != null) {
+                    try {
+                        String intermediary = resolver().mapMethodName("official","intermediary",officialMethod,desc.toString());
+                        if (intermediary != null && !intermediary.equals(officialMethod)) {
+                            try {
+                                Method mt = cls.getMethod(intermediary, paramTypes);
+                                if (mt != null) return mt;
+                            } catch (NoSuchMethodException ignored) {}
+                            try {
+                                Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
+                                mt.setAccessible(true);
+                                return mt;
+                            } catch (NoSuchMethodException ignored) {}
+                        }
+                    } catch (Throwable t) {}
+                }
+            }
+        }
+
+        // Superclass traversal
         Class<?> superCls = cls.getSuperclass();
         if (superCls != null && superCls != Object.class) return findMethod(superCls, name, paramTypes);
         return null;
     }
 
+    // -- Field lookup (uses hardcoded mojang->official table) --
+
     private static Field findField(Class<?> cls, String name) {
         if (cls == null) return null;
+
+        // Try mojang name directly first
         try { return cls.getDeclaredField(name); } catch (NoSuchFieldException ignored) {}
+        try { return cls.getField(name); } catch (NoSuchFieldException ignored) {}
+
+        // Try official name via MappingResolver
+        if (!IS_DEV) {
+            String mojangClass = cls.getName().replace('.','/');
+            Map<String,String> fieldMap = MOJANG_FIELDS.get(mojangClass);
+            if (fieldMap != null) {
+                String officialField = fieldMap.get(name);
+                if (officialField != null) {
+                    try { return cls.getDeclaredField(officialField); } catch (NoSuchFieldException ignored) {}
+                    try { return cls.getField(officialField); } catch (NoSuchFieldException ignored) {}
+                }
+            }
+        }
+
+        // Superclass traversal
         Class<?> superCls = cls.getSuperclass();
         if (superCls != null && superCls != Object.class) return findField(superCls, name);
         return null;
