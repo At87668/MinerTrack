@@ -38,6 +38,14 @@ final class FabricReflection {
     // Lazily initialised Mojmap resolver (only for 1.18–1.21.x, used for field lookups)
     private static InternalMappingResolver mojmapResolver;
 
+    /** 
+     * Class redirector for Mojang class name resolution.
+     * Set by {@link MinerTrackPreLaunch} during pre-launch initialization.
+     * Uses direct ProGuard-based two-step resolution: mojang → official → intermediary.
+     * This replaces the fragile Fabric Loader mojmap namespace injection.
+     */
+    private static volatile MojangClassRedirector classRedirector;
+
     /** Cached MinecraftServer instance — MC 26.1+ has no static getServer(). Set by SERVER_STARTED. */
     private static volatile Object cachedServer;
 
@@ -125,6 +133,24 @@ final class FabricReflection {
     /** Called by FabricDetectionBridge when SERVER_STARTED fires. */
     static void setCachedServer(Object server) {
         cachedServer = server;
+    }
+
+    /**
+     * Set the class redirector for Mojang class name resolution.
+     * Called by {@link MinerTrackPreLaunch} during pre-launch initialization.
+     * When set, all {@code forName()} calls will use this redirector for
+     * Mojang→runtime class name resolution, bypassing the fragile Fabric
+     * Loader mojmap namespace injection.
+     */
+    static void setClassRedirector(MojangClassRedirector redirector) {
+        classRedirector = redirector;
+    }
+
+    /**
+     * Get the class redirector, or null if not available (MC 26+).
+     */
+    static MojangClassRedirector getClassRedirector() {
+        return classRedirector;
     }
 
     /**
@@ -832,17 +858,38 @@ final class FabricReflection {
     /** Resolve a class by name; return null on failure.
      * Includes automatic fallback for MC version changes.
      *
-     * <p>For Minecraft 1.18–1.21.x, Mojmap class names (e.g.
-     * {@code net.minecraft.server.MinecraftServer}) are resolved via the
-     * injected {@code "mojmap"} namespace in Fabric's {@link MappingResolver}.</p>
+     * <p>Resolution order:
+     * <ol>
+     *   <li>Try direct {@code Class.forName()} (works in dev/named environments)</li>
+     *   <li>For MC 1.18–1.21.x: use {@link MojangClassRedirector} for
+     *       two-step resolution (mojang→official→intermediary) —
+     *       this is the most reliable path on production servers</li>
+     *   <li>Fall back to legacy {@link InternalMappingResolver} + Fabric's
+     *       MappingResolver mojmap namespace injection (may fail on intermediary)</li>
+     *   <li>Try MC version migration (1.18↔1.21↔26 class name changes)</li>
+     * </ol>
      */
     static Class<?> forName(String className) {
         try {
             return Class.forName(className);
         } catch (ClassNotFoundException e) {
+            // Primary path for MC 1.18–1.21.x: use the MojangClassRedirector
+            // for reliable mojang→official→intermediary resolution.
+            // This bypasses the fragile Fabric Loader mojmap namespace injection.
+            if (className.startsWith("net.minecraft.") && classRedirector != null) {
+                String runtimeClassName = classRedirector.redirectClass(className);
+                if (runtimeClassName != null && !runtimeClassName.equals(className)) {
+                    try {
+                        return Class.forName(runtimeClassName);
+                    } catch (ClassNotFoundException ignored) {}
+                }
+            }
+
+            // Fallback: MC version migration (26↔21 class names)
             Class<?> result = tryMcMigration(className);
             if (result != null) return result;
 
+            // Legacy path: Fabric's MappingResolver (mojmap namespace injection)
             if (className.startsWith("net.minecraft.")) {
                 String unmapped = unmapMojmapClassName(className);
                 if (!unmapped.equals(className)) {
