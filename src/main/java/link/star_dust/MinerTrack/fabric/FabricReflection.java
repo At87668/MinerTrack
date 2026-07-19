@@ -277,7 +277,7 @@ final class FabricReflection {
 
         Map<String,String> Level_im = new HashMap<>();
         Level_im.put("getBlockState","method_8496");
-        Level_im.put("isClientSide","method_8604");
+        Level_im.put("isClientSide","method_8608");
         Level_im.put("dimension","method_27983");
         Level_im.put("getRegistryKey","method_27983");
         im.put("net/minecraft/world/level/Level",Level_im);
