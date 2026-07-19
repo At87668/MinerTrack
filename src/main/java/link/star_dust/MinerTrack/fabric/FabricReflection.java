@@ -15,6 +15,8 @@ final class FabricReflection {
 
     private static volatile Object cachedServer;
     private static final boolean IS_DEV = FabricLoader.getInstance().isDevelopmentEnvironment();
+    static boolean DEBUG_REFLECTION = false;
+    static void setDebugReflection(boolean on) { DEBUG_REFLECTION = on; }
 
     private static MappingResolver resolver() { return FabricLoader.getInstance().getMappingResolver(); }
 
@@ -401,6 +403,9 @@ final class FabricReflection {
 
     private FabricReflection() {}
 
+    // Thread-safe debug log wrapper
+    private static void log(String msg) { System.out.println("[MinerTrack:Reflection] " + msg); }
+
     static void setCachedServer(Object server) { cachedServer = server; }
 
     static Object getServer() {
@@ -614,27 +619,27 @@ final class FabricReflection {
             if (imap != null) {
                 String interName = imap.get(name);
                 if (interName != null) {
-                    try { Method mt = cls.getMethod(interName, paramTypes); mt.setAccessible(true); return mt; } catch (NoSuchMethodException ignored) {}
-                    try { Method mt = cls.getDeclaredMethod(interName, paramTypes); mt.setAccessible(true); return mt; } catch (NoSuchMethodException ignored) {}
+                    try { Method mt = cls.getMethod(interName, paramTypes); mt.setAccessible(true); if (DEBUG_REFLECTION) log("M-INTER-GET " + className + "." + name + " -> " + interName); return mt; } catch (NoSuchMethodException ignored) {}
+                    try { Method mt = cls.getDeclaredMethod(interName, paramTypes); mt.setAccessible(true); if (DEBUG_REFLECTION) log("M-INTER-DECL " + className + "." + name + " -> " + interName); return mt; } catch (NoSuchMethodException ignored) {}
                 }
             }
         }
 
         // 3. Try ProGuard (official) name directly
-        // On production servers, method names ARE the ProGuard names (a, b, F, etc.).
-        // MOJANG_METHODS maps mojang method → ProGuard method within a class.
         if (mk != null) {
             Map<String,String> mMap = MOJANG_METHODS.get(mk);
             if (mMap != null) {
                 String pg = mMap.get(name);
                 if (pg != null) {
-                    try { Method mt = cls.getMethod(pg, paramTypes); mt.setAccessible(true); return mt; } catch (NoSuchMethodException ignored) {}
-                    try { Method mt = cls.getDeclaredMethod(pg, paramTypes); mt.setAccessible(true); return mt; } catch (NoSuchMethodException ignored) {}
+                    try { Method mt = cls.getMethod(pg, paramTypes); mt.setAccessible(true); if (DEBUG_REFLECTION) log("M-PG-GET " + className + "." + name + " -> " + pg); return mt; } catch (NoSuchMethodException ignored) {}
+                    try { Method mt = cls.getDeclaredMethod(pg, paramTypes); mt.setAccessible(true); if (DEBUG_REFLECTION) log("M-PG-DECL " + className + "." + name + " -> " + pg); return mt; } catch (NoSuchMethodException ignored) {}
                 }
             }
         }
 
-        // 4. Superclass traversal (recursively tries strategies 1-3)
+        if (DEBUG_REFLECTION) log("M-MISS " + className + "." + name + " mk=" + mk);
+
+        // 4. Superclass traversal
         Class<?> sup = cls.getSuperclass();
         if (sup != null && sup != Object.class) {
             return findMethod(sup, name, paramTypes);
