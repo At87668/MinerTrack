@@ -58,7 +58,7 @@ public class FabricMiningListener {
 
     private boolean isClientWorld(Object world) {
         try {
-            Object r = FabricReflection.callAny(world, "isClient", new Class<?>[0], new Object[0]);
+            Object r = FabricReflection.callAny(world, "isClientSide", new Class<?>[0], new Object[0]);
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) {
             return false;
