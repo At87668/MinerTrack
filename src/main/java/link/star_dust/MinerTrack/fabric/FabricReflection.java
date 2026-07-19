@@ -384,16 +384,6 @@ final class FabricReflection {
         return callStatic("net.minecraft.server.MinecraftServer","getServer",new Class<?>[0],new Object[0]);
     }
 
-    static Object callServer(String mc26Method, String legacyMethod, Class<?>[] paramTypes, Object[] args) {
-        Object server = getServer(); if (server == null) return null;
-        Object result = call(server, mc26Method, paramTypes, args);
-        if (result != null || !mc26Method.equals(legacyMethod)) {
-            try { if (result == null) result = call(server, legacyMethod, paramTypes, args); } catch (Throwable t) {}
-            return result;
-        }
-        return null;
-    }
-
     static Object callMigrated(Object target, String mc26Method, String legacyMethod,
                                Class<?>[] paramTypes, Object[] args) {
         if (target == null) return null;
@@ -582,8 +572,6 @@ final class FabricReflection {
     }
 
     private static Class<?> tryLoad(String className) { try { return Class.forName(className); } catch (ClassNotFoundException e) { return null; } }
-
-    static Class<?> mc(String className) { return forName("net.minecraft." + className); }
 
     // -- Method lookup (uses mojang->official table + MappingResolver for intermediary) --
 
