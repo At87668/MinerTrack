@@ -1,16 +1,15 @@
 ---
-name: BUG Report (Folia)
+name: BUG Report
 about: If you want to report a bug, select this.
 title: "[Minecraft Version] Issue Title"
-labels: "❌BUG, \U0001F343Folia"
+labels: "❌BUG"
 assignees: ''
 
 ---
 
 ### [Minecraft Version] Issue Title
 
-- [x] Tested on Folia
-- [x] Tested with this plugin only
+- [ ] Tested with this mod only
 #### Description
 
 [Description]
@@ -19,19 +18,22 @@ assignees: ''
 
 [Using [Github Gist](https://gist.github.com/) or [PasteBin](https://pastebin.com/) like.]
 
-#### Installed Plugins
-[Use "/plugin" to get.]
-
-#### Plugin Version
-[Plugin's version.]
+#### Mod Version
+[MinerTrack's version.]
 
 #### Minecraft Version
 [Minecraft's version.]
 
-#### Server Software
-[Server software name like Spigot or Paper.]
+#### Loader Version
+[Fabric Loader's Version]
+
+#### API Version
+[Fabric API's Version]
 
 #### How to reproduce
 1. Step 1
 1. Step 2
 1. Step ...
+
+#### Screenshots
+[If have.]

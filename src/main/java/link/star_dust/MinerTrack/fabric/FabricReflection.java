@@ -222,14 +222,14 @@ final class FabricReflection {
         Map<String,Map<String,String>> im = new HashMap<>();
 
         Map<String,String> MinecraftServer_im = new HashMap<>();
-        MinecraftServer_im.put("createCommandSourceStack","method_29735");
+        MinecraftServer_im.put("createCommandSourceStack","method_37330");
         MinecraftServer_im.put("getAllLevels","method_3831");
         MinecraftServer_im.put("getCommandManager","method_3772");
-        MinecraftServer_im.put("getCommandSource","method_29735");
+        MinecraftServer_im.put("getCommandSource","method_37330");
         MinecraftServer_im.put("getCommands","method_3772");
         MinecraftServer_im.put("getLevel","method_3864");
-        MinecraftServer_im.put("getPlayerList","method_29735");
-        MinecraftServer_im.put("getPlayerManager","method_29735");
+        MinecraftServer_im.put("getPlayerList","method_37330");
+        MinecraftServer_im.put("getPlayerManager","method_37330");
         MinecraftServer_im.put("getTickCount","method_3796");
         MinecraftServer_im.put("getTicks","method_3796");
         MinecraftServer_im.put("getWorld","method_3864");
@@ -245,7 +245,7 @@ final class FabricReflection {
 
         Map<String,String> ServerLevel_im = new HashMap<>();
         ServerLevel_im.put("dimension","method_29198");
-        ServerLevel_im.put("getBlockState","method_14177");
+        ServerLevel_im.put("getBlockState","method_31434");
         ServerLevel_im.put("getRegistryKey","method_29198");
         im.put("net/minecraft/server/level/ServerLevel",ServerLevel_im);
 
@@ -285,7 +285,7 @@ final class FabricReflection {
         im.put("net/minecraft/core/Registry",Registry_im);
 
         Map<String,String> Block_im = new HashMap<>();
-        Block_im.put("builtInRegistryHolder","method_33615");
+        Block_im.put("builtInRegistryHolder","method_20516");
         im.put("net/minecraft/world/level/block/Block",Block_im);
 
         Map<String,String> CommandSourceStack_im = new HashMap<>();
@@ -301,8 +301,8 @@ final class FabricReflection {
         im.put("net/minecraft/commands/CommandSourceStack",CommandSourceStack_im);
 
         Map<String,String> ServerGamePacketListenerImpl_im = new HashMap<>();
-        ServerGamePacketListenerImpl_im.put("disconnect","method_31276");
-        ServerGamePacketListenerImpl_im.put("onDisconnect","method_31276");
+        ServerGamePacketListenerImpl_im.put("disconnect","method_33898");
+        ServerGamePacketListenerImpl_im.put("onDisconnect","method_33898");
         im.put("net/minecraft/server/network/ServerGamePacketListenerImpl",ServerGamePacketListenerImpl_im);
 
         INTERMEDIARY_METHODS = Collections.unmodifiableMap(im);
