@@ -652,12 +652,31 @@ final class FabricReflection {
 
         if (DEBUG_REFLECTION) log("M-MISS " + className + "." + name + " mk=" + mk);
 
-        // 4. Superclass traversal
+        // 4. Superclass traversal (recursively tries strategies 1-3 on parent)
         Class<?> sup = cls.getSuperclass();
         if (sup != null && sup != Object.class) {
             return findMethod(sup, name, paramTypes);
         }
+
+        // 5. Last resort: scan THIS class's declared methods by parameter types.
+        // Only scans ONE class, no recursion, to avoid server freeze.
+        // Handles edge cases like isClient(F), isPlayer(l), getBlock(b).
+        for (Method m : cls.getDeclaredMethods()) {
+            if (m.getParameterCount() != paramTypes.length) continue;
+            if (typesMatch(m.getParameterTypes(), paramTypes)) {
+                m.setAccessible(true);
+                if (DEBUG_REFLECTION) log("M-SCAN " + className + "." + name + " -> " + m.getName());
+                return m;
+            }
+        }
         return null;
+    }
+
+    private static boolean typesMatch(Class<?>[] a, Class<?>[] b) {
+        if (a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++)
+            if (!a[i].isAssignableFrom(b[i])) return false;
+        return true;
     }
 
     // -- Field lookup --
