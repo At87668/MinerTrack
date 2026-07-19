@@ -579,6 +579,8 @@ final class FabricReflection {
         if (cls == null) return null;
         String className = cls.getName();
 
+        boolean shouldLog = !IS_DEV && (name.equals("getBlockState") || name.equals("getX") || name.equals("getName") || name.equals("getUUID") || name.equals("isClient") || name.equals("dimension") || name.equals("getBlock"));
+
         // Build descriptor from parameter types
         StringBuilder desc = new StringBuilder("(");
         for (Class<?> p : paramTypes) {
@@ -598,13 +600,17 @@ final class FabricReflection {
         String runtimeName = name;
         try {
             Method mt = cls.getMethod(runtimeName, paramTypes);
-            if (mt != null) return mt;
+            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> FOUND via getMethod(mojang='" + runtimeName + "')=" + mt.getName());
+            return mt;
         } catch (NoSuchMethodException ignored) {}
         try {
             Method mt = cls.getDeclaredMethod(runtimeName, paramTypes);
             mt.setAccessible(true);
+            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> FOUND via getDeclaredMethod(mojang='" + runtimeName + "')=" + mt.getName());
             return mt;
         } catch (NoSuchMethodException ignored) {}
+
+        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> mojang name '" + runtimeName + "' NOT found; trying hardcoded inter... (runtimeMojangKey=" + RUNTIME_TO_MOJANG.get(className.replace('.','/')) + ")");
 
         // Try hardcoded intermediary names first (method_NNNNN)
         if (!IS_DEV) {
@@ -614,18 +620,24 @@ final class FabricReflection {
                 if (interMap != null) {
                     String interName = interMap.get(name);
                     if (interName != null) {
+                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   trying interName='" + interName + "'...");
                         // getMethod() searches inheritance tree; getDeclaredMethod()
                         // only finds methods declared directly on this class.
                         try {
                             Method mt = cls.getMethod(interName, paramTypes);
                             mt.setAccessible(true);
+                            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via getMethod(inter='" + interName + "')=" + mt.getName());
                             return mt;
                         } catch (NoSuchMethodException ignored) {}
                         try {
                             Method mt = cls.getDeclaredMethod(interName, paramTypes);
                             mt.setAccessible(true);
+                            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via getDeclaredMethod(inter='" + interName + "')=" + mt.getName());
                             return mt;
                         } catch (NoSuchMethodException ignored) {}
+                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   interName '" + interName + "' NOT found on " + className + " with paramTypes.length=" + paramTypes.length);
+                    } else {
+                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   no interName for '" + name + "' in INTERMEDIARY_METHODS[" + runtimeMojangKey + "]");
                     }
                 }
             }

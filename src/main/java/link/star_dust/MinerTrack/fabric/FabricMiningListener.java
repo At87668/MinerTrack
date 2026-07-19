@@ -31,6 +31,23 @@ public class FabricMiningListener {
     public void register() {
         FabricEventBus.registerBlockBreakAfter(args -> {
             try {
+                // DEBUG: log argument types and their toString briefly
+                StringBuilder sb = new StringBuilder("[MinerTrack:DEBUG] BlockBreak args: ");
+                for (int i = 0; i < args.length; i++) {
+                    Object a = args[i];
+                    sb.append("[").append(i).append("]=");
+                    if (a == null) sb.append("null");
+                    else {
+                        sb.append(a.getClass().getName());
+                        // Include a short toString (trim to 80 chars)
+                        String ts = a.toString();
+                        if (ts.length() > 80) ts = ts.substring(0, 77) + "...";
+                        sb.append("(\"").append(ts.replace("\n","\\n")).append("\")");
+                    }
+                    sb.append(" ");
+                }
+                System.out.println(sb.toString());
+
                 Object world = args[0];
                 Object player = args[1];
                 Object pos = args[2];
@@ -70,13 +87,28 @@ public class FabricMiningListener {
     }
 
     private void handleBlockBreak(Object player, Object pos, Object state, Object world) {
+        System.out.println("[MinerTrack:DEBUG] handleBlockBreak: player.class=" + (player != null ? player.getClass().getName() : "null") +
+            " pos.class=" + (pos != null ? pos.getClass().getName() : "null") +
+            " state.class=" + (state != null ? state.getClass().getName() : "null") +
+            " world.class=" + (world != null ? world.getClass().getName() : "null"));
+
         UUID playerId = readUuid(player);
+        System.out.println("[MinerTrack:DEBUG]   readUuid()=" + playerId);
+
         String name = readPlayerName(player);
+        System.out.println("[MinerTrack:DEBUG]   readPlayerName()=" + name);
+
         String dimensionId = readDimensionId(world);
+        System.out.println("[MinerTrack:DEBUG]   readDimensionId()=" + dimensionId);
+
         int x = readInt(pos, "getX");
         int y = readInt(pos, "getY");
         int z = readInt(pos, "getZ");
+        System.out.println("[MinerTrack:DEBUG]   pos=(" + x + "," + y + "," + z + ")");
+
         String blockType = blockIdForState(state);
+        System.out.println("[MinerTrack:DEBUG]   blockType=" + blockType);
+
         miningCore.onBlockBreak(playerId, name, dimensionId, blockType, x, y, z);
     }
 
