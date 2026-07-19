@@ -614,6 +614,13 @@ final class FabricReflection {
                 if (interMap != null) {
                     String interName = interMap.get(name);
                     if (interName != null) {
+                        // getMethod() searches inheritance tree; getDeclaredMethod()
+                        // only finds methods declared directly on this class.
+                        try {
+                            Method mt = cls.getMethod(interName, paramTypes);
+                            mt.setAccessible(true);
+                            return mt;
+                        } catch (NoSuchMethodException ignored) {}
                         try {
                             Method mt = cls.getDeclaredMethod(interName, paramTypes);
                             mt.setAccessible(true);
@@ -655,22 +662,15 @@ final class FabricReflection {
                         // Strategy B: try official method name directly on class
                         // (works when the runtime uses official/ProGuard method names)
                         try {
+                            Method mt = cls.getMethod(officialMethod, paramTypes);
+                            mt.setAccessible(true);
+                            return mt;
+                        } catch (NoSuchMethodException ignored) {}
+                        try {
                             Method mt = cls.getDeclaredMethod(officialMethod, paramTypes);
                             mt.setAccessible(true);
                             return mt;
                         } catch (NoSuchMethodException ignored) {}
-                        // Strategy C: parameter-type scan — iterate all declared methods
-                        // matching by exact parameter types. Prefer static methods first
-                        // (callStatic needs static), then fall back to instance methods.
-                        Method instanceFallback = null;
-                        for (Method m : cls.getDeclaredMethods()) {
-                            if (paramTypesMatch(m.getParameterTypes(), paramTypes)) {
-                                m.setAccessible(true);
-                                if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) return m;
-                                if (instanceFallback == null) instanceFallback = m;
-                            }
-                        }
-                        if (instanceFallback != null) return instanceFallback;
                     }
                 }
             }
@@ -680,15 +680,6 @@ final class FabricReflection {
         Class<?> superCls = cls.getSuperclass();
         if (superCls != null && superCls != Object.class) return findMethod(superCls, name, paramTypes);
         return null;
-    }
-
-    /** Check if two parameter-type arrays match (supports subtype match). */
-    private static boolean paramTypesMatch(Class<?>[] candidate, Class<?>[] expected) {
-        if (candidate.length != expected.length) return false;
-        for (int i = 0; i < candidate.length; i++) {
-            if (!candidate[i].isAssignableFrom(expected[i])) return false;
-        }
-        return true;
     }
 
     // -- Field lookup (uses hardcoded mojang->official table) --
