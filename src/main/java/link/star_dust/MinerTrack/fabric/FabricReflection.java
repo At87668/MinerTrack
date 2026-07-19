@@ -423,8 +423,7 @@ final class FabricReflection {
     static void setCachedServer(Object server) { cachedServer = server; }
 
     static Object getServer() {
-        if (cachedServer != null) return cachedServer;
-        return callStatic("net.minecraft.server.MinecraftServer","getServer",new Class<?>[0],new Object[0]);
+        return cachedServer;
     }
 
     static Object callMigrated(Object target, String mc26Method, String legacyMethod,
