@@ -288,6 +288,12 @@ final class FabricReflection {
         Block_im.put("builtInRegistryHolder","method_20516");
         im.put("net/minecraft/world/level/block/Block",Block_im);
 
+        Map<String,String> BlockPos_im = new HashMap<>();
+        BlockPos_im.put("getX","method_16363");
+        BlockPos_im.put("getY","method_10101");
+        BlockPos_im.put("getZ","method_30927");
+        im.put("net/minecraft/core/BlockPos",BlockPos_im);
+
         Map<String,String> CommandSourceStack_im = new HashMap<>();
         CommandSourceStack_im.put("getPlayer","method_9207");
         CommandSourceStack_im.put("getServer","method_9211");
@@ -398,6 +404,14 @@ final class FabricReflection {
         rtm.put("net/minecraft/class_243", "net/minecraft/world/phys/Vec3");
         rtm.put("net/minecraft/class_241", "net/minecraft/world/phys/Vec2");
         rtm.put("net/minecraft/class_3442", "net/minecraft/stats/ServerStatsCounter");
+        // Superclass mappings (needed when findMethod traverses up to parent classes)
+        rtm.put("net/minecraft/class_1255", "net/minecraft/server/MinecraftServer");
+        rtm.put("net/minecraft/class_4093", "net/minecraft/server/MinecraftServer");
+        rtm.put("net/minecraft/class_3176", "net/minecraft/server/MinecraftServer");
+        rtm.put("net/minecraft/class_1309", "net/minecraft/world/entity/Entity");
+        rtm.put("net/minecraft/class_2382", "net/minecraft/core/BlockPos");
+        rtm.put("net/minecraft/class_4970$class_4971", "net/minecraft/world/level/block/state/BlockState");
+        rtm.put("net/minecraft/class_2688", "net/minecraft/world/level/block/state/BlockState");
         RUNTIME_TO_MOJANG = Collections.unmodifiableMap(rtm);
     }
 
