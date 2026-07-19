@@ -27,8 +27,6 @@ final class FabricReflection {
     private static final Map<String,String> MOJANG_CLASS_TO_OFFICIAL;
     private static final Map<String,Map<String,String>> MOJANG_METHODS;
     private static final Map<String,Map<String,String>> MOJANG_FIELDS;
-    private static final Map<String,Map<String,String>> INTERMEDIARY_METHODS;
-    private static final Map<String,Map<String,String>> INTERMEDIARY_FIELDS;
     private static final Map<String,String> RUNTIME_TO_MOJANG;
 
     static {
@@ -212,111 +210,6 @@ final class FabricReflection {
         f.put("net/minecraft/server/level/ServerPlayer",spf);
 
         MOJANG_FIELDS = Collections.unmodifiableMap(f);
-
-        // -- Hardcoded intermediary method/field names (method_NNNNN/field_NNNNN) --
-        // Keyed by Mojang class name (slashed). Cross-referenced from 1.18.2
-        // intermediary-v2.tiny. These never change for 1.18-1.21.x.
-        Map<String,Map<String,String>> im = new HashMap<>();
-
-        Map<String,String> msIm = new HashMap<>();
-        msIm.put("getPlayerList","method_29735"); msIm.put("getAllLevels","method_3831");
-        msIm.put("getCommands","method_3772"); msIm.put("createCommandSourceStack","method_29735");
-        msIm.put("getTickCount","method_3796"); msIm.put("getTicks","method_3796");
-        msIm.put("getLevel","method_3864"); msIm.put("getWorld","method_3864");
-        msIm.put("getPlayerManager","method_29735"); msIm.put("getCommandManager","method_3772");
-        msIm.put("getWorlds","method_3831"); msIm.put("getCommandSource","method_29735");
-        im.put("net/minecraft/server/MinecraftServer",msIm);
-
-        Map<String,String> spIm = new HashMap<>();
-        spIm.put("getX","method_14239"); spIm.put("getY","method_14244");
-        spIm.put("sendSystemMessage","method_32748"); spIm.put("sendMessage","method_32748");
-        im.put("net/minecraft/server/level/ServerPlayer",spIm);
-
-        Map<String,String> slIm = new HashMap<>();
-        slIm.put("getBlockState","method_14177"); slIm.put("dimension","method_29198");
-        slIm.put("getRegistryKey","method_29198");
-        im.put("net/minecraft/server/level/ServerLevel",slIm);
-
-        Map<String,String> plIm = new HashMap<>();
-        plIm.put("getPlayer","method_14596"); plIm.put("getPlayerByName","method_14609");
-        plIm.put("getPlayers","method_14614"); plIm.put("getPlayerList","method_14614");
-        plIm.put("isOp","method_14609"); plIm.put("broadcastSystemMessage","method_14596");
-        plIm.put("broadcastMessage","method_14596"); plIm.put("broadcast","method_14596");
-        im.put("net/minecraft/server/players/PlayerList",plIm);
-
-        Map<String,String> entIm = new HashMap<>();
-        entIm.put("getUUID","method_5845"); entIm.put("getUuid","method_5845");
-        entIm.put("getName","method_37908"); entIm.put("getX","method_5878");
-        entIm.put("getY","method_5626"); entIm.put("getZ","method_5794");
-        entIm.put("setPos","method_23323"); entIm.put("refreshPositionAfterTeleport","method_23323");
-        im.put("net/minecraft/world/entity/Entity",entIm);
-
-        Map<String,String> lbIm = new HashMap<>();
-        lbIm.put("setPos","method_37219");
-        im.put("net/minecraft/world/entity/LightningBolt",lbIm);
-
-        Map<String,String> lvIm = new HashMap<>();
-        lvIm.put("getBlockState","method_8496");
-        im.put("net/minecraft/world/level/Level",lvIm);
-
-        Map<String,String> regIm = new HashMap<>();
-        regIm.put("getKey","method_40269"); regIm.put("getResourceKey","method_39667");
-        im.put("net/minecraft/core/Registry",regIm);
-
-        Map<String,String> blkIm = new HashMap<>();
-        blkIm.put("builtInRegistryHolder","method_33615");
-        im.put("net/minecraft/world/level/block/Block",blkIm);
-
-        Map<String,String> cssIm = new HashMap<>();
-        cssIm.put("getPlayer","method_9207"); cssIm.put("getServer","method_9211");
-        cssIm.put("hasPermission","method_9224"); cssIm.put("hasPermissionLevel","method_9224");
-        cssIm.put("sendMessage","method_9209"); cssIm.put("sendSuccess","method_9209");
-        cssIm.put("sendSystemMessage","method_9209"); cssIm.put("withSilent","method_9229");
-        cssIm.put("withSuppressedOutput","method_9229");
-        im.put("net/minecraft/commands/CommandSourceStack",cssIm);
-
-        Map<String,String> sgplIm = new HashMap<>();
-        sgplIm.put("disconnect","method_31276"); sgplIm.put("onDisconnect","method_31276");
-        im.put("net/minecraft/server/network/ServerGamePacketListenerImpl",sgplIm);
-
-        INTERMEDIARY_METHODS = Collections.unmodifiableMap(im);
-
-        Map<String,Map<String,String>> iF = new HashMap<>();
-
-        Map<String,String> etIF = new HashMap<>();
-        etIF.put("LIGHTNING_BOLT","field_6139");
-        iF.put("net/minecraft/world/entity/EntityType",etIF);
-
-        Map<String,String> birIF = new HashMap<>();
-        birIF.put("BLOCK","field_35314");
-        iF.put("net/minecraft/core/registries/BuiltInRegistries",birIF);
-
-        Map<String,String> regIF = new HashMap<>();
-        regIF.put("BLOCK","field_25103");
-        iF.put("net/minecraft/core/Registry",regIF);
-
-        Map<String,String> blksIF = new HashMap<>();
-        blksIF.put("WATER","field_10511");
-        iF.put("net/minecraft/world/level/block/Blocks",blksIF);
-
-        Map<String,String> flsIF = new HashMap<>();
-        flsIF.put("WATER","field_15910");
-        iF.put("net/minecraft/world/level/material/Fluids",flsIF);
-
-        Map<String,String> ctIF = new HashMap<>();
-        ctIF.put("CHAT","field_11737"); ctIF.put("SYSTEM","field_11735");
-        iF.put("net/minecraft/network/chat/ChatType",ctIF);
-
-        Map<String,String> irIF = new HashMap<>();
-        irIF.put("PASS","field_5812"); irIF.put("SUCCESS","field_21466");
-        irIF.put("FAIL","field_33562");
-        iF.put("net/minecraft/world/InteractionResult",irIF);
-
-        Map<String,String> spfIF = new HashMap<>();
-        spfIF.put("connection","field_13987");
-        iF.put("net/minecraft/server/level/ServerPlayer",spfIF);
-
-        INTERMEDIARY_FIELDS = Collections.unmodifiableMap(iF);
 
         // Build reverse map: runtime class name (slashed) → Mojang class name (slashed)
         // On production (intermediary), cls.getName() returns intermediary names like
@@ -581,108 +474,76 @@ final class FabricReflection {
 
         boolean shouldLog = !IS_DEV && (name.equals("getBlockState") || name.equals("getX") || name.equals("getName") || name.equals("getUUID") || name.equals("isClient") || name.equals("dimension") || name.equals("getBlock"));
 
-        // Build descriptor from parameter types
-        StringBuilder desc = new StringBuilder("(");
-        for (Class<?> p : paramTypes) {
-            if (p == boolean.class) desc.append("Z");
-            else if (p == byte.class) desc.append("B");
-            else if (p == char.class) desc.append("C");
-            else if (p == short.class) desc.append("S");
-            else if (p == int.class) desc.append("I");
-            else if (p == long.class) desc.append("J");
-            else if (p == float.class) desc.append("F");
-            else if (p == double.class) desc.append("D");
-            else desc.append("L").append(p.getName().replace('.','/')).append(";");
-        }
-        desc.append(")V");
-
         // Try mojang name directly first (works in dev/named, and for MC 26+)
-        String runtimeName = name;
         try {
-            Method mt = cls.getMethod(runtimeName, paramTypes);
-            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> FOUND via getMethod(mojang='" + runtimeName + "')=" + mt.getName());
+            Method mt = cls.getMethod(name, paramTypes);
+            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> FOUND via getMethod(mojang)=" + mt.getName());
             return mt;
         } catch (NoSuchMethodException ignored) {}
         try {
-            Method mt = cls.getDeclaredMethod(runtimeName, paramTypes);
+            Method mt = cls.getDeclaredMethod(name, paramTypes);
             mt.setAccessible(true);
-            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> FOUND via getDeclaredMethod(mojang='" + runtimeName + "')=" + mt.getName());
+            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> FOUND via getDeclaredMethod(mojang)=" + mt.getName());
             return mt;
         } catch (NoSuchMethodException ignored) {}
 
-        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> mojang name '" + runtimeName + "' NOT found; trying hardcoded inter... (runtimeMojangKey=" + RUNTIME_TO_MOJANG.get(className.replace('.','/')) + ")");
-
-        // Try hardcoded intermediary names first (method_NNNNN)
+        // For intermediary/ProGuard servers: resolve via MappingResolver
         if (!IS_DEV) {
-            String runtimeMojangKey = RUNTIME_TO_MOJANG.get(className.replace('.','/'));
-            if (runtimeMojangKey != null) {
-                Map<String,String> interMap = INTERMEDIARY_METHODS.get(runtimeMojangKey);
-                if (interMap != null) {
-                    String interName = interMap.get(name);
-                    if (interName != null) {
-                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   trying interName='" + interName + "'...");
-                        // getMethod() searches inheritance tree; getDeclaredMethod()
-                        // only finds methods declared directly on this class.
-                        try {
-                            Method mt = cls.getMethod(interName, paramTypes);
-                            mt.setAccessible(true);
-                            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via getMethod(inter='" + interName + "')=" + mt.getName());
-                            return mt;
-                        } catch (NoSuchMethodException ignored) {}
-                        try {
-                            Method mt = cls.getDeclaredMethod(interName, paramTypes);
-                            mt.setAccessible(true);
-                            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via getDeclaredMethod(inter='" + interName + "')=" + mt.getName());
-                            return mt;
-                        } catch (NoSuchMethodException ignored) {}
-                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   interName '" + interName + "' NOT found on " + className + " with paramTypes.length=" + paramTypes.length);
-                    } else {
-                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   no interName for '" + name + "' in INTERMEDIARY_METHODS[" + runtimeMojangKey + "]");
-                    }
-                }
-            }
-        }
-
-        // Try official->intermediary via MappingResolver
-        if (!IS_DEV) {
-            // Resolve the runtime class name to the corresponding Mojang class
-            // (e.g. net/minecraft/class_3222 → net/minecraft/server/level/ServerPlayer)
-            // because MOJANG_METHODS is keyed by Mojang class names.
             String runtimeMojangKey = RUNTIME_TO_MOJANG.get(className.replace('.','/'));
             if (runtimeMojangKey != null) {
                 Map<String,String> methodMap = MOJANG_METHODS.get(runtimeMojangKey);
                 if (methodMap != null) {
                     String officialMethod = methodMap.get(name);
                     if (officialMethod != null) {
-                        // Strategy A: resolve official→intermediary via MappingResolver
-                        // (requires correct descriptor — may fail when return type != V)
-                        String intermediary = null;
-                        try {
-                            intermediary = resolver().mapMethodName("official","intermediary",officialMethod,desc.toString());
-                        } catch (Throwable t) {}
-                        if (intermediary != null && !intermediary.equals(officialMethod)) {
-                            try {
-                                Method mt = cls.getMethod(intermediary, paramTypes);
-                                if (mt != null) return mt;
-                            } catch (NoSuchMethodException ignored) {}
-                            try {
-                                Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
-                                mt.setAccessible(true);
-                                return mt;
-                            } catch (NoSuchMethodException ignored) {}
+                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod: " + className + "." + name + " -> official='" + officialMethod + "'; trying MappingResolver...");
+
+                        // Build parameter descriptor
+                        StringBuilder paramDesc = new StringBuilder("(");
+                        for (Class<?> p : paramTypes) {
+                            paramDesc.append(primitiveDesc(p));
                         }
-                        // Strategy B: try official method name directly on class
-                        // (works when the runtime uses official/ProGuard method names)
+                        paramDesc.append(")");
+
+                        // Try common return types: V, I, J, F, D, Z, L...;
+                        // MappingResolver.mapMethodName needs correct return descriptor,
+                        // so we try the most likely ones.
+                        String[] returnDescs = {"V", "Z", "I", "J", "F", "D", "Ljava/lang/Object;"};
+                        for (String retDesc : returnDescs) {
+                            String descriptor = paramDesc + retDesc;
+                            try {
+                                String intermediary = resolver().mapMethodName("official","intermediary",officialMethod,descriptor);
+                                if (intermediary != null && !intermediary.equals(officialMethod)) {
+                                    try {
+                                        Method mt = cls.getMethod(intermediary, paramTypes);
+                                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via MappingResolver(desc=" + descriptor + ") -> " + intermediary);
+                                        return mt;
+                                    } catch (NoSuchMethodException ignored) {}
+                                    try {
+                                        Method mt = cls.getDeclaredMethod(intermediary, paramTypes);
+                                        mt.setAccessible(true);
+                                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via MappingResolver+getDeclaredMethod(desc=" + descriptor + ") -> " + intermediary);
+                                        return mt;
+                                    } catch (NoSuchMethodException ignored) {}
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+
+                        // Try official (ProGuard) name directly
+                        // Works on ProGuard-obfuscated servers where method names are a, b, etc.
                         try {
                             Method mt = cls.getMethod(officialMethod, paramTypes);
                             mt.setAccessible(true);
+                            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via official name '" + officialMethod + "'");
                             return mt;
                         } catch (NoSuchMethodException ignored) {}
                         try {
                             Method mt = cls.getDeclaredMethod(officialMethod, paramTypes);
                             mt.setAccessible(true);
+                            if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   FOUND via official+getDeclaredMethod '" + officialMethod + "'");
                             return mt;
                         } catch (NoSuchMethodException ignored) {}
+
+                        if (shouldLog) System.out.println("[MinerTrack:DEBUG] findMethod:   ALL strategies failed for " + className + "." + name);
                     }
                 }
             }
@@ -694,7 +555,18 @@ final class FabricReflection {
         return null;
     }
 
-    // -- Field lookup (uses hardcoded mojang->official table) --
+    /** Map a primitive class to its JVM descriptor character. */
+    private static String primitiveDesc(Class<?> type) {
+        if (type == boolean.class) return "Z";
+        if (type == byte.class)   return "B";
+        if (type == char.class)    return "C";
+        if (type == short.class)   return "S";
+        if (type == int.class)     return "I";
+        if (type == long.class)    return "J";
+        if (type == float.class)   return "F";
+        if (type == double.class)  return "D";
+        return "L" + type.getName().replace('.','/') + ";";
+    }
 
     private static Field findField(Class<?> cls, String name) {
         if (cls == null) return null;
@@ -703,31 +575,23 @@ final class FabricReflection {
         try { return cls.getDeclaredField(name); } catch (NoSuchFieldException ignored) {}
         try { return cls.getField(name); } catch (NoSuchFieldException ignored) {}
 
-        // Try hardcoded intermediary names first (field_NNNNN)
-        if (!IS_DEV) {
-            String runtimeMojangKey = RUNTIME_TO_MOJANG.get(cls.getName().replace('.','/'));
-            if (runtimeMojangKey != null) {
-                Map<String,String> interFieldMap = INTERMEDIARY_FIELDS.get(runtimeMojangKey);
-                if (interFieldMap != null) {
-                    String interName = interFieldMap.get(name);
-                    if (interName != null) {
-                        try { return cls.getDeclaredField(interName); } catch (NoSuchFieldException ignored) {}
-                        try { return cls.getField(interName); } catch (NoSuchFieldException ignored) {}
-                    }
-                }
-            }
-        }
-
         // Try official name via MappingResolver
         if (!IS_DEV) {
-            // Resolve the runtime class name to the corresponding Mojang class
-            // (same fix as in findMethod — cls.getName() returns intermediary name on production)
             String runtimeMojangKey = RUNTIME_TO_MOJANG.get(cls.getName().replace('.','/'));
             if (runtimeMojangKey != null) {
                 Map<String,String> fieldMap = MOJANG_FIELDS.get(runtimeMojangKey);
                 if (fieldMap != null) {
                     String officialField = fieldMap.get(name);
                     if (officialField != null) {
+                        // Try MappingResolver first (official->intermediary)
+                        try {
+                            String intermediary = resolver().mapFieldName("official","intermediary",officialField,"");
+                            if (intermediary != null && !intermediary.equals(officialField)) {
+                                try { return cls.getDeclaredField(intermediary); } catch (NoSuchFieldException ignored) {}
+                                try { return cls.getField(intermediary); } catch (NoSuchFieldException ignored) {}
+                            }
+                        } catch (Throwable ignored) {}
+                        // Try official (ProGuard) name directly
                         try { return cls.getDeclaredField(officialField); } catch (NoSuchFieldException ignored) {}
                         try { return cls.getField(officialField); } catch (NoSuchFieldException ignored) {}
                     }
