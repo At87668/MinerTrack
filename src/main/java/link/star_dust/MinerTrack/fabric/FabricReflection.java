@@ -27,6 +27,8 @@ final class FabricReflection {
     private static final Map<String,String> MOJANG_CLASS_TO_OFFICIAL;
     private static final Map<String,Map<String,String>> MOJANG_METHODS;
     private static final Map<String,Map<String,String>> MOJANG_FIELDS;
+    private static final Map<String,Map<String,String>> INTERMEDIARY_METHODS;
+    private static final Map<String,Map<String,String>> INTERMEDIARY_FIELDS;
     private static final Map<String,String> RUNTIME_TO_MOJANG;
 
     static {
@@ -68,7 +70,7 @@ final class FabricReflection {
         // MinecraftServer methods
         Map<String,String> ms = new HashMap<>();
         ms.put("getPlayerList","a"); ms.put("getAllLevels","A"); ms.put("getCommands","aC");
-        ms.put("getServer","getServer"); ms.put("createCommandSourceStack","a");
+        ms.put("createCommandSourceStack","a");
         ms.put("getTickCount","W"); ms.put("getTicks","W"); ms.put("getLevel","d");
         ms.put("getWorld","d"); ms.put("getPlayerManager","a"); ms.put("getCommandManager","aC");
         ms.put("getWorlds","A"); ms.put("getCommandSource","a");
@@ -78,7 +80,7 @@ final class FabricReflection {
         Map<String,String> sp = new HashMap<>();
         sp.put("getName","W"); sp.put("getUUID","dn"); sp.put("getUuid","dn");
         sp.put("getX","t"); sp.put("getY","u"); sp.put("getZ","v");
-        sp.put("getGameProfile","fp"); sp.put("nameAndId","nameAndId");
+        sp.put("getGameProfile","fp");
         sp.put("sendSystemMessage","c"); sp.put("sendMessage","c");
         m.put("net/minecraft/server/level/ServerPlayer",sp);
 
@@ -130,10 +132,8 @@ final class FabricReflection {
         blk.put("builtInRegistryHolder","a");
         m.put("net/minecraft/world/level/block/Block",blk);
 
-        // Component methods
-        Map<String,String> comp = new HashMap<>();
-        comp.put("getString","getString");
-        m.put("net/minecraft/network/chat/Component",comp);
+        // Component methods — getString has same name in all namespaces; resolved directly
+        m.put("net/minecraft/network/chat/Component",new HashMap<>());
 
         // ResourceKey methods
         // ResourceKey is not in our table; accessed via callResourceKeyValue which tries identifier/location/getValue
@@ -159,10 +159,8 @@ final class FabricReflection {
         sgpl.put("disconnect","a"); sgpl.put("onDisconnect","a");
         m.put("net/minecraft/server/network/ServerGamePacketListenerImpl",sgpl);
 
-        // Fluid methods
-        Map<String,String> fluid = new HashMap<>();
-        fluid.put("getStill","getStill");
-        m.put("net/minecraft/world/level/material/Fluid",fluid);
+        // Fluid methods — getStill has same name in all namespaces; resolved directly
+        m.put("net/minecraft/world/level/material/Fluid",new HashMap<>());
 
         MOJANG_METHODS = Collections.unmodifiableMap(m);
 
@@ -214,6 +212,111 @@ final class FabricReflection {
         f.put("net/minecraft/server/level/ServerPlayer",spf);
 
         MOJANG_FIELDS = Collections.unmodifiableMap(f);
+
+        // -- Hardcoded intermediary method/field names (method_NNNNN/field_NNNNN) --
+        // Keyed by Mojang class name (slashed). Cross-referenced from 1.18.2
+        // intermediary-v2.tiny. These never change for 1.18-1.21.x.
+        Map<String,Map<String,String>> im = new HashMap<>();
+
+        Map<String,String> msIm = new HashMap<>();
+        msIm.put("getPlayerList","method_29735"); msIm.put("getAllLevels","method_3831");
+        msIm.put("getCommands","method_3772"); msIm.put("createCommandSourceStack","method_29735");
+        msIm.put("getTickCount","method_3796"); msIm.put("getTicks","method_3796");
+        msIm.put("getLevel","method_3864"); msIm.put("getWorld","method_3864");
+        msIm.put("getPlayerManager","method_29735"); msIm.put("getCommandManager","method_3772");
+        msIm.put("getWorlds","method_3831"); msIm.put("getCommandSource","method_29735");
+        im.put("net/minecraft/server/MinecraftServer",msIm);
+
+        Map<String,String> spIm = new HashMap<>();
+        spIm.put("getX","method_14239"); spIm.put("getY","method_14244");
+        spIm.put("sendSystemMessage","method_32748"); spIm.put("sendMessage","method_32748");
+        im.put("net/minecraft/server/level/ServerPlayer",spIm);
+
+        Map<String,String> slIm = new HashMap<>();
+        slIm.put("getBlockState","method_14177"); slIm.put("dimension","method_29198");
+        slIm.put("getRegistryKey","method_29198");
+        im.put("net/minecraft/server/level/ServerLevel",slIm);
+
+        Map<String,String> plIm = new HashMap<>();
+        plIm.put("getPlayer","method_14596"); plIm.put("getPlayerByName","method_14609");
+        plIm.put("getPlayers","method_14614"); plIm.put("getPlayerList","method_14614");
+        plIm.put("isOp","method_14609"); plIm.put("broadcastSystemMessage","method_14596");
+        plIm.put("broadcastMessage","method_14596"); plIm.put("broadcast","method_14596");
+        im.put("net/minecraft/server/players/PlayerList",plIm);
+
+        Map<String,String> entIm = new HashMap<>();
+        entIm.put("getUUID","method_5845"); entIm.put("getUuid","method_5845");
+        entIm.put("getName","method_37908"); entIm.put("getX","method_5878");
+        entIm.put("getY","method_5626"); entIm.put("getZ","method_5794");
+        entIm.put("setPos","method_23323"); entIm.put("refreshPositionAfterTeleport","method_23323");
+        im.put("net/minecraft/world/entity/Entity",entIm);
+
+        Map<String,String> lbIm = new HashMap<>();
+        lbIm.put("setPos","method_37219");
+        im.put("net/minecraft/world/entity/LightningBolt",lbIm);
+
+        Map<String,String> lvIm = new HashMap<>();
+        lvIm.put("getBlockState","method_8496");
+        im.put("net/minecraft/world/level/Level",lvIm);
+
+        Map<String,String> regIm = new HashMap<>();
+        regIm.put("getKey","method_40269"); regIm.put("getResourceKey","method_39667");
+        im.put("net/minecraft/core/Registry",regIm);
+
+        Map<String,String> blkIm = new HashMap<>();
+        blkIm.put("builtInRegistryHolder","method_33615");
+        im.put("net/minecraft/world/level/block/Block",blkIm);
+
+        Map<String,String> cssIm = new HashMap<>();
+        cssIm.put("getPlayer","method_9207"); cssIm.put("getServer","method_9211");
+        cssIm.put("hasPermission","method_9224"); cssIm.put("hasPermissionLevel","method_9224");
+        cssIm.put("sendMessage","method_9209"); cssIm.put("sendSuccess","method_9209");
+        cssIm.put("sendSystemMessage","method_9209"); cssIm.put("withSilent","method_9229");
+        cssIm.put("withSuppressedOutput","method_9229");
+        im.put("net/minecraft/commands/CommandSourceStack",cssIm);
+
+        Map<String,String> sgplIm = new HashMap<>();
+        sgplIm.put("disconnect","method_31276"); sgplIm.put("onDisconnect","method_31276");
+        im.put("net/minecraft/server/network/ServerGamePacketListenerImpl",sgplIm);
+
+        INTERMEDIARY_METHODS = Collections.unmodifiableMap(im);
+
+        Map<String,Map<String,String>> iF = new HashMap<>();
+
+        Map<String,String> etIF = new HashMap<>();
+        etIF.put("LIGHTNING_BOLT","field_6139");
+        iF.put("net/minecraft/world/entity/EntityType",etIF);
+
+        Map<String,String> birIF = new HashMap<>();
+        birIF.put("BLOCK","field_35314");
+        iF.put("net/minecraft/core/registries/BuiltInRegistries",birIF);
+
+        Map<String,String> regIF = new HashMap<>();
+        regIF.put("BLOCK","field_25103");
+        iF.put("net/minecraft/core/Registry",regIF);
+
+        Map<String,String> blksIF = new HashMap<>();
+        blksIF.put("WATER","field_10511");
+        iF.put("net/minecraft/world/level/block/Blocks",blksIF);
+
+        Map<String,String> flsIF = new HashMap<>();
+        flsIF.put("WATER","field_15910");
+        iF.put("net/minecraft/world/level/material/Fluids",flsIF);
+
+        Map<String,String> ctIF = new HashMap<>();
+        ctIF.put("CHAT","field_11737"); ctIF.put("SYSTEM","field_11735");
+        iF.put("net/minecraft/network/chat/ChatType",ctIF);
+
+        Map<String,String> irIF = new HashMap<>();
+        irIF.put("PASS","field_5812"); irIF.put("SUCCESS","field_21466");
+        irIF.put("FAIL","field_33562");
+        iF.put("net/minecraft/world/InteractionResult",irIF);
+
+        Map<String,String> spfIF = new HashMap<>();
+        spfIF.put("connection","field_13987");
+        iF.put("net/minecraft/server/level/ServerPlayer",spfIF);
+
+        INTERMEDIARY_FIELDS = Collections.unmodifiableMap(iF);
 
         // Build reverse map: runtime class name (slashed) → Mojang class name (slashed)
         // On production (intermediary), cls.getName() returns intermediary names like
@@ -515,6 +618,24 @@ final class FabricReflection {
             return mt;
         } catch (NoSuchMethodException ignored) {}
 
+        // Try hardcoded intermediary names first (method_NNNNN)
+        if (!IS_DEV) {
+            String runtimeMojangKey = RUNTIME_TO_MOJANG.get(className.replace('.','/'));
+            if (runtimeMojangKey != null) {
+                Map<String,String> interMap = INTERMEDIARY_METHODS.get(runtimeMojangKey);
+                if (interMap != null) {
+                    String interName = interMap.get(name);
+                    if (interName != null) {
+                        try {
+                            Method mt = cls.getDeclaredMethod(interName, paramTypes);
+                            mt.setAccessible(true);
+                            return mt;
+                        } catch (NoSuchMethodException ignored) {}
+                    }
+                }
+            }
+        }
+
         // Try official->intermediary via MappingResolver
         if (!IS_DEV) {
             // Resolve the runtime class name to the corresponding Mojang class
@@ -590,6 +711,21 @@ final class FabricReflection {
         // Try mojang name directly first
         try { return cls.getDeclaredField(name); } catch (NoSuchFieldException ignored) {}
         try { return cls.getField(name); } catch (NoSuchFieldException ignored) {}
+
+        // Try hardcoded intermediary names first (field_NNNNN)
+        if (!IS_DEV) {
+            String runtimeMojangKey = RUNTIME_TO_MOJANG.get(cls.getName().replace('.','/'));
+            if (runtimeMojangKey != null) {
+                Map<String,String> interFieldMap = INTERMEDIARY_FIELDS.get(runtimeMojangKey);
+                if (interFieldMap != null) {
+                    String interName = interFieldMap.get(name);
+                    if (interName != null) {
+                        try { return cls.getDeclaredField(interName); } catch (NoSuchFieldException ignored) {}
+                        try { return cls.getField(interName); } catch (NoSuchFieldException ignored) {}
+                    }
+                }
+            }
+        }
 
         // Try official name via MappingResolver
         if (!IS_DEV) {
