@@ -637,25 +637,9 @@ final class FabricReflection {
         // 4. Superclass traversal (recursively tries strategies 1-3)
         Class<?> sup = cls.getSuperclass();
         if (sup != null && sup != Object.class) {
-            Method mt = findMethod(sup, name, paramTypes);
-            if (mt != null) return mt;
-        }
-
-        // 5. Last resort: scan getDeclaredMethods() for param-type match
-        for (Method m : cls.getDeclaredMethods()) {
-            if (m.getParameterCount() == paramTypes.length && matchAllParams(m.getParameterTypes(), paramTypes)) {
-                m.setAccessible(true);
-                return m;
-            }
+            return findMethod(sup, name, paramTypes);
         }
         return null;
-    }
-
-    private static boolean matchAllParams(Class<?>[] declared, Class<?>[] expected) {
-        for (int i = 0; i < declared.length; i++) {
-            if (!declared[i].isAssignableFrom(expected[i])) return false;
-        }
-        return true;
     }
 
     // -- Field lookup --
