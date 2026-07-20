@@ -173,9 +173,10 @@ public class FabricAdapter implements PluginAdapter {
                 if (textCls == null) return;
                 // Send via the server. MC 26.1+: sendSystemMessage(Component)
                 // 1.18-1.21: sendMessage(Text) or sendMessage(Text, boolean)
+                // Mojang: MinecraftServer.sendSystemMessage(Component)
                 try {
-                    java.lang.reflect.Method m = FabricReflection.findMethodWithMigration(
-                        server.getClass(), "sendSystemMessage", new Class<?>[]{textCls});
+                    java.lang.reflect.Method m = FabricReflection.findMethod(
+                        server.getClass(), FabricReflectionConstants.M_SEND_SYSTEM_MSG_SRV, new Class<?>[]{textCls});
                     if (m != null) {
                         m.invoke(server, text);
                         return;
@@ -359,11 +360,14 @@ public class FabricAdapter implements PluginAdapter {
         try {
             Object server = minecraftServer();
             if (server == null) return null;
-            // MC 26.1+: getPlayerList(); 1.18-1.21: getPlayerManager()
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                new Class<?>[0], new Object[0]);
+            // Mojang: MinecraftServer.getPlayerList(); 1.18-1.21: getPlayerManager()
+            // Mojang: PlayerList.getPlayer(UUID) → ServerPlayer
+            Object pm = FabricReflection.callMigrated(server,
+                FabricReflectionConstants.M_GET_PLAYER_LIST, "getPlayerManager",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (pm == null) return null;
-            return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+            return FabricReflection.call(pm, FabricReflectionConstants.M_GET_PLAYER_UUID,
+                new Class<?>[]{UUID.class}, new Object[]{uuid});
         } catch (Throwable t) {
             return null;
         }
@@ -398,7 +402,8 @@ public class FabricAdapter implements PluginAdapter {
 
         // 2. MC 1.19.3+: Component.literal(String) via FabricReflection
         try {
-            Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
+            // Mojang: net.minecraft.network.chat.Component
+            Class<?> textCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
             if (textCls != null) {
                 java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
                 return literal.invoke(null, message);
@@ -407,7 +412,8 @@ public class FabricAdapter implements PluginAdapter {
 
         // 3. MC 1.18-1.19.2: new TextComponent(String)
         try {
-            Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
+            // Mojang: net.minecraft.network.chat.TextComponent → Component
+            Class<?> ltCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
             return ltCls.getDeclaredConstructor(String.class).newInstance(message);
         } catch (Throwable t) {
             return null;
@@ -422,7 +428,8 @@ public class FabricAdapter implements PluginAdapter {
             return Class.forName("net.minecraft.network.chat.Component");
         } catch (ClassNotFoundException e) {
             try {
-                return FabricReflection.forName("net.minecraft.network.chat.Component");
+                // Mojang: net.minecraft.network.chat.Component
+                return FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
             } catch (Throwable ex) {
                 return null;
             }
