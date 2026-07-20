@@ -31,10 +31,13 @@ public class FabricMiningListener {
     public void register() {
         FabricEventBus.registerBlockBreakAfter(args -> {
             try {
-                Object world = args[0];
-                Object player = args[1];
-                Object pos = args[2];
-                Object state = args[3];
+                // Fabric API 1.18.2: PlayerBlockBreakEvents$After signature is
+                //   afterBlockBreak(ServerPlayerEntity, ServerWorld, BlockPos, BlockState, BlockEntity?)
+                // args[0]=player, args[1]=world, args[2]=pos, args[3]=state
+                Object player = args[0];
+                Object world  = args[1];
+                Object pos    = args[2];
+                Object state  = args[3];
                 if (isClientWorld(world))
                     return;
                 if (!isServerPlayer(player))
@@ -152,35 +155,38 @@ public class FabricMiningListener {
 
     // ── BlockPos / Vec3i coordinate access ────────────────────────────
     //
-    // Vec3i stores int x, y, z as private fields.  Their intermediary names
-    // (field_NNNN) differ from Entity's method_5878/5626/5794.  We read the
-    // fields directly by finding all int fields on Vec3i and reading them in
-    // declaration order (x, y, z is the guaranteed order).
+    // Vec3i (intermediary class_2382) has private int fields x, y, z.
+    // On production the class name is NOT "Vec3i" — it's "class_2382".
+    // We walk up to the first superclass whose getName() contains "class_"
+    // OR try Vec3i by name, then read the int fields in declaration order.
+    // Fallback: direct getX/getY/getZ method call bypassing redirect.
 
     private static int readInt(Object target, String method) {
         try {
-            // Walk to Vec3i (BlockPos → extends Vec3i)
+            // Walk to Vec3i superclass (intermediary name: class_2382)
             Class<?> c = target.getClass();
-            while (c != null && !c.getSimpleName().contains("Vec3i")
-                    && !c.getSimpleName().contains("BaseBlockPosition")) {
+            while (c != null) {
+                String sn = c.getSimpleName();
+                String nm = c.getName();
+                if (sn.contains("Vec3i") || nm.contains("class_2382")) break;
                 c = c.getSuperclass();
             }
-            if (c == null) {
-                // Fallback: try the method name directly
-                return callIntMethod(target, method);
-            }
-            // Vec3i declares 3 int fields in order: x, y, z
-            java.util.List<java.lang.reflect.Field> intFields = new java.util.ArrayList<>();
-            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                if (f.getType() == int.class) intFields.add(f);
-            }
-            int idx = "getY".equals(method) ? 1 : "getZ".equals(method) ? 2 : 0;
-            if (idx < intFields.size()) {
-                intFields.get(idx).setAccessible(true);
-                return intFields.get(idx).getInt(target);
+            if (c != null) {
+                // Read Vec3i's int fields in declaration order: x, y, z
+                java.util.List<java.lang.reflect.Field> intFields = new java.util.ArrayList<>();
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (f.getType() == int.class) intFields.add(f);
+                }
+                int idx = "getY".equals(method) ? 1 : "getZ".equals(method) ? 2 : 0;
+                if (idx < intFields.size()) {
+                    intFields.get(idx).setAccessible(true);
+                    return intFields.get(idx).getInt(target);
+                }
             }
         } catch (Throwable t) { }
-        return 0;
+        // Fallback: call getX/getY/getZ directly on the target class
+        // (bypass redirect — getMethod uses Java's inheritance resolution)
+        return callIntMethod(target, method);
     }
 
     private static int callIntMethod(Object target, String method) {
