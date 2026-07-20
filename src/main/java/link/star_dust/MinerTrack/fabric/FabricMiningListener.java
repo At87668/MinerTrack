@@ -114,16 +114,30 @@ public class FabricMiningListener {
         }
     }
 
+    /**
+     * Read the player's display name.
+     *
+     * <p>Entity.getName() returns a Component on 1.18+ whose intermediary
+     * name (method_37908) collides with a different method on ServerLevel,
+     * causing the redirect to return the wrong object.  We use
+     * Entity.getScoreboardName() (method_20033) instead — it returns a
+     * plain String on ALL MC versions and has no collision.</p>
+     */
+    private static final String ENT_GET_SCOREBOARD_NAME = "method_20033"; // Entity.getScoreboardName() → String
+
     private static String readPlayerName(Object player) {
         try {
-            // MC 26.1+: Entity.getName() returns Component
-            // 1.18-1.21: returns String
-            // readString() handles both — Component.getString() vs String passthrough
-            Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
-            return FabricReflection.readString(name);
+            // Entity.getScoreboardName() → String (no Component wrapping, no collision)
+            Object name = player.getClass().getMethod(ENT_GET_SCOREBOARD_NAME).invoke(player);
+            if (name instanceof String) return (String) name;
         } catch (Throwable t) {
-            return "";
+            // Fallback: try getName → readString
+            try {
+                Object name = FabricReflection.callAny(player, "getName", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                return FabricReflection.readString(name);
+            } catch (Throwable t2) { }
         }
+        return "";
     }
 
     private static String readDimensionId(Object world) {
