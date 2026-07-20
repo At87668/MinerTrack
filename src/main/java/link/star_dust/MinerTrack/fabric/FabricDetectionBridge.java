@@ -97,13 +97,17 @@ public class FabricDetectionBridge implements DetectionBridge {
             // MC 26.1+: Level.dimension(); 1.18-1.21: Level.getRegistryKey()
             Object registryKey = FabricReflection.callDimension(world);
             if (registryKey == null) return null;
-            // ResourceKey.toString() reliably contains the dimension ID on all
-            // versions: "ResourceKey[minecraft:overworld / minecraft:overworld]"
+            // ResourceKey.toString() in 1.18.2:
+            //   "ResourceKey[minecraft:dimension / minecraft:overworld]"
+            //   The actual dimension ID is the SECOND token (after " / ").
             String s = registryKey.toString();
             int start = s.indexOf('[');
-            int slash = s.indexOf('/');
-            if (start >= 0 && slash > start)
-                return s.substring(start + 1, slash).trim();
+            int slash = s.indexOf(" / ");
+            if (start >= 0 && slash > start) {
+                int end = s.indexOf(']', slash);
+                if (end > slash) return s.substring(slash + 3, end).trim();
+                return s.substring(slash + 3).trim();
+            }
             // fallback: try getValue()
             Object val = FabricReflection.callAny(registryKey, "getValue",
                 FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
@@ -369,11 +373,15 @@ public class FabricDetectionBridge implements DetectionBridge {
             for (Object w : (Iterable<?>) worlds) {
                 Object registryKey = FabricReflection.callDimension(w);
                 if (registryKey == null) continue;
-                // ResourceKey.toString() → "ResourceKey[minecraft:overworld / ...]"
+                // ResourceKey.toString() → "ResourceKey[minecraft:dimension / minecraft:overworld]"
                 String s = registryKey.toString();
                 int start = s.indexOf('[');
-                int slash = s.indexOf('/');
-                String dim = (start >= 0 && slash > start) ? s.substring(start + 1, slash).trim() : null;
+                int slash = s.indexOf(" / ");
+                String dim = null;
+                if (start >= 0 && slash > start) {
+                    int end = s.indexOf(']', slash);
+                    dim = (end > slash) ? s.substring(slash + 3, end).trim() : s.substring(slash + 3).trim();
+                }
                 if (dim == null) {
                     Object val = FabricReflection.callAny(registryKey, "getValue", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
                     if (val != null) dim = FabricReflection.readString(val);

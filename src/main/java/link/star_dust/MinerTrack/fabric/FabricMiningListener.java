@@ -130,17 +130,18 @@ public class FabricMiningListener {
             Object registryKey = FabricReflection.callDimension(world);
             if (registryKey == null)
                 return null;
-            // MC 26.1+: ResourceKey.location().toString()
-            // 1.18-1.21: ResourceKey.getValue() → ResourceLocation → toString()
-            // In production, ResourceKey's toString() always includes the
-            // dimension ID, e.g. "ResourceKey[minecraft:overworld / ...]".
+            // ResourceKey.toString() in 1.18.2:
+            //   "ResourceKey[minecraft:dimension / minecraft:overworld]"
+            //   The actual dimension ID is the SECOND token (after " / ").
             String s = registryKey.toString();
             int start = s.indexOf('[');
-            int slash = s.indexOf('/');
+            int slash = s.indexOf(" / ");
             if (start >= 0 && slash > start) {
-                return s.substring(start + 1, slash).trim();
+                int end = s.indexOf(']', slash);
+                if (end > slash) return s.substring(slash + 3, end).trim();
+                return s.substring(slash + 3).trim();
             }
-            // Legacy fallback: try getValue() → toString
+            // Fallback: try getValue() which returns a ResourceLocation
             String value = FabricReflection.readString(
                 FabricReflection.callAny(registryKey, "getValue", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS));
             return value;
@@ -151,43 +152,43 @@ public class FabricMiningListener {
 
     // ── BlockPos / Vec3i coordinate access ────────────────────────────
     //
-    // Entity.getX/Y/Z intermediary names (method_5878/5626/5794) differ
-    // from BlockPos/Vec3i's.  The global METHOD_REDIRECT maps getX→Entity's
-    // name, so we bypass it here with hardcoded intermediary names from the
-    // 1.18.2 tiny mappings:
-    //   BlockPos.getX() → method_16363
-    //   BlockPos.getY() → method_10101
-    //   BlockPos.getZ() → method_30927
-    //
-    // These are declared on Vec3i and inherited by BlockPos.  We use
-    // getMethod() (which traverses the hierarchy) on the target class
-    // directly, bypassing FabricReflection's redirect.
+    // Vec3i stores int x, y, z as private fields.  Their intermediary names
+    // (field_NNNN) differ from Entity's method_5878/5626/5794.  We read the
+    // fields directly by finding all int fields on Vec3i and reading them in
+    // declaration order (x, y, z is the guaranteed order).
 
     private static int readInt(Object target, String method) {
-        String resolved;
-        if ("getX".equals(method)) resolved = "method_16363";
-        else if ("getY".equals(method)) resolved = "method_10101";
-        else if ("getZ".equals(method)) resolved = "method_30927";
-        else resolved = method;
         try {
-            java.lang.reflect.Method m = target.getClass().getMethod(resolved);
-            Object r = m.invoke(target);
-            return (r instanceof Number) ? ((Number) r).intValue() : 0;
-        } catch (Throwable t) {
-            // Walk superclass chain for Vec3i (BlockPos extends Vec3i)
+            // Walk to Vec3i (BlockPos → extends Vec3i)
             Class<?> c = target.getClass();
-            while (c != null && c != Object.class) {
-                try {
-                    java.lang.reflect.Method m = c.getDeclaredMethod(resolved);
-                    m.setAccessible(true);
-                    Object r = m.invoke(target);
-                    if (r instanceof Number) return ((Number) r).intValue();
-                } catch (NoSuchMethodException e) {}
-                catch (Throwable e) { break; }
+            while (c != null && !c.getSimpleName().contains("Vec3i")
+                    && !c.getSimpleName().contains("BaseBlockPosition")) {
                 c = c.getSuperclass();
             }
-        }
+            if (c == null) {
+                // Fallback: try the method name directly
+                return callIntMethod(target, method);
+            }
+            // Vec3i declares 3 int fields in order: x, y, z
+            java.util.List<java.lang.reflect.Field> intFields = new java.util.ArrayList<>();
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                if (f.getType() == int.class) intFields.add(f);
+            }
+            int idx = "getY".equals(method) ? 1 : "getZ".equals(method) ? 2 : 0;
+            if (idx < intFields.size()) {
+                intFields.get(idx).setAccessible(true);
+                return intFields.get(idx).getInt(target);
+            }
+        } catch (Throwable t) { }
         return 0;
+    }
+
+    private static int callIntMethod(Object target, String method) {
+        try {
+            java.lang.reflect.Method m = target.getClass().getMethod(method);
+            Object r = m.invoke(target);
+            return (r instanceof Number) ? ((Number) r).intValue() : 0;
+        } catch (Throwable t) { return 0; }
     }
 
     // BlockState.getBlock() intermediary name — differs from any other "getBlock".

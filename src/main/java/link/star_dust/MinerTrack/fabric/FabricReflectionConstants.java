@@ -275,9 +275,11 @@ final class FabricReflectionConstants {
         // Misc
         putM("nameAndId",           "nameAndId");          // named
         putM("getStill",            M_GET_STILL);
+        // Block — builtInRegistryHolder intermediary: method_20516
+        putM("builtInRegistryHolder", "method_20516");     // Block.builtInRegistryHolder() → ReferenceHolder
         // Registry (used in getBlockId / getKey / getResourceKey)
-        // Registry.getKey(T) intermediary: method_40269
-        // Registry.getResourceKey(T) intermediary: method_39667
+        // NOTE: getKey/getResourceKey on Registry differ from ResourceKey;
+        // these are for Registry.getKey(T)/Registry.getResourceKey(T)
         putM("getKey",              "method_40269");       // Registry.getKey(T)
         putM("getResourceKey",      "method_39667");       // Registry.getResourceKey(T)
     }
