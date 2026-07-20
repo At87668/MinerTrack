@@ -60,15 +60,15 @@ final class FabricEventBus {
     }
 
     static void registerUseBlock(UseBlockHandler handler) {
-        Class<?> actionResultCls = FabricReflection.forName("net.minecraft.world.InteractionResult");
         register("net.fabricmc.fabric.api.event.player.UseBlockCallback",
             "EVENT",
             "net.fabricmc.fabric.api.event.player.UseBlockCallback",
             args -> {
                 boolean consumed = handler.handle(args[0], args[1], args[2], args[3]);
                 try {
-                    Object pass = actionResultCls.getField("PASS").get(null);
-                    Object success = actionResultCls.getField("SUCCESS").get(null);
+                    // InteractionResult.PASS / SUCCESS → use FabricReflection for redirect
+                    Object pass    = FabricReflection.getField(FabricReflection.forName("net.minecraft.world.InteractionResult"), "PASS");
+                    Object success = FabricReflection.getField(FabricReflection.forName("net.minecraft.world.InteractionResult"), "SUCCESS");
                     return consumed ? success : pass;
                 } catch (Throwable t) {
                     return null;
