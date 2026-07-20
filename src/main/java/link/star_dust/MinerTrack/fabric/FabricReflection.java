@@ -193,27 +193,29 @@ final class FabricReflection {
     /** Resolve a Block to its canonical minecraft:path id. */
     static String getBlockId(Object block) {
         if (block == null) return null;
-        // 1. Registry.BLOCK (MC 1.18.2 — available on ALL versions)
-        String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_REGISTRY,
-                FabricReflectionConstants.F_REGISTRY_BLOCK, block);
-        if (id != null) return id;
-        // 2. BuiltInRegistries.BLOCK (MC 1.19.3+ only)
-        id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
-                FabricReflectionConstants.F_BUILTIN_BLOCK, block);
-        if (id != null) return id;
-        // 3. Registries.BLOCK
-        id = resolveBlockViaRegistriesKey(block);
-        if (id != null) return id;
-        // 4. block.builtInRegistryHolder().getKey()
+        // 1. block.builtInRegistryHolder().getKey().location()
+        //    Works on ALL versions (1.18+) — the holder chain is the
+        //    most reliable path.  Registry.BLOCK on 1.18.2 returns a
+        //    ResourceKey, not a DefaultedRegistry, so the registry-based
+        //    paths below are fallbacks only.
         Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
         if (holder != null) {
             Object key = call(holder, "getKey", NO_PARAMS, NO_ARGS);
             if (key != null) {
                 Object loc = callResourceKeyValue(key);
-                if (loc != null) return readString(loc);
+                if (loc != null) { String s = readString(loc); if (s != null) return s; }
             }
         }
-        return null;
+        // 2. BuiltInRegistries.BLOCK (MC 1.19.3+ only — does not exist on 1.18.2)
+        String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
+                FabricReflectionConstants.F_BUILTIN_BLOCK, block);
+        if (id != null) return id;
+        // 3. Registry.BLOCK — 1.18.2 returns ResourceKey, but 1.19+ may return registry
+        id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_REGISTRY,
+                FabricReflectionConstants.F_REGISTRY_BLOCK, block);
+        if (id != null) return id;
+        // 4. Registries.BLOCK
+        return resolveBlockViaRegistriesKey(block);
     }
 
     private static String resolveBlockViaRegistry(String regClsName, String fieldName, Object block) {
