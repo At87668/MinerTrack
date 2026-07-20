@@ -214,6 +214,14 @@ public class FabricMiningListener {
             if (id != null && !id.isEmpty()) {
                 return id;
             }
+            // Fallback: Block.toString() is "Block{minecraft:diorite}" on all
+            // versions.  Parse the namespace:path out of it.
+            String s = block.toString();
+            int brace = s.indexOf('{');
+            int close = s.indexOf('}');
+            if (brace >= 0 && close > brace) {
+                return s.substring(brace + 1, close);
+            }
             return BlockId.AIR;
         } catch (Throwable t) {
             return BlockId.AIR;
