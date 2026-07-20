@@ -32,12 +32,11 @@ public class FabricMiningListener {
         FabricEventBus.registerBlockBreakAfter(args -> {
             try {
                 // Fabric API 1.18.2: PlayerBlockBreakEvents$After signature is
-                //   afterBlockBreak(ServerPlayerEntity, ServerWorld, BlockPos, BlockState, BlockEntity?)
-                // args[0]=player, args[1]=world, args[2]=pos, args[3]=state
-                Object player = args[0];
-                Object world  = args[1];
-                Object pos    = args[2];
-                Object state  = args[3];
+                // args[0]=world, args[1]=player, args[2]=pos, args[3]=state
+                Object world = args[0];
+                Object player = args[1];
+                Object pos = args[2];
+                Object state = args[3];
                 if (isClientWorld(world))
                     return;
                 if (!isServerPlayer(player))
