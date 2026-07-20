@@ -194,17 +194,21 @@ final class FabricReflection {
     static String getBlockId(Object block) {
         if (block == null) return null;
         // 1. block.builtInRegistryHolder().getKey().location()
-        //    Works on ALL versions (1.18+) — the holder chain is the
-        //    most reliable path.  Registry.BLOCK on 1.18.2 returns a
-        //    ResourceKey, not a DefaultedRegistry, so the registry-based
-        //    paths below are fallbacks only.
+        //    Works on ALL versions (1.18+).  Bypass redirectMethod because
+        //    "getKey" maps to Registry.getKey(T) (method_40269, 1 param)
+        //    but ReferenceHolder.getKey() (0 params) needs method_40269 as
+        //    well but the signature differs and redirect breaks it.
+        //    We call builtInRegistryHolder via the redirect, then do direct
+        //    getClass().getMethod() on the holder for getKey.
         Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
         if (holder != null) {
-            Object key = call(holder, "getKey", NO_PARAMS, NO_ARGS);
-            if (key != null) {
-                Object loc = callResourceKeyValue(key);
-                if (loc != null) { String s = readString(loc); if (s != null) return s; }
-            }
+            try {
+                Object key = holder.getClass().getMethod("getKey").invoke(holder);
+                if (key != null) {
+                    Object loc = callResourceKeyValue(key);
+                    if (loc != null) { String s = readString(loc); if (s != null) return s; }
+                }
+            } catch (Throwable ignored) {}
         }
         // 2. BuiltInRegistries.BLOCK (MC 1.19.3+ only — does not exist on 1.18.2)
         String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
