@@ -259,11 +259,11 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (pm == null) return playerId.toString();
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return playerId.toString();
-            // Player.getScoreboardName() → String (method_20033, no collision)
-            java.lang.reflect.Method gm = player.getClass().getMethod("method_20033");
-            Object name = gm.invoke(player);
-            if (name instanceof String) return (String) name;
-            return playerId.toString();
+            // MC 26.1+: Entity.getName() returns Component; use readString to unwrap.
+            Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
+            String s = FabricReflection.readString(name);
+            if (s == null) return playerId.toString();
+            return s;
         } catch (Throwable t) {
             return playerId.toString();
         }
