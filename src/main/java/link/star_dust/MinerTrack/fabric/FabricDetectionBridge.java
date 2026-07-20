@@ -94,11 +94,20 @@ public class FabricDetectionBridge implements DetectionBridge {
     private String dimensionIdForWorld(Object world) {
         if (world == null) return null;
         try {
-            // MC 26.1+: Level.dimension(); 1.18-1.21: getRegistryKey()
+            // MC 26.1+: Level.dimension(); 1.18-1.21: Level.getRegistryKey()
             Object registryKey = FabricReflection.callDimension(world);
             if (registryKey == null) return null;
-            Object value = FabricReflection.callResourceKeyValue(registryKey);
-            return value == null ? null : FabricReflection.readString(value);
+            // ResourceKey.toString() reliably contains the dimension ID on all
+            // versions: "ResourceKey[minecraft:overworld / minecraft:overworld]"
+            String s = registryKey.toString();
+            int start = s.indexOf('[');
+            int slash = s.indexOf('/');
+            if (start >= 0 && slash > start)
+                return s.substring(start + 1, slash).trim();
+            // fallback: try getValue()
+            Object val = FabricReflection.callAny(registryKey, "getValue",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            return val == null ? null : FabricReflection.readString(val);
         } catch (Throwable t) {
             return null;
         }
@@ -122,11 +131,8 @@ public class FabricDetectionBridge implements DetectionBridge {
             if (pos == null) return BlockId.AIR;
             Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
             if (state == null) return BlockId.AIR;
-            // Delegate the block-id resolution to FabricReflection.getBlockId()
-            // which uses DefaultedRegistry.getKey(T) / MappedRegistry.getKey(T)
-            // to return the canonical "minecraft:path" id. Falls back to the
-            // builtInRegistryHolder().getKey() chain on older MC versions.
-            Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
+            // BlockState.getBlock() → Block (intermediary: method_17049)
+            Object block = FabricReflection.callAny(state, "method_17049", new Class<?>[0], new Object[0]);
             if (block == null) return BlockId.AIR;
             String id = FabricReflection.getBlockId(block);
             return (id != null && !id.isEmpty()) ? id : BlockId.AIR;
@@ -256,7 +262,7 @@ public class FabricDetectionBridge implements DetectionBridge {
             Class<?> fluidBlockCls = FabricReflection.forName("net.minecraft.world.level.block.LiquidBlock");
             Class<?> blocksCls = FabricReflection.forName("net.minecraft.world.level.block.Blocks");
             Class<?> blockCls = FabricReflection.forName("net.minecraft.world.level.block.Block");
-            Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
+            Object block = FabricReflection.callAny(state, "method_17049", new Class<?>[0], new Object[0]); // BlockState.getBlock()
             if (block == null || blockCls == null) return false;
             if (fluidBlockCls != null && fluidBlockCls.isInstance(block)) {
                 Object fluidState = FabricReflection.callAny(state, "getFluidState", new Class<?>[0], new Object[0]);
@@ -363,8 +369,16 @@ public class FabricDetectionBridge implements DetectionBridge {
             for (Object w : (Iterable<?>) worlds) {
                 Object registryKey = FabricReflection.callDimension(w);
                 if (registryKey == null) continue;
-                Object value = FabricReflection.callResourceKeyValue(registryKey);
-                if (value != null && worldKey.equalsIgnoreCase(FabricReflection.readString(value))) {
+                // ResourceKey.toString() → "ResourceKey[minecraft:overworld / ...]"
+                String s = registryKey.toString();
+                int start = s.indexOf('[');
+                int slash = s.indexOf('/');
+                String dim = (start >= 0 && slash > start) ? s.substring(start + 1, slash).trim() : null;
+                if (dim == null) {
+                    Object val = FabricReflection.callAny(registryKey, "getValue", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                    if (val != null) dim = FabricReflection.readString(val);
+                }
+                if (dim != null && worldKey.equalsIgnoreCase(dim)) {
                     return w;
                 }
             }
