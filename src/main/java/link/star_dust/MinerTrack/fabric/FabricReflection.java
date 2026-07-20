@@ -193,13 +193,13 @@ final class FabricReflection {
     /** Resolve a Block to its canonical minecraft:path id. */
     static String getBlockId(Object block) {
         if (block == null) return null;
-        // 1. BuiltInRegistries.BLOCK (MC 1.19.3+)
-        String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
-                FabricReflectionConstants.F_BUILTIN_BLOCK, block);
-        if (id != null) return id;
-        // 2. Registry.BLOCK (MC 1.18.2)
-        id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_REGISTRY,
+        // 1. Registry.BLOCK (MC 1.18.2 — available on ALL versions)
+        String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_REGISTRY,
                 FabricReflectionConstants.F_REGISTRY_BLOCK, block);
+        if (id != null) return id;
+        // 2. BuiltInRegistries.BLOCK (MC 1.19.3+ only)
+        id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
+                FabricReflectionConstants.F_BUILTIN_BLOCK, block);
         if (id != null) return id;
         // 3. Registries.BLOCK
         id = resolveBlockViaRegistriesKey(block);
