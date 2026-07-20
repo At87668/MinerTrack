@@ -31,16 +31,16 @@ public class FabricMiningListener {
     public void register() {
         FabricEventBus.registerBlockBreakAfter(args -> {
             try {
-                // Fabric API 1.18.2: PlayerBlockBreakEvents$After signature is
-                // args[0]=world, args[1]=player, args[2]=pos, args[3]=state
-                Object world = args[0];
-                Object player = args[1];
-                Object pos = args[2];
-                Object state = args[3];
-                if (isClientWorld(world))
-                    return;
-                if (!isServerPlayer(player))
-                    return;
+                // Auto-detect which arg is the world and which is the player.
+                // Fabric API versions differ on argument order: 1.18.2-1.20.x
+                // uses (World, Player, BlockPos, BlockState) while other
+                // versions may swap the first two.
+                Object world  = detectWorld(args);
+                Object player = detectPlayer(args);
+                if (world == null || player == null) return;
+                Object pos   = detectArg(args, 2, 3);    // BlockPos is usually 3rd
+                Object state = detectArg(args, 3, 4);    // BlockState is usually 4th
+                if (pos == null || state == null) return;
                 handleBlockBreak(player, pos, state, world);
             } catch (Throwable t) {
                 /* silent */ }
@@ -65,6 +65,43 @@ public class FabricMiningListener {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** Detect the world/level argument: has getBlockState(BlockPos). */
+    private static Object detectWorld(Object[] args) {
+        for (int i = 0; i < Math.min(args.length, 2); i++) {
+            if (args[i] == null) continue;
+            try {
+                args[i].getClass().getMethod("getBlockState",
+                    Class.forName("net.minecraft.core.BlockPos"));
+                return args[i];
+            } catch (Throwable ignore) {}
+        }
+        return null;
+    }
+
+    /** Detect the player argument: has getUUID() or getUuid(). */
+    private static Object detectPlayer(Object[] args) {
+        for (int i = 0; i < Math.min(args.length, 2); i++) {
+            if (args[i] == null) continue;
+            try {
+                args[i].getClass().getMethod("getUUID");
+                return args[i];
+            } catch (Throwable e1) {
+                try {
+                    args[i].getClass().getMethod("getUuid");
+                    return args[i];
+                } catch (Throwable e2) {}
+            }
+        }
+        return null;
+    }
+
+    /** Pick the argument at the preferred position, falling back to alternate. */
+    private static Object detectArg(Object[] args, int posA, int posB) {
+        if (posA < args.length && args[posA] != null) return args[posA];
+        if (posB < args.length && args[posB] != null) return args[posB];
+        return null;
     }
 
     private boolean isServerPlayer(Object player) {
