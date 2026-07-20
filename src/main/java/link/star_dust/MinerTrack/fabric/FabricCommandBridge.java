@@ -50,7 +50,8 @@ public class FabricCommandBridge implements CommandBridge {
 
         // 2. Try Component.literal(String) — also handles MC 1.19.3+ via tryMcMigration
         try {
-            Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
+            // Mojang: net.minecraft.network.chat.Component
+            Class<?> textCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
             if (textCls != null) {
                 Method literal = textCls.getMethod("literal", String.class);
                 return literal.invoke(null, message);
@@ -59,7 +60,8 @@ public class FabricCommandBridge implements CommandBridge {
 
         // 3. Fallback: new TextComponent(String) — MC 1.18-1.19.2
         try {
-            Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
+            // Mojang: net.minecraft.network.chat.TextComponent → Component
+            Class<?> ltCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
             return ltCls.getDeclaredConstructor(String.class).newInstance(message);
         } catch (Throwable t) {
             return null;
@@ -229,29 +231,33 @@ public class FabricCommandBridge implements CommandBridge {
     }
 
     private static Class<?> resolveCommandSourceStackClass() {
-        return FabricReflection.forName("net.minecraft.commands.CommandSourceStack");
+        // Mojang: net.minecraft.commands.CommandSourceStack
+        return FabricReflection.forName(FabricReflectionConstants.CLS_COMMAND_SOURCE_STACK);
     }
 
     @Override public boolean isPlayer() {
         try {
             // 1.21.1+: isPlayer()
-            Object r = FabricReflection.callAny(source, "isPlayer",
-                new Class<?>[0], new Object[0]);
+            // Mojang: CommandSourceStack.isPlayer() → boolean
+            Object r = FabricReflection.callAny(source, FabricReflectionConstants.M_IS_PLAYER,
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (r instanceof Boolean && (Boolean) r) return true;
         } catch (Throwable t) { /* fall through */ }
         // 1.18.2: check if getEntity() returns a non-null player
         try {
-            Object entity = FabricReflection.callAny(source, "getEntity",
-                new Class<?>[0], new Object[0]);
+            // Mojang: CommandSourceStack.getEntity() → Entity
+            Object entity = FabricReflection.callAny(source, FabricReflectionConstants.M_GET_ENTITY,
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (entity != null) {
-                Class<?> serverPlayer = FabricReflection.forName("net.minecraft.server.level.ServerPlayer");
+                // Mojang: net.minecraft.server.level.ServerPlayer
+                Class<?> serverPlayer = FabricReflection.forName(FabricReflectionConstants.CLS_SERVER_PLAYER);
                 if (serverPlayer != null && serverPlayer.isInstance(entity)) return true;
             }
         } catch (Throwable t) { /* fall through */ }
-        // Legacy fallback
+        // Legacy fallback: isExecutedByPlayer
         try {
             Object r = FabricReflection.callAny(source, "isExecutedByPlayer",
-                new Class<?>[0], new Object[0]);
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) { return false; }
     }
@@ -306,12 +312,16 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
+            // Mojang: MinecraftServer.getPlayerList() → PlayerList
             Object server = FabricReflection.getServer();
             if (server == null) return;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                new Class<?>[0], new Object[0]);
+            Object pm = FabricReflection.callMigrated(server,
+                FabricReflectionConstants.M_GET_PLAYER_LIST, "getPlayerManager",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (pm == null) return;
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            // Mojang: PlayerList.getPlayer(UUID) → ServerPlayer
+            Object player = FabricReflection.call(pm, FabricReflectionConstants.M_GET_PLAYER_UUID,
+                new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createText(message);
             if (text == null) return;
@@ -618,7 +628,7 @@ public class FabricCommandBridge implements CommandBridge {
             return Class.forName("net.minecraft.network.chat.Component");
         } catch (ClassNotFoundException e) {
             try {
-                return FabricReflection.forName("net.minecraft.network.chat.Component");
+                return FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
             } catch (Throwable ex) {
                 return null;
             }
