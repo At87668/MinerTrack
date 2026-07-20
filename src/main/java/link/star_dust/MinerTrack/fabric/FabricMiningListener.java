@@ -205,22 +205,18 @@ public class FabricMiningListener {
             Object block = FabricReflection.callAny(state, BS_GET_BLOCK, new Class<?>[0], new Object[0]);
             if (block == null)
                 return BlockId.AIR;
-            // MC 26.1+: DefaultedRegistry.getKey(T) returns Identifier
-            // 1.18-1.21: SimpleRegistry.getKey(T) returns Identifier
-            // We delegate to FabricReflection.getBlockId() which handles both
-            // versions and falls back to the holder-based lookup if getKey
-            // returns null.
-            String id = FabricReflection.getBlockId(block);
-            if (id != null && !id.isEmpty()) {
-                return id;
-            }
-            // Fallback: Block.toString() is "Block{minecraft:diorite}" on all
-            // versions.  Parse the namespace:path out of it.
+            // 1. Block.toString() → "Block{minecraft:diorite}"
+            //    Reliable on ALL MC versions, no reflection registry needed.
             String s = block.toString();
             int brace = s.indexOf('{');
             int close = s.indexOf('}');
             if (brace >= 0 && close > brace) {
                 return s.substring(brace + 1, close);
+            }
+            // 2. Fallback: FabricReflection.getBlockId() (registry-based)
+            String id = FabricReflection.getBlockId(block);
+            if (id != null && !id.isEmpty()) {
+                return id;
             }
             return BlockId.AIR;
         } catch (Throwable t) {
