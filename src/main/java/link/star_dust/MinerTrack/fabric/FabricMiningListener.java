@@ -115,22 +115,34 @@ public class FabricMiningListener {
     }
 
     /**
-     * Read the player's name via Player.getScoreboardName().
+     * Read the player's name via their GameProfile.
      *
-     * <p>Player (class_1657) extends Entity.  getScoreboardName()
-     * (intermediary: method_20033) returns a plain String on all MC
-     * versions and is unique to Player/Entity — it does NOT exist on
-     * ServerLevel or Nameable, so there is no collision risk.</p>
+     * <p>Entity.getName() intermediary (method_37908) collides with
+     * ServerLevel.getName() (via Nameable), causing 'getName' to resolve
+     * to ServerLevel when the world arg is mistakenly passed as player.
+     *
+     * ServerPlayer.getGameProfile() (method_5809) has no collision, and
+     * GameProfile is a Mojang authlib class (not obfuscated), so
+     * {@code getName()} works directly without intermediary redirect.</p>
      */
-    private static final String PLAYER_GET_SCOREBOARD_NAME = "method_20033"; // Player.getScoreboardName() → String
+    private static final String SP_GET_GAME_PROFILE = "method_5809"; // ServerPlayer.getGameProfile()
 
     private static String readPlayerName(Object player) {
         try {
-            // Player.getScoreboardName() → String (no Component, no collision)
-            java.lang.reflect.Method m = player.getClass().getMethod(PLAYER_GET_SCOREBOARD_NAME);
-            Object name = m.invoke(player);
-            if (name instanceof String && !((String) name).isEmpty()) return (String) name;
-        } catch (Throwable t) { }
+            // ServerPlayer.getGameProfile() → GameProfile.getName()
+            Object profile = player.getClass().getMethod(SP_GET_GAME_PROFILE).invoke(player);
+            if (profile != null) {
+                String name = (String) profile.getClass().getMethod("getName").invoke(profile);
+                if (name != null && !name.isEmpty()) return name;
+            }
+        } catch (Throwable t) {
+            // Fallback: try getName → readString
+            try {
+                Object name = FabricReflection.callAny(player, "getName",
+                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                return FabricReflection.readString(name);
+            } catch (Throwable t2) { }
+        }
         return "";
 
     }
