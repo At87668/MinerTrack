@@ -193,31 +193,26 @@ final class FabricReflection {
     /** Resolve a Block to its canonical minecraft:path id. */
     static String getBlockId(Object block) {
         if (block == null) return null;
-        // 1. block.builtInRegistryHolder().getKey().location()
-        //    Works on ALL versions (1.18+).  Bypass redirectMethod because
-        //    "getKey" maps to Registry.getKey(T) (method_40269, 1 param)
-        //    but ReferenceHolder.getKey() (0 params) needs method_40269 as
-        //    well but the signature differs and redirect breaks it.
-        //    We call builtInRegistryHolder via the redirect, then do direct
-        //    getClass().getMethod() on the holder for getKey.
-        Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
-        if (holder != null) {
-            try {
-                Object key = holder.getClass().getMethod("getKey").invoke(holder);
-                if (key != null) {
-                    Object loc = callResourceKeyValue(key);
-                    if (loc != null) { String s = readString(loc); if (s != null) return s; }
-                }
-            } catch (Throwable ignored) {}
-        }
-        // 2. BuiltInRegistries.BLOCK (MC 1.19.3+ only — does not exist on 1.18.2)
+        // 1. BuiltInRegistries.BLOCK (MC 1.19.3+)
         String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
                 FabricReflectionConstants.F_BUILTIN_BLOCK, block);
         if (id != null) return id;
-        // 3. Registry.BLOCK — 1.18.2 returns ResourceKey, but 1.19+ may return registry
+        // 2. Registry.BLOCK (MC 1.18.2)
         id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_REGISTRY,
                 FabricReflectionConstants.F_REGISTRY_BLOCK, block);
         if (id != null) return id;
+        // 3. Registries.BLOCK → resolve and use as registry reference
+        id = resolveBlockViaRegistriesKey(block);
+        if (id != null) return id;
+        // 4. block.builtInRegistryHolder().getKey()
+        Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
+        if (holder != null) {
+            Object key = call(holder, "getKey", NO_PARAMS, NO_ARGS);
+            if (key != null) {
+                Object loc = callResourceKeyValue(key);
+                if (loc != null) return readString(loc);
+            }
+        }
         // 4. Registries.BLOCK
         return resolveBlockViaRegistriesKey(block);
     }
