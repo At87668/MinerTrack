@@ -275,6 +275,11 @@ final class FabricReflectionConstants {
         // Misc
         putM("nameAndId",           "nameAndId");          // named
         putM("getStill",            M_GET_STILL);
+        // Registry (used in getBlockId / getKey / getResourceKey)
+        // Registry.getKey(T) intermediary: method_40269
+        // Registry.getResourceKey(T) intermediary: method_39667
+        putM("getKey",              "method_40269");       // Registry.getKey(T)
+        putM("getResourceKey",      "method_39667");       // Registry.getResourceKey(T)
     }
 
     private static void putM(String mojangName, String resolved) {
