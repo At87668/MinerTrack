@@ -176,11 +176,10 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(commandSource, uuid);
                 if (player == null) return uuid.toString();
-                // Player.getScoreboardName() → String (method_20033, no collision)
-                java.lang.reflect.Method m = player.getClass().getMethod("method_20033");
-                Object name = m.invoke(player);
-                if (name instanceof String && !((String) name).isEmpty()) return (String) name;
-                return uuid.toString();
+                // MC 26.1+: getName() returns Component; use readString() to unwrap.
+                Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
+                String s = FabricReflection.readString(name);
+                return s == null ? uuid.toString() : s;
             } catch (Throwable t) {
                 return uuid.toString();
             }
@@ -208,10 +207,10 @@ public class FabricCommandExecutor {
                 if (list == null) return names;
                 if (list instanceof java.util.Collection) {
                     for (Object p : (java.util.Collection<?>) list) {
-                        // Player.getScoreboardName() → String (method_20033, no collision)
-                        java.lang.reflect.Method gm = p.getClass().getMethod("method_20033");
-                        Object name = gm.invoke(p);
-                        if (name instanceof String) names.add((String) name);
+                        // MC 26.1+: Entity.getName() returns Component; unwrap with readString.
+                        Object name = FabricReflection.callAny(p, "getName", new Class<?>[0], new Object[0]);
+                        String s = FabricReflection.readString(name);
+                        if (s != null) names.add(s);
                     }
                 }
             } catch (Throwable t) {
