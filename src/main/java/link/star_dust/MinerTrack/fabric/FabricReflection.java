@@ -190,30 +190,43 @@ final class FabricReflection {
         return str;
     }
 
-    /** Resolve a Block to its canonical minecraft:path id. */
+    /**
+     * Resolve a Block to its canonical minecraft:path id.
+     * <p>Uses {@code Block.toString()} as the primary reliable path across
+     * ALL MC versions; registry-based lookups are fallbacks.</p>
+     */
     static String getBlockId(Object block) {
         if (block == null) return null;
-        // 1. BuiltInRegistries.BLOCK (MC 1.19.3+)
+        // 1. Block.toString() → "Block{minecraft:diorite}"
+        //    Works on every MC version (1.18–1.26+), no reflection needed.
+        String s = block.toString();
+        int brace = s.indexOf('{');
+        int close  = s.indexOf('}');
+        if (brace >= 0 && close > brace) {
+            return s.substring(brace + 1, close);
+        }
+        // 2. block.builtInRegistryHolder().getKey() — direct getMethod
+        //    bypasses redirectMethod issues with getKey having different
+        //    intermediary names for different signatures.
+        Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
+        if (holder != null) {
+            try {
+                Object key = holder.getClass().getMethod("getKey").invoke(holder);
+                if (key != null) {
+                    Object loc = callResourceKeyValue(key);
+                    if (loc != null) return readString(loc);
+                }
+            } catch (Throwable ignored) {}
+        }
+        // 3. BuiltInRegistries.BLOCK (MC 1.19.3+)
         String id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_BUILT_IN_REGISTRIES,
                 FabricReflectionConstants.F_BUILTIN_BLOCK, block);
         if (id != null) return id;
-        // 2. Registry.BLOCK (MC 1.18.2)
+        // 4. Registry.BLOCK (MC 1.18.2)
         id = resolveBlockViaRegistry(FabricReflectionConstants.CLS_REGISTRY,
                 FabricReflectionConstants.F_REGISTRY_BLOCK, block);
         if (id != null) return id;
-        // 3. Registries.BLOCK → resolve and use as registry reference
-        id = resolveBlockViaRegistriesKey(block);
-        if (id != null) return id;
-        // 4. block.builtInRegistryHolder().getKey()
-        Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
-        if (holder != null) {
-            Object key = call(holder, "getKey", NO_PARAMS, NO_ARGS);
-            if (key != null) {
-                Object loc = callResourceKeyValue(key);
-                if (loc != null) return readString(loc);
-            }
-        }
-        // 4. Registries.BLOCK
+        // 5. Registries.BLOCK
         return resolveBlockViaRegistriesKey(block);
     }
 
