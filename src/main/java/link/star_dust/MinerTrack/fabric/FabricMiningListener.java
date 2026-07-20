@@ -126,21 +126,43 @@ public class FabricMiningListener {
 
     private static String readDimensionId(Object world) {
         try {
-            // MC 26.1+: Level.dimension(); 1.18-1.21: getRegistryKey()
+            // MC 26.1+: Level.dimension(); 1.18-1.21: Level.getRegistryKey()
             Object registryKey = FabricReflection.callDimension(world);
             if (registryKey == null)
                 return null;
-            // MC 26.1+: ResourceKey.location(); 1.18-1.21: ResourceKey.getValue()
-            Object value = FabricReflection.callResourceKeyValue(registryKey);
-            return value == null ? null : FabricReflection.readString(value);
+            // MC 26.1+: ResourceKey.location().toString()
+            // 1.18-1.21: ResourceKey.getValue() → ResourceLocation → toString()
+            // In production, ResourceKey's toString() always includes the
+            // dimension ID, e.g. "ResourceKey[minecraft:overworld / ...]".
+            String s = registryKey.toString();
+            int start = s.indexOf('[');
+            int slash = s.indexOf('/');
+            if (start >= 0 && slash > start) {
+                return s.substring(start + 1, slash).trim();
+            }
+            // Legacy fallback: try getValue() → toString
+            String value = FabricReflection.readString(
+                FabricReflection.callAny(registryKey, "getValue", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS));
+            return value;
         } catch (Throwable t) {
             return null;
         }
     }
 
+    // Hardcoded intermediary names for BlockPos / Vec3i — these differ from
+    // Entity.getX/Y/Z (method_5878/5626/5794) and would fail with the global redirect.
+    private static final String BP_GET_X = "method_16363"; // BlockPos.getX() → int
+    private static final String BP_GET_Y = "method_10101"; // BlockPos.getY() → int
+    private static final String BP_GET_Z = "method_30927"; // BlockPos.getZ() → int
+
     private static int readInt(Object target, String method) {
+        // Redirect BlockPos coordinate getters to the correct intermediary names.
+        String resolved = method;
+        if ("getX".equals(method)) resolved = BP_GET_X;
+        else if ("getY".equals(method)) resolved = BP_GET_Y;
+        else if ("getZ".equals(method)) resolved = BP_GET_Z;
         try {
-            Object r = FabricReflection.callAny(target, method, new Class<?>[0], new Object[0]);
+            Object r = FabricReflection.callAny(target, resolved, new Class<?>[0], new Object[0]);
             if (r instanceof Number)
                 return ((Number) r).intValue();
         } catch (Throwable t) {
@@ -148,9 +170,13 @@ public class FabricMiningListener {
         return 0;
     }
 
+    // BlockState.getBlock() intermediary name — differs from any other "getBlock".
+    private static final String BS_GET_BLOCK = "method_17049"; // BlockState.getBlock() → Block
+
     private static String blockIdForState(Object state) {
         try {
-            Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
+            // BlockState.getBlock() → Block (intermediary: method_17049)
+            Object block = FabricReflection.callAny(state, BS_GET_BLOCK, new Class<?>[0], new Object[0]);
             if (block == null)
                 return BlockId.AIR;
             // MC 26.1+: DefaultedRegistry.getKey(T) returns Identifier
