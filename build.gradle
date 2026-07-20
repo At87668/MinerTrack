@@ -18,6 +18,11 @@ sourceSets {
             srcDirs = ['src/main/resources']
         }
     }
+    test {
+        java {
+            srcDirs = ['src/test/java']
+        }
+    }
 }
 
 repositories {
@@ -49,6 +54,8 @@ repositories {
 }
 
 dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
+
     // Paper / Folia platform
     compileOnly 'dev.folia:folia-api:1.20.1-R0.1-SNAPSHOT'
     // Fabric platform
@@ -124,6 +131,10 @@ jar {
     from {
         configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
+}
+
+test {
+    useJUnitPlatform()
 }
 
 shadowJar {

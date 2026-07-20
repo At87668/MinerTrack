@@ -96,9 +96,11 @@ public class MiningCore {
         // Path quality checks
         boolean smooth = isSmoothPath(playerId, worldName, path);
         boolean natural = envAnalyzer.isInNaturalEnvironment(worldName, playerId, loc, path);
-        CoreLogger.debug("  smooth=" + smooth + " natural=" + natural);
+        boolean simpleLinear = pathAnalyzer.isSimpleLinearTunnel(path);
+        CoreLogger.debug("  smooth=" + smooth + " natural=" + natural
+            + " simpleLinear=" + simpleLinear);
 
-        if (!natural && !smooth) {
+        if (!natural && !smooth && !simpleLinear) {
             if (state.isNewVein(playerId, worldName, loc, blockType)) {
                 state.incrementVeinCount(playerId);
                 state.setLastVeinLocation(playerId, worldName, loc);

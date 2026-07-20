@@ -108,6 +108,75 @@ public class PathAnalyzer {
     }
 
     /**
+     * Check whether a mining path represents a simple, linear tunnel
+     * (straight single-high or double-high digging) that should never
+     * trigger VL accumulation regardless of per-step turn/branch counts.
+     *
+     * <p>A path is considered simple-linear when:
+     * <ul>
+     *   <li>It has ≥ 4 points (meaningful trend detection).</li>
+     *   <li>The XZ crow-flies distance (from first to last point)
+     *       is ≥ 66% of the total XZ path distance, meaning the player
+     *       is moving predominantly in a straight line.</li>
+     *   <li>The total Y-axis range (|maxY − minY|) is ≤ 2 blocks,
+     *       allowing for single-high and double-high tunnels.</li>
+     * </ul>
+     *
+     * <p>This guard catches the most common false-positive scenario:
+     * a player digging a straight 2-high tunnel where alternating ore
+     * positions at y=10 and y=11 produce direction changes that the
+     * per-step turn/branch analyser counts as "non-smooth".
+     *
+     * @param path the ordered mining positions for a player in one world
+     * @return true if this path looks like a simple linear tunnel
+     */
+    public boolean isSimpleLinearTunnel(List<CommonLocation> path) {
+        if (path == null || path.size() < 4) return false;
+
+        // ── Y range ──
+        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+        for (CommonLocation loc : path) {
+            if (loc.y < minY) minY = loc.y;
+            if (loc.y > maxY) maxY = loc.y;
+        }
+        int yRange = maxY - minY;
+        if (yRange > 2) return false; // staircase or deep drop
+
+        // ── XZ crow-flies vs. total path length ──
+        double totalDistXZ = 0.0;
+        CommonLocation prev = null;
+        for (CommonLocation cur : path) {
+            if (prev != null) {
+                double dx = cur.x - prev.x;
+                double dz = cur.z - prev.z;
+                totalDistXZ += Math.sqrt(dx * dx + dz * dz);
+            }
+            prev = cur;
+        }
+
+        if (totalDistXZ < 10.0) return false; // too short to judge
+
+        CommonLocation first = path.get(0);
+        CommonLocation last = path.get(path.size() - 1);
+        double crowFliesXZ = Math.sqrt(
+            (last.x - first.x) * (last.x - first.x)
+                + (last.z - first.z) * (last.z - first.z));
+
+        if (crowFliesXZ < 10.0) return false; // not enough net displacement
+
+        double linearity = crowFliesXZ / totalDistXZ;
+        boolean linear = linearity >= 0.66;
+
+        CoreLogger.debug("    PathAnalyzer.isSimpleLinearTunnel: yRange=" + yRange
+            + " crowFliesXZ=" + String.format("%.1f", crowFliesXZ)
+            + " totalDistXZ=" + String.format("%.1f", totalDistXZ)
+            + " linearity=" + String.format("%.3f", linearity)
+            + " -> linear=" + linear);
+
+        return linear;
+    }
+
+    /**
      * Lightweight immutable 3D direction vector used in path analysis.
      * Avoids depending on Bukkit's {@code org.bukkit.util.Vector} so the
      * detection core stays platform-neutral.

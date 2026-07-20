@@ -37,3 +37,4 @@ Updates.md
 # Test
 test/
 test-tmp/
+!src/test/
