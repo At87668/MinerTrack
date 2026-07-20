@@ -114,16 +114,37 @@ public class FabricMiningListener {
         }
     }
 
+    /**
+     * Read the player's name via their GameProfile.
+     *
+     * <p>Entity.getName() intermediary (method_37908) collides with
+     * ServerLevel.getName() (via Nameable), causing 'getName' to resolve
+     * to ServerLevel when the world arg is mistakenly passed as player.
+     *
+     * ServerPlayer.getGameProfile() (method_5809) has no collision, and
+     * GameProfile is a Mojang authlib class (not obfuscated), so
+     * {@code getName()} works directly without intermediary redirect.</p>
+     */
+    private static final String SP_GET_GAME_PROFILE = "method_5809"; // ServerPlayer.getGameProfile()
+
     private static String readPlayerName(Object player) {
         try {
-            // MC 26.1+: Entity.getName() returns Component
-            // 1.18-1.21: returns String
-            // readString() handles both — Component.getString() vs String passthrough
-            Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
-            return FabricReflection.readString(name);
+            // ServerPlayer.getGameProfile() → GameProfile.getName()
+            Object profile = player.getClass().getMethod(SP_GET_GAME_PROFILE).invoke(player);
+            if (profile != null) {
+                String name = (String) profile.getClass().getMethod("getName").invoke(profile);
+                if (name != null && !name.isEmpty()) return name;
+            }
         } catch (Throwable t) {
-            return "";
+            // Fallback: try getName → readString
+            try {
+                Object name = FabricReflection.callAny(player, "getName",
+                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                return FabricReflection.readString(name);
+            } catch (Throwable t2) { }
         }
+        return "";
+
     }
 
     private static String readDimensionId(Object world) {
