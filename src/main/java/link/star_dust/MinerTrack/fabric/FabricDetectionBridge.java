@@ -139,7 +139,13 @@ public class FabricDetectionBridge implements DetectionBridge {
             Object block = FabricReflection.callAny(state, "method_17049", new Class<?>[0], new Object[0]);
             if (block == null) return BlockId.AIR;
             String id = FabricReflection.getBlockId(block);
-            return (id != null && !id.isEmpty()) ? id : BlockId.AIR;
+            if (id != null && !id.isEmpty()) return id;
+            // Fallback: Block.toString() → "Block{minecraft:diorite}"
+            String s = block.toString();
+            int brace = s.indexOf('{');
+            int close = s.indexOf('}');
+            if (brace >= 0 && close > brace) return s.substring(brace + 1, close);
+            return BlockId.AIR;
         } catch (Exception e) {
             return BlockId.AIR;
         }
