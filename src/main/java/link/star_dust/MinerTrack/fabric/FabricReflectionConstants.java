@@ -299,6 +299,9 @@ final class FabricReflectionConstants {
     static {
         putF("connection",          F_CONNECTION);
         putF("networkHandler",      F_CONNECTION);         // 1.18 alias
+        putF("PASS",                F_INTERACTION_PASS);
+        putF("SUCCESS",             F_INTERACTION_SUCCESS);
+        putF("FAIL",                F_INTERACTION_FAIL);
     }
 
     private static void putF(String mojangName, String resolved) {
