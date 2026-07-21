@@ -133,7 +133,7 @@ public class FabricDetectionBridge implements DetectionBridge {
                 new Class<?>[]{int.class, int.class, int.class},
                 new Object[]{x, y, z});
             if (pos == null) return BlockId.AIR;
-            Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{resolvedBlockPosClass()}, new Object[]{pos});
+            Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
             if (state == null) return BlockId.AIR;
             // BlockState.getBlock() → Block (intermediary: method_17049)
             Object block = FabricReflection.callAny(state, "method_17049", new Class<?>[0], new Object[0]);
@@ -264,7 +264,7 @@ public class FabricDetectionBridge implements DetectionBridge {
                 new Class<?>[]{int.class, int.class, int.class},
                 new Object[]{x, y, z});
             if (pos == null) return false;
-            Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{resolvedBlockPosClass()}, new Object[]{pos});
+            Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
             if (state == null) return false;
             // Check if the block is a LiquidBlock (water still) by
             // walking the class hierarchy. The Fabric API exposes
@@ -326,15 +326,6 @@ public class FabricDetectionBridge implements DetectionBridge {
     @Override
     public void clearConfigCache() {
         configLoaded = false;
-    }
-
-    /**
-     * Resolve the BlockPos class at its declared type (not the runtime
-     * subtype like MutableBlockPos), so {@code getMethod("getBlockState",
-     * BlockPos.class)} succeeds even when the actual argument is a subclass.
-     */
-    private static Class<?> resolvedBlockPosClass() {
-        return FabricReflection.forName("net.minecraft.core.BlockPos");
     }
 
     @Override
