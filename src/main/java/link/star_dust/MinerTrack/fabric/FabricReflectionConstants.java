@@ -132,7 +132,7 @@ final class FabricReflectionConstants {
     static final String M_LEVEL                = im("net.minecraft.server.level.ServerPlayer", "level",               "()Lnet/minecraft/world/level/Level;",                           "method_37908");
 
     // -- Level -----------------------------------------------------------
-    static final String M_GET_BLOCK_STATE      = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", null);
+    static final String M_GET_BLOCK_STATE      = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", "method_8320");
     static final String M_DIMENSION            = im("net.minecraft.world.level.Level",        "dimension",            "()Lnet/minecraft/resources/ResourceKey;",                                           "method_27983");
     static final String M_IS_CLIENT_SIDE       = im("net.minecraft.world.level.Level",        "isClientSide",         "()Z",                                                                              "method_8608");
 
