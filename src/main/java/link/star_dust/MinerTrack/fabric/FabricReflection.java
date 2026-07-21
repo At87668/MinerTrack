@@ -336,15 +336,23 @@ final class FabricReflection {
     }
 
     /**
-     * Scan all declared methods on {@code cls} for one whose parameter
-     * types match {@code paramTypes}.  Returns the first match.
+     * Scan all methods on {@code cls} (including inherited interface
+     * methods) for one whose parameter types match {@code paramTypes}.
+     * Returns the first match.
+     *
+     * <p>Uses {@code getMethods()} rather than {@code getDeclaredMethods()}
+     * because methods like {@code getBlockState(BlockPos)} are declared on
+     * the {@code BlockView} interface, not on {@code Level} directly.</p>
      */
     private static Method scanMethod(Class<?> cls, Class<?>[] paramTypes) {
-        for (Method candidate : cls.getDeclaredMethods()) {
+        for (Method candidate : cls.getMethods()) {
+            if (candidate.getDeclaringClass() == Object.class) continue;
             Class<?>[] pts = candidate.getParameterTypes();
             if (pts.length != paramTypes.length) continue;
             boolean match = true;
             for (int i = 0; i < pts.length; i++) {
+                // declared-param-type.isAssignableFrom(runtime-type) —
+                // e.g. BlockPos.isAssignableFrom(MutableBlockPos) = true
                 if (!pts[i].isAssignableFrom(paramTypes[i])) {
                     match = false;
                     break;
