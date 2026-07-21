@@ -64,15 +64,31 @@ final class FabricEventBus {
             "EVENT",
             "net.fabricmc.fabric.api.event.player.UseBlockCallback",
             args -> {
-                boolean consumed = handler.handle(args[0], args[1], args[2], args[3]);
+                boolean consumed;
+                try {
+                    consumed = handler.handle(args[0], args[1], args[2], args[3]);
+                } catch (Throwable t) {
+                    consumed = false; // handler threw, don't consume
+                }
                 try {
                     // InteractionResult.PASS / SUCCESS → use FabricReflection for redirect
                     Object pass    = FabricReflection.getField(FabricReflection.forName("net.minecraft.world.InteractionResult"), "PASS");
                     Object success = FabricReflection.getField(FabricReflection.forName("net.minecraft.world.InteractionResult"), "SUCCESS");
-                    return consumed ? success : pass;
-                } catch (Throwable t) {
-                    return null;
-                }
+                    if (pass == null || success == null) {
+                        // Fallback: enumerate InteractionResult.values()
+                        Class<?> irCls = FabricReflection.forName("net.minecraft.world.InteractionResult");
+                        if (irCls != null) {
+                            for (Object v : (Object[]) irCls.getMethod("values").invoke(null)) {
+                                String name = v.toString();
+                                if (pass == null && "PASS".equals(name)) pass = v;
+                                if (success == null && "SUCCESS".equals(name)) success = v;
+                                if (pass != null && success != null) break;
+                            }
+                        }
+                    }
+                    if (pass != null) return consumed ? success : pass;
+                } catch (Throwable t) { /* last resort */ }
+                return null; // null → InteractionResult defaults (should not reach here)
             });
     }
 
