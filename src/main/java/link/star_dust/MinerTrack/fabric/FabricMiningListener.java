@@ -87,7 +87,7 @@ public class FabricMiningListener {
             Object pos = FabricReflection.callAny(hitResult, "getBlockPos", new Class<?>[0], new Object[0]);
             if (pos == null)
                 return;
-            Object state = FabricReflection.call(world, "getBlockState", new Class<?>[] { pos.getClass() },
+            Object state = FabricReflection.call(world, "getBlockState", new Class<?>[] { resolvedBlockPosClass() },
                     new Object[] { pos });
             if (state == null)
                 return;
@@ -219,6 +219,15 @@ public class FabricMiningListener {
 
     // BlockState.getBlock() intermediary name — differs from any other "getBlock".
     private static final String BS_GET_BLOCK = "method_17049"; // BlockState.getBlock() → Block
+
+    /**
+     * Resolve the BlockPos class at its declared type (not the runtime
+     * subtype like MutableBlockPos), so {@code getMethod("getBlockState",
+     * BlockPos.class)} succeeds even when the actual argument is a subclass.
+     */
+    private static Class<?> resolvedBlockPosClass() {
+        return FabricReflection.forName("net.minecraft.core.BlockPos");
+    }
 
     private static String blockIdForState(Object state) {
         try {
