@@ -163,6 +163,9 @@ final class FabricReflectionConstants {
     static final String M_PERFORM_COMMAND      = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_9249");
     static final String M_PERFORM_PREFIXED_CMD = im("net.minecraft.commands.Commands",           "performPrefixedCommand","(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_44252");
 
+    // -- Component -------------------------------------------------------
+    static final String M_COMPONENT_LITERAL    = im("net.minecraft.network.chat.Component",     "literal",              "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", "method_43471");
+
     // -- CommandSourceStack ----------------------------------------------
     static final String M_GET_SERVER           = im("net.minecraft.commands.CommandSourceStack", "getServer",           "()Lnet/minecraft/server/MinecraftServer;",                                  "method_9211");
     static final String M_IS_PLAYER            = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "method_43737");
@@ -276,6 +279,8 @@ final class FabricReflectionConstants {
         // Entity.getName → already mapped
         // Misc
         putM("nameAndId",           "nameAndId");          // named
+        // Component
+        putM("literal",             M_COMPONENT_LITERAL);
         // Block — builtInRegistryHolder intermediary: method_20516
         putM("builtInRegistryHolder", "method_20516");     // Block.builtInRegistryHolder() → ReferenceHolder
         // NOTE: do NOT add getKey/getResourceKey here.
@@ -350,6 +355,7 @@ final class FabricReflectionConstants {
         NAMED_TO_INTER.put("net.minecraft.world.InteractionResult",             "net.minecraft.class_1269");
         NAMED_TO_INTER.put("net.minecraft.world.phys.Vec3",                     "net.minecraft.class_243");
         NAMED_TO_INTER.put("net.minecraft.server.network.ServerGamePacketListenerImpl", "net.minecraft.class_3244");
+        NAMED_TO_INTER.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.class_2585");
     }
 
     static String toIntermediaryClass(String named) { return NAMED_TO_INTER.get(named); }
