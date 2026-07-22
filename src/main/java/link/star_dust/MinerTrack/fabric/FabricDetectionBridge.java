@@ -272,7 +272,7 @@ public class FabricDetectionBridge implements DetectionBridge {
             Class<?> fluidBlockCls = FabricReflection.forName("net.minecraft.world.level.block.LiquidBlock");
             Class<?> blocksCls = FabricReflection.forName("net.minecraft.world.level.block.Blocks");
             Class<?> blockCls = FabricReflection.forName("net.minecraft.world.level.block.Block");
-            Object block = FabricReflection.callAny(state, "method_17049", new Class<?>[0], new Object[0]); // BlockState.getBlock()
+            Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]); // BlockState.getBlock()
             if (block == null || blockCls == null) return false;
             if (fluidBlockCls != null && fluidBlockCls.isInstance(block)) {
                 Object fluidState = FabricReflection.callAny(state, "getFluidState", new Class<?>[0], new Object[0]);
