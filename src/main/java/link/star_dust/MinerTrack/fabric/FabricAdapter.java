@@ -172,13 +172,20 @@ public class FabricAdapter implements PluginAdapter {
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
                 // Send via the server. MC 26.1+: sendSystemMessage(Component)
-                // 1.18-1.21: sendMessage(Text) or sendMessage(Text, boolean)
-                // Mojang: MinecraftServer.sendSystemMessage(Component)
+                // 1.18-1.21: sendSystemMessage(Component, UUID)
                 try {
                     java.lang.reflect.Method m = FabricReflection.findMethod(
-                        server.getClass(), FabricReflectionConstants.M_SEND_SYSTEM_MSG_SRV, new Class<?>[]{textCls});
+                        server.getClass(), "sendSystemMessage", new Class<?>[]{textCls});
                     if (m != null) {
                         m.invoke(server, text);
+                        return;
+                    }
+                } catch (Throwable t1) { /* fall through */ }
+                try {
+                    java.lang.reflect.Method m = FabricReflection.findMethod(
+                        server.getClass(), "sendSystemMessage", new Class<?>[]{textCls, UUID.class});
+                    if (m != null) {
+                        m.invoke(server, text, java.util.UUID.randomUUID());
                         return;
                     }
                 } catch (Throwable t1) { /* fall through */ }
