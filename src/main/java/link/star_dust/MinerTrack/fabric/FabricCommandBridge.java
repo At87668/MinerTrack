@@ -86,113 +86,100 @@ public class FabricCommandBridge implements CommandBridge {
      *
      * <p>Priority order:
      * <ol>
-     *   <li>{@code sendSuccess(Supplier<Component>, boolean)} — 1.21.1+
-     *   <li>{@code sendSuccess(Component, boolean)} — 1.18.2
-     *   <li>{@code sendFailure(Component)} — all versions
-     *   <li>{@code sendSystemMessage(Component)} — 1.21.1+ CommandSourceStack
+     *   <li>{@code sendSuccess(Supplier<Component>, boolean)} — 1.20.2+
+     *   <li>{@code sendSuccess(Component, boolean)} — 1.18.2–1.20.1
+     *   <li>{@code sendFailure(Component)} — all versions (error path)
+     *   <li>{@code sendSystemMessage(Component)} — 1.19.3+ CommandSourceStack
      *   <li>{@code sendMessage(Component, UUID)} — 1.18.2 CommandSourceStack
      *   <li>{@code sendMessage(Text, boolean)} — player entity fallback
      * </ol>
+     *
+     * @return {@code true} if the message was delivered via any path
      */
-    private static void sendFeedback(Object target, Object text, boolean isSuccess) {
-        if (text == null || target == null) return;
-        try {
-            Class<?> textCls = resolveTextComponentClass();
-            if (textCls == null) return;
-            Class<?> targetCls = target.getClass();
+    private static boolean sendFeedback(Object target, Object text, boolean isSuccess) {
+        if (text == null || target == null) return false;
+        Class<?> textCls = resolveTextComponentClass();
+        if (textCls == null) return false;
+        Class<?> targetCls = target.getClass();
 
-            // 1a) sendSuccess(Supplier<Component>, boolean) — 1.21.1+
-            if (isSuccess) {
-                try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
-                        new Class<?>[]{Supplier.class, boolean.class});
-                    if (m != null) {
-                        Object supplier = createTextSupplier((String) invokeToString(text));
-                        if (supplier != null) {
-                            m.invoke(target, supplier, false);
-                            return;
-                        }
-                    }
-                } catch (Throwable t) { /* fall through */ }
-
-                // 1b) sendSuccess(Component, boolean) — 1.18.2
-                try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
-                        new Class<?>[]{textCls, boolean.class});
-                    if (m != null) {
-                        m.invoke(target, text, false);
-                        return;
-                    }
-                } catch (Throwable t) { /* fall through */ }
-            }
-
-            // 2) sendFailure(Component) — same signature on all versions
-            if (!isSuccess) {
-                try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendFailure",
-                        new Class<?>[]{textCls});
-                    if (m != null) {
-                        m.invoke(target, text);
-                        return;
-                    }
-                } catch (Throwable t) { /* fall through */ }
-            }
-
-            // 3) sendSystemMessage(Component) — 1.21.1+ CommandSourceStack
+        // 1a) sendSuccess(Supplier<Component>, boolean) — 1.20.2+
+        if (isSuccess) {
             try {
-                Method m = FabricReflection.findMethod(targetCls, "sendSystemMessage",
-                    new Class<?>[]{textCls});
+                Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                    new Class<?>[]{Supplier.class, boolean.class});
                 if (m != null) {
-                    m.invoke(target, text);
-                    return;
+                    final Object t = text;
+                    m.invoke(target, (Supplier<?>) () -> t, false);
+                    return true;
                 }
             } catch (Throwable t) { /* fall through */ }
 
-            // 4) sendMessage(Component, UUID) — 1.18.2 sendSuccess delegates to this
+            // 1b) sendSuccess(Component, boolean) — 1.18.2–1.20.1
             try {
-                Method m = FabricReflection.findMethod(targetCls, "sendMessage",
-                    new Class<?>[]{textCls, UUID.class});
-                if (m != null) {
-                    m.invoke(target, text, java.util.UUID.randomUUID());
-                    return;
-                }
-            } catch (Throwable t) { /* fall through */ }
-
-            // 5) sendMessage(Text, boolean) — player entity / legacy
-            try {
-                Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
                     new Class<?>[]{textCls, boolean.class});
                 if (m != null) {
                     m.invoke(target, text, false);
-                    return;
+                    return true;
                 }
             } catch (Throwable t) { /* fall through */ }
+        }
 
-            // 6) sendMessage(Text) — last-resort legacy
+        // 2) sendFailure(Component) — same signature on all versions
+        if (!isSuccess) {
             try {
-                Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                Method m = FabricReflection.findMethod(targetCls, "sendFailure",
                     new Class<?>[]{textCls});
                 if (m != null) {
                     m.invoke(target, text);
-                    return;
+                    return true;
                 }
             } catch (Throwable t) { /* fall through */ }
-
-        } catch (Throwable t) {
-            // Outer catch: unexpected errors, fall through to println
         }
-    }
 
-    /** Extract a String representation from a Text object via reflection. */
-    private static String invokeToString(Object text) {
+        // 3) sendSystemMessage(Component) — 1.19.3+ CommandSourceStack
         try {
-            Method m = text.getClass().getMethod("getString");
-            Object result = m.invoke(text);
-            return result != null ? result.toString() : "";
-        } catch (Throwable t) {
-            return text.toString();
-        }
+            Method m = FabricReflection.findMethod(targetCls, "sendSystemMessage",
+                new Class<?>[]{textCls});
+            if (m != null) {
+                m.invoke(target, text);
+                return true;
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        // 4) sendMessage(Component, UUID) — 1.18.2 sendSuccess delegates to this
+        try {
+            Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                new Class<?>[]{textCls, UUID.class});
+            if (m != null) {
+                m.invoke(target, text, java.util.UUID.randomUUID());
+                return true;
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        // 5) sendMessage(Text, boolean) — player entity / legacy
+        try {
+            Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                new Class<?>[]{textCls, boolean.class});
+            if (m != null) {
+                m.invoke(target, text, false);
+                return true;
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        // 6) sendMessage(Text) — last-resort legacy
+        try {
+            Method m = FabricReflection.findMethod(targetCls, "sendMessage",
+                new Class<?>[]{textCls});
+            if (m != null) {
+                m.invoke(target, text);
+                return true;
+            }
+        } catch (Throwable t) { /* fall through */ }
+
+        return false;
     }
+
 
     // ── CommandBridge implementation ──────────────────────────────
 
@@ -268,45 +255,47 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override
     public void sendMessage(String message) {
-        if (source == null) return;
-        try {
-            Object text = createText(message);
-            if (text != null) {
-                // Use sendSuccess (player-facing) for general messages.
-                // This routes through CommandSourceStack.sendFeedback()
-                // which shows in player chat, not just console.
-                sendFeedback(source, text, true);
-                return;
-            }
-        } catch (Throwable ignored) {}
-        // Final fallback: write to STDOUT so the server log at least
-        // captures the message (better than silent failure).
+        if (source == null) {
+            System.out.println("[MinerTrack] " + message);
+            return;
+        }
+        Object text = createText(message);
+        if (text == null) {
+            System.out.println("[MinerTrack] " + message);
+            return;
+        }
+        if (sendFeedback(source, text, true)) return;
+        // All reflection paths failed — final fallback
         System.out.println("[MinerTrack] " + message);
     }
 
     @Override
     public void sendSuccess(String message) {
-        if (source == null) return;
-        try {
-            Object text = createText(message);
-            if (text != null) {
-                sendFeedback(source, text, true);
-                return;
-            }
-        } catch (Throwable ignored) {}
+        if (source == null) {
+            System.out.println("[MinerTrack] " + message);
+            return;
+        }
+        Object text = createText(message);
+        if (text == null) {
+            System.out.println("[MinerTrack] " + message);
+            return;
+        }
+        if (sendFeedback(source, text, true)) return;
         System.out.println("[MinerTrack] " + message);
     }
 
     @Override
     public void sendFailure(String message) {
-        if (source == null) return;
-        try {
-            Object text = createText(message);
-            if (text != null) {
-                sendFeedback(source, text, false);
-                return;
-            }
-        } catch (Throwable ignored) {}
+        if (source == null) {
+            System.out.println("[MinerTrack] " + message);
+            return;
+        }
+        Object text = createText(message);
+        if (text == null) {
+            System.out.println("[MinerTrack] " + message);
+            return;
+        }
+        if (sendFeedback(source, text, false)) return;
         System.out.println("[MinerTrack] " + message);
     }
 
