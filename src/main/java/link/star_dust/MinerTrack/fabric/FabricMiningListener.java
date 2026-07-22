@@ -125,7 +125,7 @@ public class FabricMiningListener {
      * GameProfile is a Mojang authlib class (not obfuscated), so
      * {@code getName()} works directly without intermediary redirect.</p>
      */
-    private static final String SP_GET_GAME_PROFILE = "method_5809"; // ServerPlayer.getGameProfile()
+    private static final String SP_GET_GAME_PROFILE = "method_7334"; // ServerPlayer.getGameProfile()
 
     private static String readPlayerName(Object player) {
         try {
