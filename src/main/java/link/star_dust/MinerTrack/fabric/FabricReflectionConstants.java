@@ -116,7 +116,7 @@ final class FabricReflectionConstants {
     static final String M_CREATE_COMMAND_SOURCE_STACK = im("net.minecraft.server.MinecraftServer", "createCommandSourceStack", "()Lnet/minecraft/commands/CommandSourceStack;",       "method_3739");
     static final String M_GET_TICK_COUNT       = im("net.minecraft.server.MinecraftServer", "getTickCount",          "()I",                                                          "method_3780");
     static final String M_GET_LEVEL            = im("net.minecraft.server.MinecraftServer", "getLevel",              "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/server/level/ServerLevel;", "method_3847");
-    static final String M_SEND_SYSTEM_MSG_SRV  = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;)V",                     "method_9203");
+    static final String M_SEND_SYSTEM_MSG_SRV  = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;Ljava/util/UUID;)V",     "method_9203");
 
     // -- ServerPlayer ----------------------------------------------------
     static final String M_GET_NAME             = im("net.minecraft.server.level.ServerPlayer", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "method_5477");
@@ -124,7 +124,7 @@ final class FabricReflectionConstants {
     static final String M_GET_X                = im("net.minecraft.world.entity.Entity",       "getX",                "()D",                                                          "method_23317");
     static final String M_GET_Y                = im("net.minecraft.world.entity.Entity",       "getY",                "()D",                                                          "method_23318");
     static final String M_GET_Z                = im("net.minecraft.world.entity.Entity",       "getZ",                "()D",                                                          "method_23321");
-    static final String M_GET_GAME_PROFILE     = im("net.minecraft.server.level.ServerPlayer", "getGameProfile",      "()Lcom/mojang/authlib/GameProfile;",                           "method_5809");
+    static final String M_GET_GAME_PROFILE     = im("net.minecraft.server.level.ServerPlayer", "getGameProfile",      "()Lcom/mojang/authlib/GameProfile;",                           "method_7334");
     static final String M_SEND_SYSTEM_MSG_PLR  = im("net.minecraft.server.level.ServerPlayer", "sendSystemMessage",   "(Lnet/minecraft/network/chat/Component;)V",                     "method_43496");
     static final String M_SEND_MSG_PLR_CMP     = im("net.minecraft.server.level.ServerPlayer", "sendMessage",         "(Lnet/minecraft/network/chat/Component;Z)V",                     "method_7353");
     // sendMessage(Component, ChatType, UUID) — 1.18.2 only
@@ -148,8 +148,8 @@ final class FabricReflectionConstants {
     static final String M_SET_POS              = im("net.minecraft.world.entity.Entity",       "setPos",               "(DDD)V",                                                       "method_23327");
 
     // -- BlockState ------------------------------------------------------
-    static final String M_GET_BLOCK            = im("net.minecraft.world.level.block.state.BlockState", "getBlock",    "()Lnet/minecraft/world/level/block/Block;",                    "method_17049");
-    static final String M_GET_FLUID_STATE      = im("net.minecraft.world.level.block.state.BlockState", "getFluidState","()Lnet/minecraft/world/level/material/FluidState;",           "method_17772");
+    static final String M_GET_BLOCK            = im("net.minecraft.world.level.block.state.BlockState", "getBlock",    "()Lnet/minecraft/world/level/block/Block;",                    "method_26204");
+    static final String M_GET_FLUID_STATE      = im("net.minecraft.world.level.block.state.BlockState", "getFluidState","()Lnet/minecraft/world/level/material/FluidState;",           "method_26227");
 
     // -- FluidState / Fluid ----------------------------------------------
     static final String M_GET_FLUID            = im("net.minecraft.world.level.material.FluidState", "getFluid",       "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15772");
@@ -163,7 +163,7 @@ final class FabricReflectionConstants {
     static final String M_PERFORM_PREFIXED_CMD = im("net.minecraft.commands.Commands",           "performPrefixedCommand","(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_44252");
 
     // -- Component -------------------------------------------------------
-    static final String M_COMPONENT_LITERAL    = im("net.minecraft.network.chat.Component",     "literal",              "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", "method_43471");
+    static final String M_COMPONENT_LITERAL    = im("net.minecraft.network.chat.Component",     "literal",              "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", "method_30163");
 
     // -- CommandSourceStack ----------------------------------------------
     static final String M_GET_SERVER           = im("net.minecraft.commands.CommandSourceStack", "getServer",           "()Lnet/minecraft/server/MinecraftServer;",                                  "method_9211");
@@ -225,8 +225,8 @@ final class FabricReflectionConstants {
         putM("getCommandSource",    M_CREATE_COMMAND_SOURCE_STACK);
         // ServerPlayer / Entity
         putM("getName",             M_GET_NAME);
-        putM("getUUID",             M_GET_UUID);
-        putM("getUuid",             M_GET_UUID);           // 1.18 alias
+        // NOTE: getUUID/getUuid NOT redirected — method_5845 returns String not UUID.
+        // callUuid() tries both names; scanMethod fallback handles intermediary matching.
         putM("getX",                M_GET_X);
         putM("getY",                M_GET_Y);
         putM("getZ",                M_GET_Z);
