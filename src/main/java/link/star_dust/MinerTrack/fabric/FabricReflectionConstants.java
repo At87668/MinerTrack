@@ -132,9 +132,8 @@ final class FabricReflectionConstants {
     static final String M_LEVEL                = im("net.minecraft.server.level.ServerPlayer", "level",               "()Lnet/minecraft/world/level/Level;",                           "method_37908");
 
     // -- Level -----------------------------------------------------------
-    static final String M_GET_BLOCK_STATE      = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", null);
+    static final String M_GET_BLOCK_STATE      = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", "method_8320");
     static final String M_DIMENSION            = im("net.minecraft.world.level.Level",        "dimension",            "()Lnet/minecraft/resources/ResourceKey;",                                           "method_27983");
-    static final String M_IS_CLIENT_SIDE       = im("net.minecraft.world.level.Level",        "isClientSide",         "()Z",                                                                              "method_8608");
 
     // -- PlayerList ------------------------------------------------------
     static final String M_GET_PLAYER_UUID      = im("net.minecraft.server.players.PlayerList","getPlayer",            "(Ljava/util/UUID;)Lnet/minecraft/server/level/ServerPlayer;",   "method_14602");
@@ -171,10 +170,8 @@ final class FabricReflectionConstants {
     static final String M_IS_PLAYER            = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "method_43737");
     static final String M_GET_PLAYER           = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_9207");
     static final String M_GET_ENTITY           = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "method_9228");
-    static final String M_SEND_SUCCESS_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "method_9210");
-    static final String M_SEND_FAILURE_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9225");
-    static final String M_SEND_SYSTEM_MSG_CSS  = im("net.minecraft.commands.CommandSourceStack", "sendSystemMessage",   "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9226");
-    static final String M_SEND_MSG_CSS         = im("net.minecraft.commands.CommandSourceStack", "sendMessage",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9226");
+    static final String M_SEND_SUCCESS_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "method_9226");
+    static final String M_SEND_FAILURE_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9213");
     static final String M_WITH_SUPPRESSED_OUTPUT = im("net.minecraft.commands.CommandSourceStack", "withSuppressedOutput","()Lnet/minecraft/commands/CommandSourceStack;",                            "method_9217");
     static final String M_HAS_PERMISSION       = im("net.minecraft.commands.CommandSourceStack", "hasPermission",       "(I)Z",                                                                     "method_9259");
 
@@ -186,7 +183,7 @@ final class FabricReflectionConstants {
     static final String F_ENTITY_TYPE_LIGHTNING = ifd("net.minecraft.world.entity.EntityType",   "LIGHTNING_BOLT", "Lnet/minecraft/world/entity/EntityType;", "field_6139");
     static final String F_BUILTIN_BLOCK         = ifd("net.minecraft.core.registries.BuiltInRegistries", "BLOCK", "Lnet/minecraft/core/DefaultedRegistry;",  "field_35314");
     static final String F_REGISTRY_BLOCK        = ifd("net.minecraft.core.Registry",             "BLOCK",          "Lnet/minecraft/core/DefaultedRegistry;",  "field_25103");
-    static final String F_REGISTRIES_BLOCK      = ifd("net.minecraft.core.registries.Registries","BLOCK",          "Lnet/minecraft/resources/ResourceKey;",   "field_25103");
+    static final String F_REGISTRIES_BLOCK      = ifd("net.minecraft.core.registries.Registries","BLOCK",          "Lnet/minecraft/resources/ResourceKey;",   "field_41175");
     static final String F_BLOCKS_WATER          = ifd("net.minecraft.world.level.block.Blocks",  "WATER",          "Lnet/minecraft/world/level/block/Block;", "field_10511");
     static final String F_FLUIDS_WATER          = ifd("net.minecraft.world.level.material.Fluids","WATER",         "Lnet/minecraft/world/level/material/Fluid;","field_15910");
     static final String F_CHAT_TYPE_CHAT        = ifd("net.minecraft.network.chat.ChatType",     "CHAT",           "Lnet/minecraft/network/chat/ChatType;",   "field_11737");
@@ -194,6 +191,7 @@ final class FabricReflectionConstants {
     static final String F_INTERACTION_PASS      = ifd("net.minecraft.world.InteractionResult",   "PASS",           "Lnet/minecraft/world/InteractionResult;", "field_5812");
     static final String F_INTERACTION_SUCCESS   = ifd("net.minecraft.world.InteractionResult",   "SUCCESS",        "Lnet/minecraft/world/InteractionResult;", "field_21466");
     static final String F_INTERACTION_FAIL      = ifd("net.minecraft.world.InteractionResult",   "FAIL",           "Lnet/minecraft/world/InteractionResult;", "field_33562");
+    static final String F_IS_CLIENT_SIDE        = ifd("net.minecraft.world.level.Level",        "isClientSide",    "Z",                                                                        "field_9236");
     static final String F_CONNECTION            = ifd("net.minecraft.server.level.ServerPlayer", "connection",     "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;", "field_13987");
 
     // ==================================================================
@@ -210,7 +208,6 @@ final class FabricReflectionConstants {
         // Level
         putM("dimension",           M_DIMENSION);
         putM("getBlockState",       M_GET_BLOCK_STATE);
-        putM("isClientSide",        M_IS_CLIENT_SIDE);
         putM("getRegistryKey",      M_DIMENSION);          // 1.18 alias
         // MinecraftServer
         putM("getPlayerList",       M_GET_PLAYER_LIST);
@@ -306,6 +303,7 @@ final class FabricReflectionConstants {
 
     private static final java.util.Map<String,String> FIELD_REDIRECT = new java.util.HashMap<>();
     static {
+        putF("isClientSide",        F_IS_CLIENT_SIDE);      // Level.isClientSide is a field
         putF("connection",          F_CONNECTION);
         putF("networkHandler",      F_CONNECTION);         // 1.18 alias
         putF("PASS",                F_INTERACTION_PASS);
