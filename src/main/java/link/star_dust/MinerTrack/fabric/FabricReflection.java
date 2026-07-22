@@ -72,16 +72,59 @@ final class FabricReflection {
         Class<?> cls = forName(className);
         if (cls == null) return null;
         String r = FabricReflectionConstants.redirectMethod(methodName);
+
+        // 1. Exact match with resolved name
         try {
             Method m = cls.getDeclaredMethod(r, paramTypes);
             m.setAccessible(true);
             return m.invoke(null, args);
         } catch (NoSuchMethodException e) {
             try { return cls.getMethod(r, paramTypes).invoke(null, args); }
-            catch (Throwable t2) { return null; }
+            catch (Throwable t2) { /* fall through */ }
         } catch (IllegalAccessException | InvocationTargetException e) {
             return null;
         }
+
+        // 2. If resolved name ≠ original, try original name
+        if (!r.equals(methodName)) {
+            try {
+                Method m = cls.getDeclaredMethod(methodName, paramTypes);
+                m.setAccessible(true);
+                return m.invoke(null, args);
+            } catch (NoSuchMethodException ignored) {
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                return null;
+            }
+            try {
+                Method m = cls.getMethod(methodName, paramTypes);
+                m.setAccessible(true);
+                return m.invoke(null, args);
+            } catch (NoSuchMethodException ignored) {
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                return null;
+            }
+        }
+
+        // 3. Parameter-type scan — match any static method with compatible params
+        for (Method candidate : cls.getDeclaredMethods()) {
+            if (!java.lang.reflect.Modifier.isStatic(candidate.getModifiers())) continue;
+            Class<?>[] pts = candidate.getParameterTypes();
+            if (pts.length != paramTypes.length) continue;
+            boolean match = true;
+            for (int i = 0; i < pts.length; i++) {
+                if (!pts[i].isAssignableFrom(paramTypes[i])) { match = false; break; }
+            }
+            if (match) {
+                try {
+                    candidate.setAccessible(true);
+                    return candidate.invoke(null, args);
+                } catch (Throwable ignored) {}
+            }
+        }
+
+        if (DEBUG_REFLECTION)
+            log("STATIC-MISS " + className + "." + methodName + " (resolved=" + r + ")");
+        return null;
     }
 
     /**
