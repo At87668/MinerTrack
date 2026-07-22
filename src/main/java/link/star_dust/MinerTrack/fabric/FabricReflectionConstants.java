@@ -171,6 +171,8 @@ final class FabricReflectionConstants {
     static final String M_IS_PLAYER            = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "method_43737");
     static final String M_GET_PLAYER           = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_9207");
     static final String M_GET_ENTITY           = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "method_9228");
+    static final String M_SEND_SUCCESS_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "method_9210");
+    static final String M_SEND_FAILURE_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9225");
     static final String M_SEND_SYSTEM_MSG_CSS  = im("net.minecraft.commands.CommandSourceStack", "sendSystemMessage",   "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9226");
     static final String M_SEND_MSG_CSS         = im("net.minecraft.commands.CommandSourceStack", "sendMessage",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9226");
     static final String M_WITH_SUPPRESSED_OUTPUT = im("net.minecraft.commands.CommandSourceStack", "withSuppressedOutput","()Lnet/minecraft/commands/CommandSourceStack;",                            "method_9217");
@@ -270,8 +272,8 @@ final class FabricReflectionConstants {
         putM("isExecutedByPlayer",  M_IS_PLAYER);          // 1.18 alias
         putM("withSilent",          M_WITH_SUPPRESSED_OUTPUT); // 1.18 alias
         putM("hasPermissionLevel",  M_HAS_PERMISSION);     // 1.18 alias
-        putM("sendSuccess",         M_SEND_SYSTEM_MSG_CSS);
-        putM("sendFailure",         M_SEND_SYSTEM_MSG_CSS);
+        putM("sendSuccess",         M_SEND_SUCCESS_CSS);
+        putM("sendFailure",         M_SEND_FAILURE_CSS);
         // BlockPos
         putM("getBlockPos",         "getBlockPos");        // named, keep as-is
         // HitResult
