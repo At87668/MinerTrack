@@ -119,17 +119,17 @@ final class FabricReflectionConstants {
     static final String M_SEND_SYSTEM_MSG_SRV  = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;Ljava/util/UUID;)V",     "method_9203");
 
     // -- ServerPlayer ----------------------------------------------------
-    static final String M_GET_NAME             = im("net.minecraft.server.level.ServerPlayer", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "method_5477");
-    static final String M_GET_UUID             = im("net.minecraft.server.level.ServerPlayer", "getUUID",             "()Ljava/util/UUID;",                                           "method_5845");
+    static final String M_GET_NAME             = im("net.minecraft.world.entity.Entity", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "method_5477");
+    static final String M_GET_UUID             = im("net.minecraft.world.entity.Entity", "getUUID",             "()Ljava/util/UUID;",                                           "method_5667"); // 5667 -> UUID  5845 -> String
     static final String M_GET_X                = im("net.minecraft.world.entity.Entity",       "getX",                "()D",                                                          "method_23317");
     static final String M_GET_Y                = im("net.minecraft.world.entity.Entity",       "getY",                "()D",                                                          "method_23318");
     static final String M_GET_Z                = im("net.minecraft.world.entity.Entity",       "getZ",                "()D",                                                          "method_23321");
-    static final String M_GET_GAME_PROFILE     = im("net.minecraft.server.level.ServerPlayer", "getGameProfile",      "()Lcom/mojang/authlib/GameProfile;",                           "method_7334");
-    static final String M_SEND_SYSTEM_MSG_PLR  = im("net.minecraft.server.level.ServerPlayer", "sendSystemMessage",   "(Lnet/minecraft/network/chat/Component;)V",                     "method_43496");
-    static final String M_SEND_MSG_PLR_CMP     = im("net.minecraft.server.level.ServerPlayer", "sendMessage",         "(Lnet/minecraft/network/chat/Component;Z)V",                     "method_7353");
+    static final String M_GET_GAME_PROFILE     = im("net.minecraft.world.entity.player.Player", "getGameProfile",      "()Lcom/mojang/authlib/GameProfile;",                           "method_7334");
+    static final String M_SEND_SYSTEM_MSG_PLR  = im("net.minecraft.server.level.ServerPlayer", "sendMessage",   "(Lnet/minecraft/network/chat/Component;)V",                     "method_9203");
+    static final String M_SEND_MSG_PLR_CMP     = im("net.minecraft.server.level.ServerPlayer", "displayClientMessage",         "(Lnet/minecraft/network/chat/Component;Z)V",                     "method_7353");
     // sendMessage(Component, ChatType, UUID) — 1.18.2 only
     static final String M_SEND_MSG_PLR_CMP_TYPE_UUID = im("net.minecraft.server.level.ServerPlayer", "sendMessage",  "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/ChatType;Ljava/util/UUID;)V", "method_14254");
-    static final String M_LEVEL                = im("net.minecraft.server.level.ServerPlayer", "level",               "()Lnet/minecraft/world/level/Level;",                           "method_37908");
+    static final String M_LEVEL                = im("net.minecraft.server.level.ServerPlayer", "level",               "()Lnet/minecraft/world/level/Level;",                           null); // 26.1+
 
     // -- Level -----------------------------------------------------------
     static final String M_GET_BLOCK_STATE      = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", "method_8320");
@@ -140,35 +140,35 @@ final class FabricReflectionConstants {
     static final String M_GET_PLAYER_BY_NAME   = im("net.minecraft.server.players.PlayerList","getPlayerByName",      "(Ljava/lang/String;)Lnet/minecraft/server/level/ServerPlayer;", "method_14566");
     static final String M_GET_PLAYERS          = im("net.minecraft.server.players.PlayerList","getPlayers",           "()Ljava/util/List;",                                           "method_14571");
     static final String M_IS_OP                = im("net.minecraft.server.players.PlayerList","isOp",                 "(Lcom/mojang/authlib/GameProfile;)Z",                          "method_14569");
-    static final String M_BROADCAST_SYSTEM_MSG = im("net.minecraft.server.players.PlayerList","broadcastSystemMessage","(Lnet/minecraft/network/chat/Component;Z)V",                   "method_43514");
-    static final String M_BROADCAST_MSG        = im("net.minecraft.server.players.PlayerList","broadcastMessage",     "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/ChatType;Ljava/util/UUID;)V", "method_14616");
-    static final String M_BROADCAST            = im("net.minecraft.server.players.PlayerList","broadcast",            "(Lnet/minecraft/network/chat/Component;Ljava/util/function/Function;Z)V",            "method_43512");
+    static final String M_BROADCAST_SYSTEM_MSG = im("net.minecraft.server.players.PlayerList","broadcastSystemMessage","(Lnet/minecraft/network/chat/Component;Z)V",                   "method_43514"); //1.21+
+    static final String M_BROADCAST_MSG        = im("net.minecraft.server.players.PlayerList","broadcastMessage",     "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/ChatType;Ljava/util/UUID;)V", "method_14616"); //1.18+
+    static final String M_BROADCAST            = im("net.minecraft.server.players.PlayerList","broadcast",            "(Lnet/minecraft/network/chat/Component;Ljava/util/function/Function;Z)V",            "method_43512"); //broadcastSystemMessage #2
 
     // -- Entity ----------------------------------------------------------
-    static final String M_SET_POS              = im("net.minecraft.world.entity.Entity",       "setPos",               "(DDD)V",                                                       "method_23327");
+    static final String M_SET_POS              = im("net.minecraft.world.entity.Entity",       "setPosRaw",               "(DDD)V",                                                       "method_23327");
 
     // -- BlockState ------------------------------------------------------
     static final String M_GET_BLOCK            = im("net.minecraft.world.level.block.state.BlockState", "getBlock",    "()Lnet/minecraft/world/level/block/Block;",                    "method_26204");
-    static final String M_GET_FLUID_STATE      = im("net.minecraft.world.level.block.state.BlockState", "getFluidState","()Lnet/minecraft/world/level/material/FluidState;",           "method_26227");
+    static final String M_GET_FLUID_STATE      = im("net.minecraft.world.level.Level", "getFluidState", "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/material/FluidState;",           "method_8316");
 
     // -- FluidState / Fluid ----------------------------------------------
-    static final String M_GET_FLUID            = im("net.minecraft.world.level.material.FluidState", "getFluid",       "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15772");
-    static final String M_GET_STILL            = im("net.minecraft.world.level.material.FlowableFluid", "getStill",     "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15751");
+    static final String M_GET_FLUID            = im("net.minecraft.world.level.material.FluidState", "getType",       "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15772");
+    static final String M_GET_STILL            = im("net.minecraft.world.level.material.FlowingFluid", "getSource",     "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15751");
 
     // -- ServerGamePacketListenerImpl ------------------------------------
-    static final String M_DISCONNECT           = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_33898");
+    static final String M_DISCONNECT           = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_14367");
 
     // -- Commands --------------------------------------------------------
     static final String M_PERFORM_COMMAND      = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_9249");
-    static final String M_PERFORM_PREFIXED_CMD = im("net.minecraft.commands.Commands",           "performPrefixedCommand","(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_44252");
+    static final String M_PERFORM_PREFIXED_CMD = im("net.minecraft.commands.Commands",           "performPrefixedCommand","(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  null); // Not found
 
     // -- Component -------------------------------------------------------
-    static final String M_COMPONENT_LITERAL    = im("net.minecraft.network.chat.Component",     "literal",              "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", "method_30163");
+    static final String M_COMPONENT_LITERAL    = im("net.minecraft.network.chat.Component",     "literal",              "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", null); //Not found
 
     // -- CommandSourceStack ----------------------------------------------
     static final String M_GET_SERVER           = im("net.minecraft.commands.CommandSourceStack", "getServer",           "()Lnet/minecraft/server/MinecraftServer;",                                  "method_9211");
     static final String M_IS_PLAYER            = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "method_43737");
-    static final String M_GET_PLAYER           = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_9207");
+    static final String M_GET_PLAYER           = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_44023");
     static final String M_GET_ENTITY           = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "method_9228");
     static final String M_SEND_SUCCESS_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "method_9226");
     static final String M_SEND_FAILURE_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9213");
@@ -180,18 +180,18 @@ final class FabricReflectionConstants {
     //   ifd(namedOwner, namedName, descriptor, intermediaryFallback)
     // ==================================================================
 
-    static final String F_ENTITY_TYPE_LIGHTNING = ifd("net.minecraft.world.entity.EntityType",   "LIGHTNING_BOLT", "Lnet/minecraft/world/entity/EntityType;", "field_6139");
-    static final String F_BUILTIN_BLOCK         = ifd("net.minecraft.core.registries.BuiltInRegistries", "BLOCK", "Lnet/minecraft/core/DefaultedRegistry;",  "field_35314");
-    static final String F_REGISTRY_BLOCK        = ifd("net.minecraft.core.Registry",             "BLOCK",          "Lnet/minecraft/core/DefaultedRegistry;",  "field_25103");
-    static final String F_REGISTRIES_BLOCK      = ifd("net.minecraft.core.registries.Registries","BLOCK",          "Lnet/minecraft/resources/ResourceKey;",   "field_41175");
-    static final String F_BLOCKS_WATER          = ifd("net.minecraft.world.level.block.Blocks",  "WATER",          "Lnet/minecraft/world/level/block/Block;", "field_10511");
-    static final String F_FLUIDS_WATER          = ifd("net.minecraft.world.level.material.Fluids","WATER",         "Lnet/minecraft/world/level/material/Fluid;","field_15910");
+    static final String F_ENTITY_TYPE_LIGHTNING = ifd("net.minecraft.world.entity.EntityType",   "LIGHTNING_BOLT", "Lnet/minecraft/world/entity/EntityType;", "field_6112");
+    static final String F_BUILTIN_BLOCK         = ifd("net.minecraft.core.registries.BuiltInRegistries", "BLOCK", "Lnet/minecraft/core/DefaultedRegistry;",  "field_41175");
+    static final String F_REGISTRY_BLOCK        = ifd("net.minecraft.core.Registry",             "BLOCK",          "Lnet/minecraft/core/DefaultedRegistry;",  null); // Not found
+    static final String F_REGISTRIES_BLOCK      = ifd("net.minecraft.core.registries.Registries","BLOCK",          "Lnet/minecraft/resources/ResourceKey;",   "field_41254");
+    static final String F_BLOCKS_WATER          = ifd("net.minecraft.world.level.block.Blocks",  "WATER",          "Lnet/minecraft/world/level/block/Block;", "field_10382");
+    static final String F_FLUIDS_WATER          = ifd("net.minecraft.world.level.material.Fluids","WATER",         "Lnet/minecraft/world/level/material/FlowingFluid;","field_15910");
     static final String F_CHAT_TYPE_CHAT        = ifd("net.minecraft.network.chat.ChatType",     "CHAT",           "Lnet/minecraft/network/chat/ChatType;",   "field_11737");
-    static final String F_CHAT_TYPE_SYSTEM      = ifd("net.minecraft.network.chat.ChatType",     "SYSTEM",         "Lnet/minecraft/network/chat/ChatType;",   "field_11735");
-    static final String F_INTERACTION_PASS      = ifd("net.minecraft.world.InteractionResult",   "PASS",           "Lnet/minecraft/world/InteractionResult;", "field_5812");
-    static final String F_INTERACTION_SUCCESS   = ifd("net.minecraft.world.InteractionResult",   "SUCCESS",        "Lnet/minecraft/world/InteractionResult;", "field_21466");
-    static final String F_INTERACTION_FAIL      = ifd("net.minecraft.world.InteractionResult",   "FAIL",           "Lnet/minecraft/world/InteractionResult;", "field_33562");
-    static final String F_IS_CLIENT_SIDE        = ifd("net.minecraft.world.level.Level",        "isClientSide",    "Z",                                                                        "field_9236");
+    static final String F_CHAT_TYPE_SYSTEM      = ifd("net.minecraft.network.chat.ChatType",     "SYSTEM",         "Lnet/minecraft/network/chat/ChatType;",   null); // Not found
+    static final String F_INTERACTION_PASS      = ifd("net.minecraft.world.InteractionResult",   "PASS",           "Lnet/minecraft/world/InteractionResult;", "field_5811");
+    static final String F_INTERACTION_SUCCESS   = ifd("net.minecraft.world.InteractionResult",   "SUCCESS",        "Lnet/minecraft/world/InteractionResult;", "field_5812");
+    static final String F_INTERACTION_FAIL      = ifd("net.minecraft.world.InteractionResult",   "FAIL",           "Lnet/minecraft/world/InteractionResult;", "field_5814");
+    static final String F_IS_CLIENT_SIDE        = ifd("net.minecraft.world.level.Level",        "isClientSide",    "Z",                                       "field_9236");
     static final String F_CONNECTION            = ifd("net.minecraft.server.level.ServerPlayer", "connection",     "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;", "field_13987");
 
     // ==================================================================
