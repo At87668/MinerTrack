@@ -135,8 +135,8 @@ public class FabricDetectionBridge implements DetectionBridge {
             if (pos == null) return BlockId.AIR;
             Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
             if (state == null) return BlockId.AIR;
-            // BlockState.getBlock() → Block (intermediary: method_17049)
-            Object block = FabricReflection.callAny(state, "method_17049", new Class<?>[0], new Object[0]);
+            // BlockState.getBlock() → Block (redirected via constants)
+            Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null) return BlockId.AIR;
             String id = FabricReflection.getBlockId(block);
             if (id != null && !id.isEmpty()) return id;

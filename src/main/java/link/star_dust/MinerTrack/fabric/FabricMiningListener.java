@@ -121,16 +121,15 @@ public class FabricMiningListener {
      * ServerLevel.getName() (via Nameable), causing 'getName' to resolve
      * to ServerLevel when the world arg is mistakenly passed as player.
      *
-     * ServerPlayer.getGameProfile() (method_5809) has no collision, and
+     * ServerPlayer.getGameProfile() has no collision, and
      * GameProfile is a Mojang authlib class (not obfuscated), so
      * {@code getName()} works directly without intermediary redirect.</p>
      */
-    private static final String SP_GET_GAME_PROFILE = "method_7334"; // ServerPlayer.getGameProfile()
-
     private static String readPlayerName(Object player) {
         try {
             // ServerPlayer.getGameProfile() → GameProfile.getName()
-            Object profile = player.getClass().getMethod(SP_GET_GAME_PROFILE).invoke(player);
+            Object profile = FabricReflection.callAny(player, "getGameProfile",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (profile != null) {
                 String name = (String) profile.getClass().getMethod("getName").invoke(profile);
                 if (name != null && !name.isEmpty()) return name;
@@ -217,13 +216,10 @@ public class FabricMiningListener {
         } catch (Throwable t) { return 0; }
     }
 
-    // BlockState.getBlock() intermediary name — differs from any other "getBlock".
-    private static final String BS_GET_BLOCK = "method_17049"; // BlockState.getBlock() → Block
-
     private static String blockIdForState(Object state) {
         try {
-            // BlockState.getBlock() → Block (intermediary: method_17049)
-            Object block = FabricReflection.callAny(state, BS_GET_BLOCK, new Class<?>[0], new Object[0]);
+            // BlockState.getBlock() → Block (redirected via constants)
+            Object block = FabricReflection.callAny(state, "getBlock", new Class<?>[0], new Object[0]);
             if (block == null)
                 return BlockId.AIR;
             // 1. Block.toString() → "Block{minecraft:diorite}"
