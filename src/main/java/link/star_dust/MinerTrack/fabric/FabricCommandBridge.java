@@ -453,8 +453,11 @@ public class FabricCommandBridge implements CommandBridge {
      * trying each cached overload until param[0].isInstance(source) matches.
      * Returns true if LP grants the permission, false if LP is absent / invocation
      * fails / LP explicitly denies.
+     *
+     * <p>Package-private so that {@link FabricDetectionBridge} can reuse it
+     * for the {@code hasPermission(UUID, String)} bridge method.
      */
-    private static boolean checkLPPermission(Object source, String node, int defaultOpLevel) {
+    static boolean checkLPPermission(Object source, String node, int defaultOpLevel) {
         for (Method m : findAllCheckMethods()) {
             Class<?> sourceType = m.getParameterTypes()[0];
             if (!sourceType.isInstance(source)) continue;
@@ -527,8 +530,11 @@ public class FabricCommandBridge implements CommandBridge {
      *   <li>Check player operator status via PlayerList (works on all versions
      *       including MC 26.x where the old permission methods are gone).</li>
      * </ol>
+     *
+     * <p>Package-private so that {@link FabricDetectionBridge} can reuse it
+     * for the {@code hasPermission(UUID, String)} bridge method.
      */
-    private static boolean checkVanillaOpLevel(Object source, int minLevel) {
+    static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
 
         // ── Layer 1: non-player → always allowed ──────────────────

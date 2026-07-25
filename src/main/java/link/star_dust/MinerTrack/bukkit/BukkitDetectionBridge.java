@@ -10,6 +10,7 @@ import link.star_dust.MinerTrack.common.PluginAdapter;
 import link.star_dust.MinerTrack.common.YamlLoader;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Levelled;
 
@@ -151,6 +152,21 @@ public class BukkitDetectionBridge implements DetectionBridge {
         // `world.getName()` (it can't, but the
         // resolveDimensionId path is the authoritative one).
         return resolveDimensionId(world.getName());
+    }
+
+    
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Implementation: retrieves the Bukkit {@link org.bukkit.entity.Player}
+     * for {@code playerId} via {@link Bukkit#getPlayer(UUID)} and delegates to
+     * {@link org.bukkit.entity.Player#hasPermission(String)}. Returns
+     * {@code false} when the player is not online.
+     */
+    @Override
+    public boolean hasPermission(UUID playerId, String node) {
+        org.bukkit.entity.Player player = Bukkit.getPlayer(playerId);
+        return player != null && player.hasPermission(node);
     }
 
     /**

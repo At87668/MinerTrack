@@ -99,4 +99,23 @@ public interface DetectionBridge {
     default String resolveDimensionId(String worldName) {
         return DimensionId.normalize(worldName);
     }
+
+    /**
+     * Check a platform-specific permission for a player.
+     *
+     * <p>On Bukkit the bridge delegates to {@code Player.hasPermission(node)};
+     * on Fabric it checks the fabric-permissions-api path first and falls back
+     * to the vanilla op-level check.
+     *
+     * <p>The default implementation returns {@code false} so that platforms
+     * that do not yet support permission checks (e.g. a pure-vl Fabric build)
+     * keep compiling without breaking the interface contract.
+     *
+     * @param playerId the UUID of the player to check
+     * @param node     the permission node (e.g. {@code "minertrack.bypass"})
+     * @return {@code true} if the player has the requested permission
+     */
+    default boolean hasPermission(UUID playerId, String node) {
+        return false;
+    }
 }

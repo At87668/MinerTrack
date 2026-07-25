@@ -323,6 +323,41 @@ public class FabricDetectionBridge implements DetectionBridge {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Implementation: resolves the player by UUID via the
+     * {@code PlayerList}/{@code PlayerManager} reflection path, then
+     * checks the fabric-permissions-api (LuckPerms) first and falls back
+     * to the vanilla op-level / operator check.  Returns {@code false}
+     * when the player is not online or the server instance is unavailable.
+     */
+    @Override
+    public boolean hasPermission(UUID playerId, String node) {
+        try {
+            Object server = FabricReflection.getServer();
+            if (server == null) return false;
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
+            if (pm == null) return false;
+            Object player = FabricReflection.call(pm, "getPlayer",
+                new Class<?>[]{UUID.class}, new Object[]{playerId});
+            if (player == null) return false;
+            // 1) Try fabric-permissions-api (LuckPerms integration)
+            //    FabricCommandBridge.checkLPPermission is the same utility
+            //    used by FabricCommandBridge; it iterates the registered
+            //    permission providers and returns true on first match.
+            if (FabricCommandBridge.checkLPPermission(player, node, 2)) return true;
+            // 2) Fall back to vanilla op-level check.  The command source
+            //    stack is a Player object on Fabric, so the op-level
+            //    resolution in FabricCommandBridge.checkVanillaOpLevel can
+            //    be reused directly (player is the source object).
+            return FabricCommandBridge.checkVanillaOpLevel(player, 2);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     @Override
     public void clearConfigCache() {
         configLoaded = false;
