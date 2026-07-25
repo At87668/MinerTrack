@@ -73,27 +73,40 @@ public class FabricCommandBridge implements CommandBridge {
         if (textCls == null) return false;
         Class<?> targetCls = target.getClass();
 
-        // 1a) sendSuccess(Supplier<Component>, boolean) — 1.20.2+
+        // 1a) sendSuccess(Supplier<Component>, boolean) — 1.20.2+ / 1.21.1+
+        // 1b) sendSuccess(Component, boolean) — 1.18.2–1.20.1
+        //
+        // These two overloads are mutually exclusive across MC versions;
+        // one will always fail (producing an M-MISS under debug mode).
+        // Temporarily suppress debug logging during this trial phase so
+        // that the expected miss does not pollute the console.
         if (isSuccess) {
+            boolean oldDebug = FabricReflection.DEBUG_REFLECTION;
+            FabricReflection.DEBUG_REFLECTION = false;
             try {
-                Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
-                    new Class<?>[]{Supplier.class, boolean.class});
-                if (m != null) {
-                    final Object t = text;
-                    m.invoke(target, (Supplier<?>) () -> t, false);
-                    return true;
-                }
-            } catch (Throwable t) { /* fall through */ }
+                // 1a) Supplier overload (1.20.2+)
+                try {
+                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                        new Class<?>[]{Supplier.class, boolean.class});
+                    if (m != null) {
+                        final Object t = text;
+                        m.invoke(target, (Supplier<?>) () -> t, false);
+                        return true;
+                    }
+                } catch (Throwable t) { /* fall through */ }
 
-            // 1b) sendSuccess(Component, boolean) — 1.18.2–1.20.1
-            try {
-                Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
-                    new Class<?>[]{textCls, boolean.class});
-                if (m != null) {
-                    m.invoke(target, text, false);
-                    return true;
-                }
-            } catch (Throwable t) { /* fall through */ }
+                // 1b) Component overload (1.18.2–1.20.1)
+                try {
+                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                        new Class<?>[]{textCls, boolean.class});
+                    if (m != null) {
+                        m.invoke(target, text, false);
+                        return true;
+                    }
+                } catch (Throwable t) { /* fall through */ }
+            } finally {
+                FabricReflection.DEBUG_REFLECTION = oldDebug;
+            }
         }
 
         // 2) sendFailure(Component) — same signature on all versions
@@ -416,7 +429,7 @@ public class FabricCommandBridge implements CommandBridge {
             Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 new Class<?>[0], new Object[0]);
             if (pm == null) return false;
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            Object player = FabricReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
