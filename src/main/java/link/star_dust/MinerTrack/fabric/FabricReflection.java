@@ -47,8 +47,12 @@ final class FabricReflection {
         String inter = FabricReflectionConstants.toIntermediaryClass(namedClassName);
         if (inter != null && !inter.equals(namedClassName))
             cls = tryLoad(inter);
-        if (cls == null && DEBUG_REFLECTION)
-            log("CLS-MISS " + namedClassName);
+        if (cls == null && DEBUG_REFLECTION) {
+            // Suppress noise for Fabric API classes that are conditionally
+            // available (v2 vs v1, optional modules, etc.)
+            if (!namedClassName.startsWith("net.fabricmc.fabric.api."))
+                log("CLS-MISS " + namedClassName);
+        }
         return cls;
     }
 

@@ -44,7 +44,7 @@ final class FabricEventBus {
     static void registerEndServerTick(Consumer<Object> handler) {
         register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents",
             "END_SERVER_TICK",
-            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents$EndServerTick",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents$EndTick",
             fromConsumer(handler));
     }
 

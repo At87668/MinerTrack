@@ -26,10 +26,21 @@ final class FabricReflectionConstants {
 
     private static final MappingResolver MR;
     private static final boolean IS_DEV;
+    /** True when the runtime namespace is named/mojang (MC 26+),
+     *  false when it's intermediary (MC 1.18–1.21). */
+    private static final boolean IS_NAMED_RUNTIME;
     static {
         FabricLoader fl = FabricLoader.getInstance();
         MR = fl.getMappingResolver();
         IS_DEV = fl.isDevelopmentEnvironment();
+        boolean namedRt = false;
+        try {
+            // On MC 26+ named classes are the runtime; on 1.18–1.21
+            // only intermediary class_NNNN names exist at runtime.
+            Class.forName("net.minecraft.world.level.Level");
+            namedRt = true;
+        } catch (ClassNotFoundException ignored) {}
+        IS_NAMED_RUNTIME = namedRt;
     }
 
     // ==================================================================
@@ -54,8 +65,9 @@ final class FabricReflectionConstants {
             String r = MR.mapMethodName("named", namedOwner, named, desc);
             if (r != null && !r.equals(named)) return r;
         } catch (Throwable ignore) {}
-        // 2) hardcoded intermediary (production 1.18–1.21)
-        if (!IS_DEV && interFallback != null) return interFallback;
+        // 2) hardcoded intermediary (production 1.18–1.21 only)
+        //    On MC 26+ the runtime IS named, so skip intermediary fallback.
+        if (!IS_DEV && !IS_NAMED_RUNTIME && interFallback != null) return interFallback;
         // 3) give back the original name
         return named;
     }
@@ -67,7 +79,7 @@ final class FabricReflectionConstants {
             String r = MR.mapFieldName("named", namedOwner, named, desc);
             if (r != null && !r.equals(named)) return r;
         } catch (Throwable ignore) {}
-        if (!IS_DEV && interFallback != null) return interFallback;
+        if (!IS_DEV && !IS_NAMED_RUNTIME && interFallback != null) return interFallback;
         return named;
     }
 
