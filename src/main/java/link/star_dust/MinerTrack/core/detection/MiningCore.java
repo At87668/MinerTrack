@@ -70,8 +70,9 @@ public class MiningCore {
         bridge.trackBrokenAir(playerId, loc);
 
         // Check bypass permission
-        if (!state.isBypassDisabled(worldName)) {
-            // Bypass allowed — but we still track placed blocks above
+        if (!state.isBypassDisabled(worldName) && bridge.hasPermission(playerId, "minertrack.bypass")) {
+            CoreLogger.debug("  skip: player has bypass permission");
+            return false;
         }
 
         List<String> rareOres = state.getRareOres(worldName);
