@@ -393,53 +393,13 @@ public class FabricAdapter implements PluginAdapter {
         return yamlLoader;
     }
 
-    // ── Text/Component helpers ─────────────────────────────────────
+    // ── Text/Component helpers (delegate to FabricReflection) ──────
 
-    /**
-     * Create a Minecraft text/component from a plain string, trying
-     * all known MC version paths.
-     */
     private static Object createTextComponent(String message) {
-        // 1. MC 26.1+: Component.literal(String)
-        try {
-            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
-            java.lang.reflect.Method literal = compCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
-        } catch (Throwable t) { /* fall through */ }
-
-        // 2. MC 1.19.3+: Component.literal(String) via FabricReflection
-        try {
-            // Mojang: net.minecraft.network.chat.Component
-            Class<?> textCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
-            if (textCls != null) {
-                java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-                return literal.invoke(null, message);
-            }
-        } catch (Throwable t) { /* fall through */ }
-
-        // 3. MC 1.18-1.19.2: new TextComponent(String)
-        try {
-            // Mojang: net.minecraft.network.chat.TextComponent → Component
-            Class<?> ltCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
-            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
-        } catch (Throwable t) {
-            return null;
-        }
+        return FabricReflection.createText(message);
     }
 
-    /**
-     * Resolve the Minecraft text component class at runtime.
-     */
     private static Class<?> resolveTextComponentClass() {
-        try {
-            return Class.forName("net.minecraft.network.chat.Component");
-        } catch (ClassNotFoundException e) {
-            try {
-                // Mojang: net.minecraft.network.chat.Component
-                return FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
-            } catch (Throwable ex) {
-                return null;
-            }
-        }
+        return FabricReflection.resolveTextComponentClass();
     }
 }
