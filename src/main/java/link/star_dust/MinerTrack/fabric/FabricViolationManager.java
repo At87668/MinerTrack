@@ -193,26 +193,8 @@ public class FabricViolationManager implements ViolationManagerBridge {
             Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createTextComponent(message);
-            Class<?> textCls = resolveTextComponentClass();
-            // 1.21.1+: sendSystemMessage(Component)
-            try {
-                FabricReflection.call(player, "sendSystemMessage",
-                    new Class<?>[]{textCls}, new Object[]{text});
-                return;
-            } catch (Throwable t1) { /* fall through */ }
-            // 1.18.2: sendMessage(Component, UUID)
-            try {
-                FabricReflection.call(player, "sendMessage",
-                    new Class<?>[]{textCls, UUID.class},
-                    new Object[]{text, playerId});
-                return;
-            } catch (Throwable t1) { /* fall through */ }
-            // Legacy: sendMessage(Text, boolean)
-            try {
-                FabricReflection.call(player, "sendMessage",
-                    new Class<?>[]{textCls, boolean.class},
-                    new Object[]{text, false});
-            } catch (Throwable t1) { /* silent */ }
+            if (text == null) return;
+            FabricReflection.sendMessageToPlayer(player, text);
         } catch (Throwable t) {
             // Player likely offline; silently drop.
         }
@@ -368,43 +350,13 @@ public class FabricViolationManager implements ViolationManagerBridge {
         }
     }
 
-    // ── Text/Component helpers ─────────────────────────────────────
+    // ── Text/Component helpers (delegate to FabricReflection) ──────
 
     private static Object createTextComponent(String message) {
-        // 1. MC 26.1+: Component.literal(String)
-        try {
-            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
-            java.lang.reflect.Method literal = compCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
-        } catch (Throwable t) { /* fall through */ }
-
-        // 2. MC 1.19.3+: Component.literal(String) via FabricReflection
-        try {
-            Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
-            if (textCls != null) {
-                java.lang.reflect.Method literal = textCls.getMethod("literal", String.class);
-                return literal.invoke(null, message);
-            }
-        } catch (Throwable t) { /* fall through */ }
-
-        // 3. MC 1.18-1.19.2: new TextComponent(String)
-        try {
-            Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
-            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
-        } catch (Throwable t) {
-            return null;
-        }
+        return FabricReflection.createText(message);
     }
 
     private static Class<?> resolveTextComponentClass() {
-        try {
-            return Class.forName("net.minecraft.network.chat.Component");
-        } catch (ClassNotFoundException e) {
-            try {
-                return FabricReflection.forName("net.minecraft.network.chat.Component");
-            } catch (Throwable ex) {
-                return null;
-            }
-        }
+        return FabricReflection.resolveTextComponentClass();
     }
 }
