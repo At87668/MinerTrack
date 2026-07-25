@@ -51,7 +51,7 @@ public class FabricMiningListener {
                     return false;
                 if (!isServerPlayer(player))
                     return false;
-                handleBlockPlace(player, hitResult, world);
+                handleBlockPlace(player, hand, hitResult, world);
             } catch (Throwable t) {
                 /* silent */ }
             return false; // PASS
@@ -82,16 +82,48 @@ public class FabricMiningListener {
         miningCore.onBlockBreak(playerId, name, dimensionId, blockType, x, y, z);
     }
 
-    private void handleBlockPlace(Object player, Object hitResult, Object world) {
+    /**
+     * Handle block placement by reading the held item rather than the
+     * world state.  {@code UseBlockCallback} fires <em>before</em> the
+     * block is actually placed, so {@code world.getBlockState(pos)}
+     * would return the old block (AIR or whatever was there before).
+     *
+     * <p>Instead we inspect the player's held {@code ItemStack}:
+     * {@code getItemInHand(hand) → getItem() → instanceof BlockItem →
+     * getBlock() → Block.toString()}.
+     *
+     * <p>When the stack is empty (player placed their last block),
+     * {@code ItemStack.isEmpty()} guards against NPE.</p>
+     */
+    private void handleBlockPlace(Object player, Object hand, Object hitResult, Object world) {
         try {
-            Object pos = FabricReflection.callAny(hitResult, "getBlockPos", new Class<?>[0], new Object[0]);
+            // 1. Get the held ItemStack
+            Object stack = FabricReflection.callAny(player, "getItemInHand",
+                    new Class<?>[] { hand.getClass() }, new Object[] { hand });
+            if (stack == null)
+                return;
+            // 2. Guard: player placed their last block (stack is now AIR/empty)
+            if (isStackEmpty(stack))
+                return;
+            // 3. Get the Item, check if it's a BlockItem
+            Object item = FabricReflection.callAny(stack, "getItem",
+                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            if (item == null)
+                return;
+            Class<?> blockItemClass = FabricReflection.forName("net.minecraft.world.item.BlockItem");
+            if (blockItemClass == null || !blockItemClass.isInstance(item))
+                return;
+            // 4. Get the Block and its string id
+            Object block = FabricReflection.callAny(item, "getBlock",
+                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            if (block == null)
+                return;
+            String blockType = blockToString(block);
+            // 5. Get the placement position (adjacent to the clicked face)
+            Object pos = FabricReflection.callAny(hitResult, "getBlockPos",
+                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (pos == null)
                 return;
-            Object state = FabricReflection.call(world, "getBlockState", new Class<?>[] { pos.getClass() },
-                    new Object[] { pos });
-            if (state == null)
-                return;
-            String blockType = blockIdForState(state);
             String dimensionId = readDimensionId(world);
             var rareOres = miningCore.getState().getRareOres(dimensionId);
             if (rareOres.contains(blockType)) {
@@ -102,6 +134,29 @@ public class FabricMiningListener {
         } catch (Throwable t) {
             // Silent.
         }
+    }
+
+    /** Check whether an ItemStack is empty (no items or AIR). */
+    private static boolean isStackEmpty(Object stack) {
+        try {
+            Object result = FabricReflection.callAny(stack, "isEmpty",
+                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            return result instanceof Boolean && (Boolean) result;
+        } catch (Throwable t) {
+            return true; // defensive: treat as empty
+        }
+    }
+
+    /** Extract block id from {@code Block.toString()} → {@code "Block{minecraft:diamond_ore}"}. */
+    private static String blockToString(Object block) {
+        String s = block.toString();
+        int brace = s.indexOf('{');
+        int close = s.indexOf('}');
+        if (brace >= 0 && close > brace) {
+            return s.substring(brace + 1, close);
+        }
+        String id = FabricReflection.getBlockId(block);
+        return id != null && !id.isEmpty() ? id : BlockId.AIR;
     }
 
     private static UUID readUuid(Object player) {
