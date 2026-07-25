@@ -34,38 +34,9 @@ public class FabricCommandBridge implements CommandBridge {
 
     // ── Text creation ─────────────────────────────────────────────
 
-    /**
-     * Create a Minecraft Text/Component from a plain string.
-     * Uses Component.literal() (MC 26.1+/1.19.3+), Text.literal() (1.19.3+),
-     * or LiteralText constructor (1.18-1.19.2).
-     * Returns null if no approach works.
-     */
+    /** Delegates to {@link FabricReflection#createText} (handles intermediary name resolution). */
     private static Object createText(String message) {
-        // 1. Try Component.literal(String) — MC 26.1+ (Text → Component)
-        try {
-            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
-            Method literal = compCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
-        } catch (Throwable t) { /* fall through */ }
-
-        // 2. Try Component.literal(String) — also handles MC 1.19.3+ via tryMcMigration
-        try {
-            // Mojang: net.minecraft.network.chat.Component
-            Class<?> textCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
-            if (textCls != null) {
-                Method literal = textCls.getMethod("literal", String.class);
-                return literal.invoke(null, message);
-            }
-        } catch (Throwable t) { /* fall through */ }
-
-        // 3. Fallback: new TextComponent(String) — MC 1.18-1.19.2
-        try {
-            // Mojang: net.minecraft.network.chat.TextComponent → Component
-            Class<?> ltCls = FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
-            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
-        } catch (Throwable t) {
-            return null;
-        }
+        return FabricReflection.createText(message);
     }
 
     /**
@@ -301,43 +272,18 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
-            // Mojang: MinecraftServer.getPlayerList() → PlayerList
             Object server = FabricReflection.getServer();
             if (server == null) return;
             Object pm = FabricReflection.callMigrated(server,
                 FabricReflectionConstants.M_GET_PLAYER_LIST, "getPlayerManager",
                 FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
             if (pm == null) return;
-            // Mojang: PlayerList.getPlayer(UUID) → ServerPlayer
             Object player = FabricReflection.call(pm, FabricReflectionConstants.M_GET_PLAYER_UUID,
                 new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createText(message);
             if (text == null) return;
-            Class<?> textCls = resolveTextComponentClass();
-            if (textCls == null) return;
-
-            // 1. 1.21.1+: sendSystemMessage(Component)
-            try {
-                FabricReflection.callAny(player, "sendSystemMessage",
-                    new Class<?>[]{textCls}, new Object[]{text});
-                return;
-            } catch (Throwable t1) { /* fall through */ }
-
-            // 2. 1.18.2: sendMessage(Component, UUID)
-            try {
-                FabricReflection.callAny(player, "sendMessage",
-                    new Class<?>[]{textCls, UUID.class},
-                    new Object[]{text, playerId});
-                return;
-            } catch (Throwable t1) { /* fall through */ }
-
-            // 3. Legacy: sendMessage(Text, boolean)
-            try {
-                FabricReflection.callAny(player, "sendMessage",
-                    new Class<?>[]{textCls, boolean.class},
-                    new Object[]{text, false});
-            } catch (Throwable t2) { /* silent */ }
+            FabricReflection.sendMessageToPlayer(player, text);
         } catch (Throwable t) { /* silent */ }
     }
 
@@ -347,25 +293,7 @@ public class FabricCommandBridge implements CommandBridge {
             if (server == null) return;
             Object text = createText(message);
             if (text == null) return;
-            Class<?> textCls = resolveTextComponentClass();
-            if (textCls == null) return;
-            // 1. 1.21.1+: sendSystemMessage(Component)
-            try {
-                FabricReflection.callAny(server, "sendSystemMessage",
-                    new Class<?>[]{textCls}, new Object[]{text});
-                return;
-            } catch (Throwable t1) { /* fall through */ }
-            // 2. 1.18.2: sendMessage(Component, UUID)
-            try {
-                FabricReflection.callAny(server, "sendMessage",
-                    new Class<?>[]{textCls, UUID.class},
-                    new Object[]{text, java.util.UUID.randomUUID()});
-                return;
-            } catch (Throwable t1) { /* fall through */ }
-            // 3. Legacy: sendMessage(Text, boolean)
-            FabricReflection.callAny(server, "sendMessage",
-                new Class<?>[]{textCls, boolean.class},
-                new Object[]{text, false});
+            FabricReflection.sendMessageToConsole(server, text);
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
 
@@ -614,19 +542,8 @@ public class FabricCommandBridge implements CommandBridge {
 
     // ── Text/Component class resolution ─────────────────────────────
 
-    /**
-     * Resolve the Minecraft text component class at runtime.
-     * Returns {@code Component} (MC 26.1+) or {@code Text} (MC 1.18-1.21).
-     */
+    /** Delegates to {@link FabricReflection#resolveTextComponentClass()} (handles intermediary). */
     private static Class<?> resolveTextComponentClass() {
-        try {
-            return Class.forName("net.minecraft.network.chat.Component");
-        } catch (ClassNotFoundException e) {
-            try {
-                return FabricReflection.forName(FabricReflectionConstants.CLS_COMPONENT);
-            } catch (Throwable ex) {
-                return null;
-            }
-        }
+        return FabricReflection.resolveTextComponentClass();
     }
 }
