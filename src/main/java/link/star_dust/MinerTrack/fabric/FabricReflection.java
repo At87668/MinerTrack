@@ -501,26 +501,42 @@ final class FabricReflection {
     }
 
     /**
-     * Scan all declared methods on {@code cls} for one whose parameter
-     * types match {@code paramTypes}.  Returns the first match.
+     * Scan all declared AND inherited public methods on {@code cls} for
+     * one whose parameter types match {@code paramTypes}.  Returns the
+     * first match.
+     *
+     * <p>{@link Class#getDeclaredMethods()} is tried first (most specific),
+     * then {@link Class#getMethods()} (includes inherited public methods
+     * from superclasses and interfaces).  The inherited scan is essential
+     * for methods like {@code sendSuccess(Supplier, boolean)} which may be
+     * declared on a parent class or command-source interface.
      */
     private static Method scanMethod(Class<?> cls, Class<?>[] paramTypes) {
+        // 1. Declared (most specific — avoids duplicates from getMethods)
         for (Method candidate : cls.getDeclaredMethods()) {
-            Class<?>[] pts = candidate.getParameterTypes();
-            if (pts.length != paramTypes.length) continue;
-            boolean match = true;
-            for (int i = 0; i < pts.length; i++) {
-                if (!pts[i].isAssignableFrom(paramTypes[i])) {
-                    match = false;
-                    break;
-                }
+            if (paramsMatch(candidate, paramTypes)) {
+                candidate.setAccessible(true);
+                return candidate;
             }
-            if (match) {
+        }
+        // 2. Inherited public methods (includes superclass + interfaces)
+        for (Method candidate : cls.getMethods()) {
+            if (candidate.getDeclaringClass() == Object.class) continue;
+            if (paramsMatch(candidate, paramTypes)) {
                 candidate.setAccessible(true);
                 return candidate;
             }
         }
         return null;
+    }
+
+    private static boolean paramsMatch(Method m, Class<?>[] paramTypes) {
+        Class<?>[] pts = m.getParameterTypes();
+        if (pts.length != paramTypes.length) return false;
+        for (int i = 0; i < pts.length; i++) {
+            if (!pts[i].isAssignableFrom(paramTypes[i])) return false;
+        }
+        return true;
     }
 
     /** Find a field by bare mojang name, redirected to runtime name. */
