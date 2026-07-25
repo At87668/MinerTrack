@@ -121,31 +121,14 @@ public class FabricCommandExecutor {
         return FabricReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
     }
 
-    /** Create a Text/Component from a plain string (MC version-aware). */
+    /** Create a Text/Component from a plain string — delegates to FabricReflection. */
     private static Object literalText(String message) {
-        // 1. MC 26.1+: Component.literal(String)
-        try {
-            Class<?> compCls = Class.forName("net.minecraft.network.chat.Component");
-            java.lang.reflect.Method literal = compCls.getMethod("literal", String.class);
-            return literal.invoke(null, message);
-        } catch (Throwable t) { /* fall through */ }
+        return FabricReflection.createText(message);
+    }
 
-        // 2. MC 1.19.3+: Component.literal(String)
-        Class<?> textCls = FabricReflection.forName("net.minecraft.network.chat.Component");
-        if (textCls != null) {
-            Object text = FabricReflection.callStatic("net.minecraft.network.chat.Component",
-                "literal", new Class<?>[]{String.class}, new Object[]{message});
-            if (text != null) return text;
-        }
-
-        // 3. MC 1.18-1.19.2: new LiteralText(String) → TextComponent
-        Class<?> ltCls = FabricReflection.forName("net.minecraft.network.chat.TextComponent");
-        if (ltCls == null) return null;
-        try {
-            return ltCls.getDeclaredConstructor(String.class).newInstance(message);
-        } catch (Throwable t) {
-            return null;
-        }
+    /** Resolve Text Component class — delegates to FabricReflection. */
+    private static Class<?> resolveTextComponentClass() {
+        return FabricReflection.resolveTextComponentClass();
     }
 
     // ─── PlayerLookup ────────────────────────────────────────────────────
@@ -448,24 +431,6 @@ public class FabricCommandExecutor {
         @Override
         public String getLogFormat() {
             return vlBridge.getLogFormat();
-        }
-    }
-
-    // ── Text/Component class resolution ─────────────────────────────
-
-    /**
-     * Resolve the Minecraft text component class at runtime.
-     * Returns {@code Component} (MC 26.1+) or {@code Text} (MC 1.18-1.21).
-     */
-    private static Class<?> resolveTextComponentClass() {
-        try {
-            return Class.forName("net.minecraft.network.chat.Component");
-        } catch (ClassNotFoundException e) {
-            try {
-                return FabricReflection.forName("net.minecraft.network.chat.Component");
-            } catch (Throwable ex) {
-                return null;
-            }
         }
     }
 }
