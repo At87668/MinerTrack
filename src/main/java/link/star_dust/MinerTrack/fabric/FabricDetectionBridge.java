@@ -340,7 +340,7 @@ public class FabricDetectionBridge implements DetectionBridge {
             Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 new Class<?>[0], new Object[0]);
             if (pm == null) return false;
-            Object player = FabricReflection.call(pm, "getPlayer",
+            Object player = FabricReflection.call(pm, "getPlayerByUUID",
                 new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return false;
             // 1) Try fabric-permissions-api (LuckPerms integration)
