@@ -190,7 +190,7 @@ public class FabricViolationManager implements ViolationManagerBridge {
             Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 new Class<?>[0], new Object[0]);
             if (pm == null) return;
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            Object player = FabricReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createTextComponent(message);
             if (text == null) return;
@@ -239,7 +239,7 @@ public class FabricViolationManager implements ViolationManagerBridge {
             Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 new Class<?>[0], new Object[0]);
             if (pm == null) return playerId.toString();
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            Object player = FabricReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return playerId.toString();
             // MC 26.1+: Entity.getName() returns Component; use readString to unwrap.
             Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
