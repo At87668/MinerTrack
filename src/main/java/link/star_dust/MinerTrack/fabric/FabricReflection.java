@@ -62,6 +62,124 @@ final class FabricReflection {
     }
 
     // ==================================================================
+    // Text/Component creation (unified — used by all callers)
+    // ==================================================================
+
+    /** Cached result of {@link #resolveTextComponentClass()}. */
+    private static volatile Class<?> cachedTextClass;
+    private static volatile boolean cachedTextClassResolved;
+
+    /**
+     * Resolve the Minecraft text component class at runtime.
+     * Returns {@code Component} (MC 26.1+) or {@code class_2561} (1.18-1.21 intermediary).
+     * Uses {@link #forName} so intermediary fallback works on production servers.
+     */
+    static Class<?> resolveTextComponentClass() {
+        if (cachedTextClassResolved) return cachedTextClass;
+        cachedTextClass = forName(FabricReflectionConstants.CLS_COMPONENT);
+        cachedTextClassResolved = true;
+        return cachedTextClass;
+    }
+
+    /**
+     * Create a Minecraft text component from a plain string.
+     *
+     * <p>Priority (all go through {@link #forName}/{@link #callStatic} so
+     * intermediary name resolution works on 1.18–1.21.x production servers):
+     * <ol>
+     *   <li>{@code Component.literal(String)} — 1.19.3+ / MC 26.1+</li>
+     *   <li>{@code new TextComponent(String)} — 1.18–1.19.2</li>
+     * </ol>
+     *
+     * @return the text component object, or {@code null} if all approaches fail
+     */
+    static Object createText(String message) {
+        if (message == null) return null;
+        // 1) Component.literal(String) — 1.19.3+ — via callStatic (handles intermediary)
+        Object r = callStatic(FabricReflectionConstants.CLS_COMPONENT,
+            FabricReflectionConstants.M_COMPONENT_LITERAL,
+            new Class<?>[]{String.class}, new Object[]{message});
+        if (r != null) return r;
+
+        // 2) new TextComponent(String) — 1.18–1.19.2
+        //    Intermediary: net/minecraft/class_2585
+        Class<?> tcCls = forName("net.minecraft.network.chat.TextComponent");
+        if (tcCls != null) {
+            try {
+                Constructor<?> ctor = tcCls.getDeclaredConstructor(String.class);
+                ctor.setAccessible(true);
+                return ctor.newInstance(message);
+            } catch (Throwable t) { /* fall through */ }
+        }
+        return null;
+    }
+
+    /**
+     * Send a text component to a server player, trying every known API
+     * across MC versions (1.18.2 through 1.26+).
+     *
+     * <p>Priority:
+     * <ol>
+     *   <li>{@code sendSystemMessage(Component)} — 1.19.3+</li>
+     *   <li>{@code displayClientMessage(Component, boolean)} — 1.18.2 action bar</li>
+     *   <li>{@code sendMessage(Component, UUID)} — 1.18.2 chat</li>
+     *   <li>{@code sendMessage(Component)} — 1.18-1.19.2 fallback</li>
+     * </ol>
+     *
+     * @param player the ServerPlayer object
+     * @param text   the Component/Text object (from {@link #createText})
+     */
+    static void sendMessageToPlayer(Object player, Object text) {
+        if (player == null || text == null) return;
+        Class<?> textCls = resolveTextComponentClass();
+        if (textCls == null) return;
+
+        // 1) sendSystemMessage(Component) — 1.19.3+
+        if (trySend(player, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
+
+        // 2) displayClientMessage(Component, boolean) — 1.18.2 action bar / chat
+        if (trySend(player, "displayClientMessage", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false})) return;
+
+        // 3) sendMessage(Component, UUID) — 1.18.2 chat
+        if (trySend(player, "sendMessage", new Class<?>[]{textCls, java.util.UUID.class}, new Object[]{text, java.util.UUID.randomUUID()})) return;
+
+        // 4) sendMessage(Component) — 1.18-1.19.2 plain
+        trySend(player, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
+    }
+
+    private static boolean trySend(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
+        try {
+            callAny(target, methodName, paramTypes, args);
+            return true;
+        } catch (Throwable t) { return false; }
+    }
+
+    /**
+     * Send a text component to the server console / server log.
+     *
+     * <p>Priority:
+     * <ol>
+     *   <li>{@code sendSystemMessage(Component)} — 1.19.3+</li>
+     *   <li>{@code sendMessage(Component, UUID)} — 1.18.2</li>
+     *   <li>{@code sendMessage(Component)} — legacy</li>
+     * </ol>
+     */
+    static void sendMessageToConsole(Object server, Object text) {
+        if (server == null || text == null) return;
+        Class<?> textCls = resolveTextComponentClass();
+        if (textCls == null) return;
+
+        // 1) sendSystemMessage(Component) — 1.19.3+
+        if (trySend(server, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
+
+        // 2) sendMessage(Component, UUID) — 1.18.2
+        if (trySend(server, "sendMessage", new Class<?>[]{textCls, java.util.UUID.class}, new Object[]{text, java.util.UUID.randomUUID()})) return;
+
+        // 3) sendMessage(Component) — legacy
+        trySend(server, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
+    }
+
+    // ==================================================================
     // Method invocation
     // ==================================================================
 
