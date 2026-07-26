@@ -65,7 +65,7 @@ public class FabricUpdateManager {
                 return "%year%-%month%-%day% %hour%:%minute%:%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%";
             }
             @Override public String applyColors(String message) { return a.applyColors(message); }
-            @Override public String getPrefix() { return "[MinerTrack] "; }
+            @Override public String getPrefix() { return a.applyColors("&8[&9&MinerTrack&8]&r "); }
             @Override public List<String> getHelpMessages() { return java.util.Collections.emptyList(); }
             @Override public String getMessage(String path) { return null; }
             @Override public String getColoredMessage(String path) { return ""; }
