@@ -237,8 +237,10 @@ final class FabricReflectionConstants {
         putM("getCommandSource",    M_CREATE_COMMAND_SOURCE_STACK);
         // ServerPlayer / Entity
         putM("getName",             M_GET_NAME);
-        // NOTE: getUUID/getUuid NOT redirected — method_5845 returns String not UUID.
-        // callUuid() tries both names; scanMethod fallback handles intermediary matching.
+        // redirect getUUID/getUuid to avoid scanMethod matching getId() first.
+        // M_GET_UUID resolves to method_5667 (returns UUID) not method_5845 (String).
+        putM("getUUID",             M_GET_UUID);
+        putM("getUuid",             M_GET_UUID);
         putM("getX",                M_GET_X);
         putM("getY",                M_GET_Y);
         putM("getZ",                M_GET_Z);
