@@ -315,14 +315,14 @@ public class FabricCommandBridge implements CommandBridge {
             if (isPlayer()) {
                 UUID id = null;
                 try {
-                    // 1.21.1+: getPlayer()
-                    Object player = FabricReflection.callAny(source, "getPlayer",
+                    // getEntity() works on all MC versions (1.18.2 through 26.1+).
+                    // Do NOT try getPlayer() first — on 1.18.2 CommandSourceStack
+                    // does not have getPlayer(), so findMethodImpl falls through to
+                    // scanMethod which matches the first 0-param method it finds
+                    // (e.g. getDisplayName()), returning a wrong object.
+                    // isPlayer() above already verified the entity is a ServerPlayer.
+                    Object player = FabricReflection.callAny(source, "getEntity",
                         new Class<?>[0], new Object[0]);
-                    // 1.18.2: getEntity() returns Entity
-                    if (player == null) {
-                        player = FabricReflection.callAny(source, "getEntity",
-                            new Class<?>[0], new Object[0]);
-                    }
                     if (player != null) {
                         Object uuid = FabricReflection.callUuid(player);
                         if (uuid instanceof UUID) id = (UUID) uuid;
