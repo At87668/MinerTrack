@@ -137,19 +137,23 @@ final class FabricReflection {
         // 1) sendSystemMessage(Component) — 1.19.3+
         if (trySend(player, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
 
-        // 2) displayClientMessage(Component, boolean) — 1.18.2 action bar / chat
-        if (trySend(player, "displayClientMessage", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false})) return;
-
-        // 3) sendMessage(Component, UUID) — 1.18.2 chat
+        // 2) sendMessage(Component, UUID) — 1.18.2 chat (prefer over
+        //    displayClientMessage which sends to action bar on 1.18.2)
         if (trySend(player, "sendMessage", new Class<?>[]{textCls, java.util.UUID.class}, new Object[]{text, java.util.UUID.randomUUID()})) return;
+
+        // 3) displayClientMessage(Component, boolean) — 1.18.2 action bar fallback
+        if (trySend(player, "displayClientMessage", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false})) return;
 
         // 4) sendMessage(Component) — 1.18-1.19.2 plain
         trySend(player, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
     }
 
     private static boolean trySend(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
+        if (target == null) return false;
+        Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
+        if (m == null) return false;
         try {
-            callAny(target, methodName, paramTypes, args);
+            m.invoke(target, args);
             return true;
         } catch (Throwable t) { return false; }
     }
@@ -169,11 +173,11 @@ final class FabricReflection {
         Class<?> textCls = resolveTextComponentClass();
         if (textCls == null) return;
 
-        // 1) sendSystemMessage(Component) — 1.19.3+
-        if (trySend(server, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
-
-        // 2) sendMessage(Component, UUID) — 1.18.2
+        // 1) sendMessage(Component, UUID) — 1.18.2 (MinecraftServer.sendMessage)
         if (trySend(server, "sendMessage", new Class<?>[]{textCls, java.util.UUID.class}, new Object[]{text, java.util.UUID.randomUUID()})) return;
+
+        // 2) sendSystemMessage(Component) — 1.19.3+
+        if (trySend(server, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
 
         // 3) sendMessage(Component) — legacy
         trySend(server, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
