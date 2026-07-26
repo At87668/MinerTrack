@@ -433,24 +433,14 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) Fall back to vanilla operator check
-            // MC 26.1+: isOp(NameAndId)
-            try {
-                Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
-                if (nameAndId != null) {
-                    Object isOp = FabricReflection.call(pm, "isOp",
-                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
-                    if (isOp instanceof Boolean) return (Boolean) isOp;
-                }
-            } catch (Throwable t1) { /* fall through */ }
-            // 1.18-1.21: isOp(GameProfile)
+            // 2) Fall back to vanilla operator check via getProfilePermissions
             try {
                 Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
                     new Class<?>[0], new Object[0]);
                 if (gameProfile != null) {
-                    Object isOp = FabricReflection.call(pm, "isOp",
+                    Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
                         new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                    if (isOp instanceof Boolean) return (Boolean) isOp;
+                    if (permLevel instanceof Number) return ((Number) permLevel).intValue() >= 2;
                 }
             } catch (Throwable t2) { /* fall through */ }
             return false;
@@ -532,33 +522,24 @@ public class FabricCommandBridge implements CommandBridge {
                 new Class<?>[0], new Object[0]);
             if (player == null) return false;
 
+            // Use MinecraftServer.getProfilePermissions(GameProfile) instead
+            // of PlayerList.isOp(GameProfile). PlayerList has three methods
+            // with the (GameProfile)Z signature (isWhiteListed, isOp,
+            // canBypassPlayerLimit) in that declaration order, and scanMethod
+            // matches isWhiteListed first — returning false for any player
+            // not on the whitelist. getProfilePermissions returns int and has
+            // a unique signature, avoiding any scanMethod ambiguity.
+            Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                new Class<?>[0], new Object[0]);
+            if (gameProfile == null) return false;
             Object server = FabricReflection.getServer();
             if (server == null) return false;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                new Class<?>[0], new Object[0]);
-            if (pm == null) return false;
-
-            // MC 26.1+: isOp(NameAndId) — player.nameAndId() returns NameAndId record
             try {
-                Object nameAndId = FabricReflection.callAny(player, "nameAndId",
-                    new Class<?>[0], new Object[0]);
-                if (nameAndId != null) {
-                    Object isOp = FabricReflection.call(pm, "isOp",
-                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
-                    if (isOp instanceof Boolean && (Boolean) isOp) return true;
-                }
+                Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
+                    new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                if (permLevel instanceof Number) return ((Number) permLevel).intValue() >= 2;
             } catch (Throwable t) { /* fall through */ }
-
-            // 1.18-1.21: isOp(GameProfile) — player.getGameProfile()
-            try {
-                Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                    new Class<?>[0], new Object[0]);
-                if (gameProfile != null) {
-                    Object isOp = FabricReflection.call(pm, "isOp",
-                        new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                    if (isOp instanceof Boolean) return (Boolean) isOp;
-                }
-            } catch (Throwable t) { /* fall through */ }
+            return false;
         } catch (Throwable t) { /* fall through */ }
         return false;
     }
