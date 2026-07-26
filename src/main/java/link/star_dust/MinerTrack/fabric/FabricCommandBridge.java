@@ -482,10 +482,12 @@ public class FabricCommandBridge implements CommandBridge {
         if (!isSourcePlayer(source)) return true;
 
         // ── Layer 2: hasPermission(int) / hasPermissionLevel(int) ──
+        // Use FabricReflection.callAny() (NOT source.getClass().getMethod())
+        // so intermediary names (e.g. method_9259 on 1.18.2) are resolved.
         for (String name : new String[]{"hasPermission", "hasPermissionLevel"}) {
             try {
-                Method m = source.getClass().getMethod(name, int.class);
-                Object r = m.invoke(source, minLevel);
+                Object r = FabricReflection.callAny(source, name,
+                    new Class<?>[]{int.class}, new Object[]{minLevel});
                 if (r instanceof Boolean && (Boolean) r) return true;
             } catch (Throwable t) { /* try next name */ }
         }
@@ -502,24 +504,32 @@ public class FabricCommandBridge implements CommandBridge {
             Object r = m.invoke(source);
             if (r instanceof Boolean && (Boolean) r) return true;
         } catch (Throwable t) { /* fall through */ }
-        // 1.18-1.21: isExecutedByPlayer()
+        // 1.18-1.21: use getEntity() + instanceof ServerPlayer.
+        // isExecutedByPlayer() is not available on CommandSourceStack
+        // in MC 1.18.2, and using getMethod() without intermediary
+        // resolution would fail on production servers anyway.
         try {
-            Method m = source.getClass().getMethod("isExecutedByPlayer");
-            Object r = m.invoke(source);
-            return r instanceof Boolean && (Boolean) r;
+            Object entity = FabricReflection.callAny(source, "getEntity",
+                new Class<?>[0], new Object[0]);
+            if (entity != null) {
+                Class<?> spCls = FabricReflection.forName(
+                    FabricReflectionConstants.CLS_SERVER_PLAYER);
+                if (spCls != null && spCls.isInstance(entity)) return true;
+            }
         } catch (Throwable t) { return false; }
+        return false;
     }
 
     /** Check if the player behind this command source is an operator (>= level 2). */
     private static boolean isSourceOperator(Object source) {
         try {
-            // Resolve the underlying player from the source.
-            Object player = FabricReflection.callAny(source, "getPlayer",
+            // Use getEntity() directly — on 1.18.2 CommandSourceStack
+            // does not have getPlayer(), so calling getPlayer() first
+            // would trigger scanMethod to match getDisplayName() (a
+            // Component), breaking the entire operator check.
+            // getEntity() works on all MC versions 1.18.2 through 26.1+.
+            Object player = FabricReflection.callAny(source, "getEntity",
                 new Class<?>[0], new Object[0]);
-            if (player == null) {
-                player = FabricReflection.callAny(source, "getEntity",
-                    new Class<?>[0], new Object[0]);
-            }
             if (player == null) return false;
 
             Object server = FabricReflection.getServer();
