@@ -95,13 +95,7 @@ final class FabricReflection {
      */
     static Object createText(String message) {
         if (message == null) return null;
-        // 1) Component.literal(String) — 1.19.3+ — via callStatic (handles intermediary)
-        Object r = callStatic(FabricReflectionConstants.CLS_COMPONENT,
-            FabricReflectionConstants.M_COMPONENT_LITERAL,
-            new Class<?>[]{String.class}, new Object[]{message});
-        if (r != null) return r;
-
-        // 2) new TextComponent(String) — 1.18–1.19.2
+        // 1) new TextComponent(String) — 1.18–1.19.2 (guaranteed to exist)
         //    Intermediary: net/minecraft/class_2585
         Class<?> tcCls = forName("net.minecraft.network.chat.TextComponent");
         if (tcCls != null) {
@@ -111,7 +105,11 @@ final class FabricReflection {
                 return ctor.newInstance(message);
             } catch (Throwable t) { /* fall through */ }
         }
-        return null;
+        // 2) Component.literal(String) — 1.19.3+ — via callStatic (handles intermediary)
+        Object r = callStatic(FabricReflectionConstants.CLS_COMPONENT,
+            FabricReflectionConstants.M_COMPONENT_LITERAL,
+            new Class<?>[]{String.class}, new Object[]{message});
+        return r;
     }
 
     /**
