@@ -32,10 +32,29 @@ public class FabricUpdateManager {
     }
 
     public void checkForUpdates(CommandBridge sender) {
-        UpdateManagerCore.CheckResult result = core.checkForUpdates();
-        String rendered = core.renderResult(stubLang(), result);
-        if (rendered == null || rendered.isEmpty()) return;
-        sender.sendMessage(rendered);
+        // Offload the HTTPS round-trip to a background thread.
+        // On Fabric, commands execute on the server's main tick
+        // thread (MinecraftServer extends BlockableEventLoop);
+        // a synchronous network I/O would freeze the entire
+        // server until the Modrinth API responds (or times out).
+        new Thread(() -> {
+            UpdateManagerCore.CheckResult result = core.checkForUpdates();
+            String rendered = core.renderResult(stubLang(), result);
+            if (rendered == null || rendered.isEmpty()) return;
+            // Route the message dispatch back to the server's main
+            // thread via MinecraftServer.execute(Runnable) so the
+            // CommandSourceStack.sendSuccess pipeline works safely.
+            Object server = FabricReflection.getServer();
+            if (server != null) {
+                try {
+                    FabricReflection.call(server, "execute",
+                        new Class<?>[]{Runnable.class},
+                        new Object[]{(Runnable) () -> sender.sendMessage(rendered)});
+                    return;
+                } catch (Throwable t) { /* fall through to direct send */ }
+            }
+            sender.sendMessage(rendered);
+        }, "MinerTrack-UpdateCheck").start();
     }
 
     private LanguageBridge stubLang() {
