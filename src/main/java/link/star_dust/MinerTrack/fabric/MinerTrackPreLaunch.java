@@ -25,6 +25,6 @@ public class MinerTrackPreLaunch implements PreLaunchEntrypoint {
                 .orElse("unknown");
 
         LOGGER.info("MinerTrack pre-launch initialized for Minecraft " + mcVersion
-                + " — class redirection is handled via hardcoded intermediary mappings.");
+                + ".");
     }
 }
