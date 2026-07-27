@@ -146,6 +146,7 @@ public class ViolationEngine {
                 .replace("%pos_z%", location != null ? String.valueOf(location.z) : "0");
 
             for (UUID uuid : bridge.getVerbosePlayers()) {
+                if (!bridge.hasPermission(uuid, "minertrack.verbose")) continue;
                 bridge.sendMessageToPlayer(uuid, formattedMessage);
             }
 
