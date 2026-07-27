@@ -197,7 +197,17 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (player == null) return;
             Object text = createTextComponent(message);
             if (text == null) return;
-            FabricReflection.sendMessageToPlayer(player, text);
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            // MC 26.1+: sendSystemMessage(Component); 1.18-1.21: sendMessage(Text, boolean)
+            try {
+                FabricReflection.call(player, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                FabricReflection.call(player, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            }
         } catch (Throwable t) {
             // Player likely offline; silently drop.
         }
