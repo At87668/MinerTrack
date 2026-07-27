@@ -186,6 +186,26 @@ public class FabricViolationManager implements ViolationManagerBridge {
     }
 
     @Override
+    public boolean hasPermission(UUID playerId, String node) {
+        try {
+            Object server = FabricReflection.getServer();
+            if (server == null) return false;
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
+            if (pm == null) return false;
+            Object player = FabricReflection.call(pm, "getPlayerByUUID",
+                new Class<?>[]{UUID.class}, new Object[]{playerId});
+            if (player == null) return false;
+            // 1) Try LP via fabric-permissions-api
+            if (FabricCommandBridge.checkLPPermission(player, node, 2)) return true;
+            // 2) Fall back to vanilla op-level check
+            return FabricCommandBridge.checkVanillaOpLevel(player, 2);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @Override
     public void sendMessageToPlayer(UUID playerId, String message) {
         try {
             Object server = FabricReflection.getServer();
@@ -200,15 +220,16 @@ public class FabricViolationManager implements ViolationManagerBridge {
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
             // Multi-version fallback via signature-only scanning.
-            // See FabricCommandBridge.sendMessageToPlayer for rationale.
+            // Try (Component, UUID) first — 1.18.2 chat — before
+            // single-param which matches the wrong method.
             try {
                 FabricReflection.invokeBySigOrThrow(player,
-                    new Class<?>[]{textCls}, new Object[]{text});
+                    new Class<?>[]{textCls, java.util.UUID.class},
+                    new Object[]{text, java.util.UUID.randomUUID()});
             } catch (Throwable t1) {
                 try {
                     FabricReflection.invokeBySigOrThrow(player,
-                        new Class<?>[]{textCls, java.util.UUID.class},
-                        new Object[]{text, java.util.UUID.randomUUID()});
+                        new Class<?>[]{textCls}, new Object[]{text});
                 } catch (Throwable t2) {
                     try {
                         FabricReflection.invokeBySigOrThrow(player,
