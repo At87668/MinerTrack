@@ -48,7 +48,6 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         CoreLogger.init(debugConfig, java.util.logging.Logger.getLogger("MinerTrack"));
         if (adapter.isDebugEnabled()) {
             adapter.info("[MinerTrack:DEBUG] Debug mode enabled.");
-            FabricReflection.setDebugReflection(true);
         }
 
         miningCore = new MiningCore(detectionBridge, violationManager);

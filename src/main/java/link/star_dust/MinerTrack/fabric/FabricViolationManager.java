@@ -227,8 +227,13 @@ public class FabricViolationManager implements ViolationManagerBridge {
 
     @Override
     public void appendCommandLog(String command) {
-        // No console log file on Fabric; the server log already
-        // records the dispatched command.
+        if (!isLogFileEnabled()) return;
+        try (FileWriter fw = new FileWriter(getLogFile(),
+                java.nio.charset.StandardCharsets.UTF_8, true)) {
+            fw.write("Executed Command: " + command + "\n");
+        } catch (IOException e) {
+            adapter.warning("Failed to write command log: " + e.getMessage());
+        }
     }
 
     @Override

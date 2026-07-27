@@ -294,9 +294,22 @@ public class FabricCommandBridge implements CommandBridge {
             Object player = FabricReflection.call(pm, FabricReflectionConstants.M_GET_PLAYER_UUID,
                 new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
+            // Direct: MC 26.1+ Player only has sendSystemMessage(Component);
+            // sendSuccess/sendFailure/sendMessage are CommandSourceStack-only.
             Object text = createText(message);
             if (text == null) return;
-            FabricReflection.sendMessageToPlayer(player, text);
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            try {
+                FabricReflection.callAny(player, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                try {
+                    FabricReflection.callAny(player, "sendMessage",
+                        new Class<?>[]{textCls, boolean.class},
+                        new Object[]{text, false});
+                } catch (Throwable t2) { /* silent */ }
+            }
         } catch (Throwable t) { /* silent */ }
     }
 
@@ -306,23 +319,28 @@ public class FabricCommandBridge implements CommandBridge {
             if (server == null) return;
             Object text = createText(message);
             if (text == null) return;
-            FabricReflection.sendMessageToConsole(server, text);
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text)
+            try {
+                FabricReflection.callAny(server, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                FabricReflection.callAny(server, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            }
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
 
     @Override public boolean toggleVerbose() {
         if (source != null) {
-            if (isPlayer()) {
+            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
+                new Class<?>[0], new Object[0]);
+            if (r instanceof Boolean && (Boolean) r) {
                 UUID id = null;
                 try {
-                    // getEntity() works on all MC versions (1.18.2 through 26.1+).
-                    // Do NOT try getPlayer() first — on 1.18.2 CommandSourceStack
-                    // does not have getPlayer(), so findMethodImpl falls through to
-                    // scanMethod which matches the first 0-param method it finds
-                    // (e.g. getDisplayName()), returning a wrong object.
-                    // isPlayer() above already verified the entity is a ServerPlayer.
-                    Object player = FabricReflection.callAny(source, "getEntity",
-                        new Class<?>[0], new Object[0]);
+                    Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
                     if (player != null) {
                         Object uuid = FabricReflection.callUuid(player);
                         if (uuid instanceof UUID) id = (UUID) uuid;
@@ -546,8 +564,15 @@ public class FabricCommandBridge implements CommandBridge {
 
     // ── Text/Component class resolution ─────────────────────────────
 
-    /** Delegates to {@link FabricReflection#resolveTextComponentClass()} (handles intermediary). */
+    /**
+     * Resolve the Minecraft text component class at runtime.
+     * Returns {@code Component} (MC 26.1+) or {@code Text} (MC 1.18-1.21).
+     */
     private static Class<?> resolveTextComponentClass() {
-        return FabricReflection.resolveTextComponentClass();
+        try {
+            return Class.forName("net.minecraft.network.chat.Component");
+        } catch (ClassNotFoundException e) {
+            return FabricReflection.resolveTextComponentClass();
+        }
     }
 }

@@ -32,29 +32,10 @@ public class FabricUpdateManager {
     }
 
     public void checkForUpdates(CommandBridge sender) {
-        // Offload the HTTPS round-trip to a background thread.
-        // On Fabric, commands execute on the server's main tick
-        // thread (MinecraftServer extends BlockableEventLoop);
-        // a synchronous network I/O would freeze the entire
-        // server until the Modrinth API responds (or times out).
-        new Thread(() -> {
-            UpdateManagerCore.CheckResult result = core.checkForUpdates();
-            String rendered = core.renderResult(stubLang(), result);
-            if (rendered == null || rendered.isEmpty()) return;
-            // Route the message dispatch back to the server's main
-            // thread via MinecraftServer.execute(Runnable) so the
-            // CommandSourceStack.sendSuccess pipeline works safely.
-            Object server = FabricReflection.getServer();
-            if (server != null) {
-                try {
-                    FabricReflection.call(server, "execute",
-                        new Class<?>[]{Runnable.class},
-                        new Object[]{(Runnable) () -> sender.sendMessage(rendered)});
-                    return;
-                } catch (Throwable t) { /* fall through to direct send */ }
-            }
-            sender.sendMessage(rendered);
-        }, "MinerTrack-UpdateCheck").start();
+        UpdateManagerCore.CheckResult result = core.checkForUpdates();
+        String rendered = core.renderResult(stubLang(), result);
+        if (rendered == null || rendered.isEmpty()) return;
+        sender.sendMessage(rendered);
     }
 
     private LanguageBridge stubLang() {
@@ -65,7 +46,7 @@ public class FabricUpdateManager {
                 return "%year%-%month%-%day% %hour%:%minute%:%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%";
             }
             @Override public String applyColors(String message) { return a.applyColors(message); }
-            @Override public String getPrefix() { return a.applyColors("&8[&9&MinerTrack&8]&r "); }
+            @Override public String getPrefix() { return "[MinerTrack] "; }
             @Override public List<String> getHelpMessages() { return java.util.Collections.emptyList(); }
             @Override public String getMessage(String path) { return null; }
             @Override public String getColoredMessage(String path) { return ""; }
