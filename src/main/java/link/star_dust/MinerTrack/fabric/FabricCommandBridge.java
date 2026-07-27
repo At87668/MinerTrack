@@ -296,16 +296,25 @@ public class FabricCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
-            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text, boolean)
+            // MC 26.1+: sendSystemMessage(Component); 1.18-1.21: sendMessage(Text, UUID)
+            // tryCallOrThrow() throws when method is not found, enabling
+            // the try/catch fallback chain. callAny() returns null on miss
+            // which would silently skip the fallback on 1.18.2.
             try {
-                FabricReflection.callAny(player, "sendSystemMessage",
+                FabricReflection.tryCallOrThrow(player, "sendSystemMessage",
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t1) {
                 try {
-                    FabricReflection.callAny(player, "sendMessage",
-                        new Class<?>[]{textCls, boolean.class},
-                        new Object[]{text, false});
-                } catch (Throwable t2) { /* silent */ }
+                    FabricReflection.tryCallOrThrow(player, "sendMessage",
+                        new Class<?>[]{textCls, java.util.UUID.class},
+                        new Object[]{text, java.util.UUID.randomUUID()});
+                } catch (Throwable t2) {
+                    try {
+                        FabricReflection.tryCallOrThrow(player, "displayClientMessage",
+                            new Class<?>[]{textCls, boolean.class},
+                            new Object[]{text, false});
+                    } catch (Throwable t3) { /* silent */ }
+                }
             }
         } catch (Throwable t) { /* silent */ }
     }
@@ -318,14 +327,16 @@ public class FabricCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
-            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text, boolean)
+            // MC 26.1+: sendSystemMessage(Component); 1.18-1.21: sendMessage(Text, UUID)
             try {
-                FabricReflection.callAny(server, "sendSystemMessage",
+                FabricReflection.tryCallOrThrow(server, "sendSystemMessage",
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t1) {
-                FabricReflection.callAny(server, "sendMessage",
-                    new Class<?>[]{textCls, boolean.class},
-                    new Object[]{text, false});
+                try {
+                    FabricReflection.tryCallOrThrow(server, "sendMessage",
+                        new Class<?>[]{textCls, java.util.UUID.class},
+                        new Object[]{text, java.util.UUID.randomUUID()});
+                } catch (Throwable t2) { /* silent */ }
             }
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
@@ -337,7 +348,13 @@ public class FabricCommandBridge implements CommandBridge {
             if (r instanceof Boolean && (Boolean) r) {
                 UUID id = null;
                 try {
+                    // getPlayer() exists on MC 26.1+; getEntity() works on all
+                    // versions (1.18.2 through 26.1+).  Try getPlayer first
+                    // (direct type, no ambiguity), fall back to getEntity.
                     Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
+                    if (player == null) {
+                        player = FabricReflection.callAny(source, "getEntity", new Class<?>[0], new Object[0]);
+                    }
                     if (player != null) {
                         Object uuid = FabricReflection.callUuid(player);
                         if (uuid instanceof UUID) id = (UUID) uuid;
