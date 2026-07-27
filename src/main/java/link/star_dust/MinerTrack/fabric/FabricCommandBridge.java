@@ -538,8 +538,15 @@ public class FabricCommandBridge implements CommandBridge {
     static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
 
+        // Determine if source is a CommandSourceStack or a direct player entity.
+        // method-probing (callAny) is unreliable because scanMethod matches
+        // wrong methods on mismatched classes.  Class-name heuristics are the
+        // only safe discriminator when we can't import Minecraft types.
+        String clsName = source.getClass().getName();
+        boolean isCSS = clsName.contains("CommandSourceStack") || clsName.contains("class_2168");
+
         // ── Layer 1: non-player → always allowed ──────────────────
-        if (!isSourcePlayer(source)) return true;
+        if (isCSS && !isSourcePlayer(source)) return true;
 
         // ── Layer 2: hasPermission(int) / hasPermissionLevel(int) ──
         // Use FabricReflection.callAny() so intermediary names are resolved.
@@ -560,35 +567,26 @@ public class FabricCommandBridge implements CommandBridge {
             FabricReflection.DEBUG_REFLECTION = oldDebug;
         }
 
-        // ── Layer 3: PlayerList.isOp() (works on all versions) ─────
+        // ── Layer 3: operator check ─────────────────────────────────
         return isSourceOperator(source);
     }
 
     /** Check if the command source is a player (not console / command block). */
     private static boolean isSourcePlayer(Object source) {
-        // Layer 0: source is already a ServerPlayer entity — check directly.
-        // This happens when checkVanillaOpLevel is called from
-        // FabricDetectionBridge.hasPermission / hasPermissionForPlayer
-        // which pass the resolved ServerPlayer object directly.
-        Class<?> spCls = FabricReflection.forName(
-            FabricReflectionConstants.CLS_SERVER_PLAYER);
-        if (spCls != null && spCls.isInstance(source)) return true;
-
-        // MC 26.1+: isPlayer() on CommandSourceStack
+        // MC 26.1+: isPlayer()
         try {
             Method m = source.getClass().getMethod("isPlayer");
             Object r = m.invoke(source);
             if (r instanceof Boolean && (Boolean) r) return true;
         } catch (Throwable t) { /* fall through */ }
-        // 1.18-1.21: use getEntity() + instanceof ServerPlayer.
-        // isExecutedByPlayer() is not available on CommandSourceStack
-        // in MC 1.18.2, and using getMethod() without intermediary
-        // resolution would fail on production servers anyway.
+        // 1.18-1.21: use getEntity() + game-profile probe.
         try {
             Object entity = FabricReflection.callAny(source, "getEntity",
                 new Class<?>[0], new Object[0]);
             if (entity != null) {
-                if (spCls != null && spCls.isInstance(entity)) return true;
+                Object gp = FabricReflection.callAny(entity, "getGameProfile",
+                    new Class<?>[0], new Object[0]);
+                if (gp != null) return true;
             }
         } catch (Throwable t) { return false; }
         return false;
@@ -597,17 +595,13 @@ public class FabricCommandBridge implements CommandBridge {
     /** Check if the player behind this command source is an operator (>= level 2). */
     private static boolean isSourceOperator(Object source) {
         try {
-            // If source is already a ServerPlayer entity (e.g. when called
-            // from FabricDetectionBridge.hasPermission or
-            // hasPermissionForPlayer), use it directly.
+            // Resolve the player entity from source: it may be a
+            // CommandSourceStack or a direct ServerPlayer object.
             Object player;
-            Class<?> spCls = FabricReflection.forName(
-                FabricReflectionConstants.CLS_SERVER_PLAYER);
-            if (spCls != null && spCls.isInstance(source)) {
-                player = source;
+            String cls = source.getClass().getName();
+            if (cls.contains("Player") || cls.contains("class_3222")) {
+                player = source;  // already a player entity
             } else {
-                // source is a CommandSourceStack — extract the entity.
-                // getEntity() works on all MC versions 1.18.2 through 26.1+.
                 player = FabricReflection.callAny(source, "getEntity",
                     new Class<?>[0], new Object[0]);
             }
