@@ -199,18 +199,19 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
-            // MC 26.1+: sendSystemMessage(Component); 1.18-1.21: sendMessage(Text, UUID)
+            // Multi-version fallback via signature-only scanning.
+            // See FabricCommandBridge.sendMessageToPlayer for rationale.
             try {
-                FabricReflection.tryCallOrThrow(player, "sendSystemMessage",
+                FabricReflection.invokeBySigOrThrow(player,
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t1) {
                 try {
-                    FabricReflection.tryCallOrThrow(player, "sendMessage",
+                    FabricReflection.invokeBySigOrThrow(player,
                         new Class<?>[]{textCls, java.util.UUID.class},
                         new Object[]{text, java.util.UUID.randomUUID()});
                 } catch (Throwable t2) {
                     try {
-                        FabricReflection.tryCallOrThrow(player, "displayClientMessage",
+                        FabricReflection.invokeBySigOrThrow(player,
                             new Class<?>[]{textCls, boolean.class},
                             new Object[]{text, false});
                     } catch (Throwable t3) { /* silent */ }
