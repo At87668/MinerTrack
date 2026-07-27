@@ -76,7 +76,7 @@ public class FabricCommandExecutor {
             Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 new Class<?>[0], new Object[0]);
             if (pm == null) return playerByUuid(uuid);
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+            Object player = FabricReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{uuid});
             if (player != null) return player;
         } catch (Throwable t) {
             // Fall through to fallback
@@ -91,7 +91,7 @@ public class FabricCommandExecutor {
         Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
             new Class<?>[0], new Object[0]);
         if (pm == null) return null;
-        return FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{uuid});
+        return FabricReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{uuid});
     }
 
     /** Resolve ServerPlayerEntity from name using the command source's server. */

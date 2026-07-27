@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Block IDs are already minecraft:xxx canonical format.
  */
 public class FabricDetectionBridge implements DetectionBridge {
+    private static volatile FabricDetectionBridge active;
+    public static FabricDetectionBridge getActive() { return active; }
+
     private final FabricAdapter adapter;
     private final YamlLoader loader;
     private final Map<UUID, Map<CommonLocation, Long>> placedBlocks = new ConcurrentHashMap<>();
@@ -31,6 +34,7 @@ public class FabricDetectionBridge implements DetectionBridge {
     public FabricDetectionBridge(FabricAdapter adapter, YamlLoader loader) {
         this.adapter = adapter;
         this.loader = loader;
+        active = this;
         registerWorldEventHandlers();
     }
 

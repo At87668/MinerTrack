@@ -34,6 +34,9 @@ public class FabricViolationManager implements ViolationManagerBridge {
     private volatile LanguageBridge languageBridge;
     private final Set<UUID> verbosePlayers = Collections.synchronizedSet(new HashSet<>());
     private final Map<UUID, Long> playerDecayTasks = new ConcurrentHashMap<>();
+    // Recursion guard to prevent infinite loop between bridge and engine
+    // (mirrors BukkitViolationManager.resetViolationRecursionGuard)
+    private final Set<UUID> resetViolationRecursionGuard = Collections.synchronizedSet(new HashSet<>());
     private String currentLogFileName;
     private long globalDecayIntervalTicks = 20L * 60L * 20L; // 20 minutes; overridden on first tick
     private long lastGlobalDecayRunTick = -1;
@@ -217,12 +220,33 @@ public class FabricViolationManager implements ViolationManagerBridge {
 
     @Override
     public void resetViolation(UUID playerId) {
-        cancelVLDecayTask(playerId);
+        // Recursion guard: the FIRST call (from command) adds the player
+        // and proceeds to call the engine. The engine's callback back
+        // into this bridge finds the player already in the set and
+        // returns immediately, breaking the cycle.
+        if (!resetViolationRecursionGuard.add(playerId)) {
+            return;
+        }
+        try {
+            engine.resetViolation(playerId);
+        } finally {
+            resetViolationRecursionGuard.remove(playerId);
+        }
     }
 
     @Override
     public void clearPlayerState(UUID playerId) {
+        // Cancel any pending VL decay task
         cancelVLDecayTask(playerId);
+        // Remove from verbose players set
+        verbosePlayers.remove(playerId);
+        // Clear detection engine state (mining path, air-exposure list, etc.)
+        FabricDetectionBridge bridge = FabricDetectionBridge.getActive();
+        if (bridge != null) {
+            bridge.clearPlayerPath(playerId);
+        }
+        // Clear VL state via resetViolation (which uses recursion guard)
+        resetViolation(playerId);
     }
 
     @Override
