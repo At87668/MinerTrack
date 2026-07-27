@@ -546,7 +546,15 @@ public class FabricCommandBridge implements CommandBridge {
 
     /** Check if the command source is a player (not console / command block). */
     private static boolean isSourcePlayer(Object source) {
-        // MC 26.1+: isPlayer()
+        // Layer 0: source is already a ServerPlayer entity — check directly.
+        // This happens when checkVanillaOpLevel is called from
+        // FabricDetectionBridge.hasPermission / hasPermissionForPlayer
+        // which pass the resolved ServerPlayer object directly.
+        Class<?> spCls = FabricReflection.forName(
+            FabricReflectionConstants.CLS_SERVER_PLAYER);
+        if (spCls != null && spCls.isInstance(source)) return true;
+
+        // MC 26.1+: isPlayer() on CommandSourceStack
         try {
             Method m = source.getClass().getMethod("isPlayer");
             Object r = m.invoke(source);
@@ -560,8 +568,6 @@ public class FabricCommandBridge implements CommandBridge {
             Object entity = FabricReflection.callAny(source, "getEntity",
                 new Class<?>[0], new Object[0]);
             if (entity != null) {
-                Class<?> spCls = FabricReflection.forName(
-                    FabricReflectionConstants.CLS_SERVER_PLAYER);
                 if (spCls != null && spCls.isInstance(entity)) return true;
             }
         } catch (Throwable t) { return false; }
@@ -571,13 +577,20 @@ public class FabricCommandBridge implements CommandBridge {
     /** Check if the player behind this command source is an operator (>= level 2). */
     private static boolean isSourceOperator(Object source) {
         try {
-            // Use getEntity() directly — on 1.18.2 CommandSourceStack
-            // does not have getPlayer(), so calling getPlayer() first
-            // would trigger scanMethod to match getDisplayName() (a
-            // Component), breaking the entire operator check.
-            // getEntity() works on all MC versions 1.18.2 through 26.1+.
-            Object player = FabricReflection.callAny(source, "getEntity",
-                new Class<?>[0], new Object[0]);
+            // If source is already a ServerPlayer entity (e.g. when called
+            // from FabricDetectionBridge.hasPermission or
+            // hasPermissionForPlayer), use it directly.
+            Object player;
+            Class<?> spCls = FabricReflection.forName(
+                FabricReflectionConstants.CLS_SERVER_PLAYER);
+            if (spCls != null && spCls.isInstance(source)) {
+                player = source;
+            } else {
+                // source is a CommandSourceStack — extract the entity.
+                // getEntity() works on all MC versions 1.18.2 through 26.1+.
+                player = FabricReflection.callAny(source, "getEntity",
+                    new Class<?>[0], new Object[0]);
+            }
             if (player == null) return false;
 
             // Use MinecraftServer.getProfilePermissions(GameProfile) instead
