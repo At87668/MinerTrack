@@ -487,14 +487,22 @@ public class FabricCommandBridge implements CommandBridge {
         if (!isSourcePlayer(source)) return true;
 
         // ── Layer 2: hasPermission(int) / hasPermissionLevel(int) ──
-        // Use FabricReflection.callAny() (NOT source.getClass().getMethod())
-        // so intermediary names (e.g. method_9259 on 1.18.2) are resolved.
-        for (String name : new String[]{"hasPermission", "hasPermissionLevel"}) {
-            try {
-                Object r = FabricReflection.callAny(source, name,
-                    new Class<?>[]{int.class}, new Object[]{minLevel});
-                if (r instanceof Boolean && (Boolean) r) return true;
-            } catch (Throwable t) { /* try next name */ }
+        // Use FabricReflection.callAny() so intermediary names are resolved.
+        // On MC 26.1+ neither alias exists — the fallback (Layer 3) handles
+        // permissions correctly.  Suppress debug during the trial to avoid
+        // harmless M-MISS diagnostics.
+        boolean oldDebug = FabricReflection.DEBUG_REFLECTION;
+        FabricReflection.DEBUG_REFLECTION = false;
+        try {
+            for (String name : new String[]{"hasPermission", "hasPermissionLevel"}) {
+                try {
+                    Object r = FabricReflection.callAny(source, name,
+                        new Class<?>[]{int.class}, new Object[]{minLevel});
+                    if (r instanceof Boolean && (Boolean) r) return true;
+                } catch (Throwable t) { /* try next name */ }
+            }
+        } finally {
+            FabricReflection.DEBUG_REFLECTION = oldDebug;
         }
 
         // ── Layer 3: PlayerList.isOp() (works on all versions) ─────
