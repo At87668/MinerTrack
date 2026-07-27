@@ -33,6 +33,28 @@ final class FabricReflection {
     static final Class<?>[] NO_PARAMS = new Class<?>[0];
     static final Object[]   NO_ARGS  = new Object[0];
 
+    /**
+     * Find a method by name+params and invoke it, throwing if not found.
+     * Use this when the caller needs to distinguish "method exists but failed"
+     * from "method does not exist" for fallback chaining.
+     *
+     * <p>Unlike {@link #call} which silently returns null when the method is
+     * not found, this helper throws {@link NoSuchMethodException} so a
+     * {@code try/catch} fallback chain works correctly.
+     */
+    static void tryCallOrThrow(Object target, String methodName,
+                               Class<?>[] paramTypes, Object[] args) {
+        if (target == null) throw new IllegalArgumentException("target is null");
+        Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
+        if (m == null) throw new RuntimeException(
+            new NoSuchMethodException(target.getClass().getName() + "." + methodName));
+        try {
+            m.invoke(target, args);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     // ==================================================================
     // Class loading
     // ==================================================================
