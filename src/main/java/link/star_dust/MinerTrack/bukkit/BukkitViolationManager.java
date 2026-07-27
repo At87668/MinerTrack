@@ -418,6 +418,15 @@ public class BukkitViolationManager implements ViolationManagerBridge {
     }
 
     @Override
+    public boolean hasPermission(UUID playerId, String node) {
+        Object obj = adapter.getPlayer(playerId);
+        if (obj instanceof org.bukkit.entity.Player) {
+            return ((org.bukkit.entity.Player) obj).hasPermission(node);
+        }
+        return false;
+    }
+
+    @Override
     public void sendMessageToPlayer(UUID playerId, String message) {
         Object obj = adapter.getPlayer(playerId);
         if (obj instanceof org.bukkit.entity.Player) {
