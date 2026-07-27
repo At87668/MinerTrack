@@ -297,21 +297,22 @@ public class FabricCommandBridge implements CommandBridge {
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
             // Multi-version fallback via signature-only scanning (no METHOD_REDIRECT).
-            // In 1.18.2 METHOD_REDIRECT maps sendSystemMessage to MinecraftServer's
-            // intermediary name (method_9203) which is wrong for ServerPlayer.
+            // Priority: try the chat-specific signature first so scanMethod
+            // doesn't match the inherited single-param sendMessage(Text) which
+            // sends to the action bar instead of chat on 1.18.2.
             try {
-                // MC 26.1+: sendSystemMessage(Component)
+                // 1.18.2 chat: sendMessage(Component, UUID)
                 FabricReflection.invokeBySigOrThrow(player,
-                    new Class<?>[]{textCls}, new Object[]{text});
+                    new Class<?>[]{textCls, java.util.UUID.class},
+                    new Object[]{text, java.util.UUID.randomUUID()});
             } catch (Throwable t1) {
                 try {
-                    // 1.18.2 chat: sendMessage(Component, UUID)
+                    // MC 26.1+: sendSystemMessage(Component)
                     FabricReflection.invokeBySigOrThrow(player,
-                        new Class<?>[]{textCls, java.util.UUID.class},
-                        new Object[]{text, java.util.UUID.randomUUID()});
+                        new Class<?>[]{textCls}, new Object[]{text});
                 } catch (Throwable t2) {
                     try {
-                        // 1.18.2 action bar: displayClientMessage(Component, boolean)
+                        // 1.18.2 action bar fallback: displayClientMessage(Component, boolean)
                         FabricReflection.invokeBySigOrThrow(player,
                             new Class<?>[]{textCls, boolean.class},
                             new Object[]{text, false});
@@ -373,20 +374,18 @@ public class FabricCommandBridge implements CommandBridge {
      */
     private static UUID extractPlayerUuid(Object css) {
         if (css == null) return null;
-        // Try 0-param methods — callAny uses redirectMethod which is fine
-        // for simple 0-param accessors in most cases.  Fall back to
-        // signature-only scan if callAny returns a non-UUID result
-        // (which happens on 1.18.2 when getPlayer() doesn't exist and
-        // scanMethod matches getDisplayName()).
-        Object entity = FabricReflection.callAny(css, "getPlayer",
-            new Class<?>[0], new Object[0]);
-        if (entity == null) {
-            entity = FabricReflection.callAny(css, "getEntity",
+        // On 1.18.2 getPlayer() does not exist — scanMethod matches
+        // getDisplayName() and returns a Component instead.  That makes
+        // the null-check pass but callUuid() fails.  We must keep trying
+        // getEntity() even when getPlayer() returned a non-null object
+        // without a UUID.
+        for (String methodName : new String[]{"getPlayer", "getEntity"}) {
+            Object entity = FabricReflection.callAny(css, methodName,
                 new Class<?>[0], new Object[0]);
-        }
-        if (entity != null) {
-            Object uid = FabricReflection.callUuid(entity);
-            if (uid instanceof UUID) return (UUID) uid;
+            if (entity != null) {
+                Object uid = FabricReflection.callUuid(entity);
+                if (uid instanceof UUID) return (UUID) uid;
+            }
         }
         return null;
     }
@@ -488,17 +487,13 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) Fall back to vanilla operator check via getProfilePermissions
-            try {
-                Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                    new Class<?>[0], new Object[0]);
-                if (gameProfile != null) {
-                    Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-                        new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                    if (permLevel instanceof Number) return ((Number) permLevel).intValue() >= 2;
-                }
-            } catch (Throwable t2) { /* fall through */ }
-            return false;
+            // 2) Fall back to vanilla op-level check.
+            //    Use checkVanillaOpLevel(player) directly — it resolves
+            //    isSourcePlayer() then tries hasPermission(int) and
+            //    isSourceOperator().  This is the same path used by
+            //    FabricDetectionBridge.hasPermission() and works across
+            //    all MC versions including 1.18.2 without LP.
+            return checkVanillaOpLevel(player, 2);
         } catch (Throwable t) {
             return false;
         }
