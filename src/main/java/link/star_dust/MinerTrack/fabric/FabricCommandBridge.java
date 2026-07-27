@@ -296,21 +296,23 @@ public class FabricCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
-            // MC 26.1+: sendSystemMessage(Component); 1.18-1.21: sendMessage(Text, UUID)
-            // tryCallOrThrow() throws when method is not found, enabling
-            // the try/catch fallback chain. callAny() returns null on miss
-            // which would silently skip the fallback on 1.18.2.
+            // Multi-version fallback via signature-only scanning (no METHOD_REDIRECT).
+            // In 1.18.2 METHOD_REDIRECT maps sendSystemMessage to MinecraftServer's
+            // intermediary name (method_9203) which is wrong for ServerPlayer.
             try {
-                FabricReflection.tryCallOrThrow(player, "sendSystemMessage",
+                // MC 26.1+: sendSystemMessage(Component)
+                FabricReflection.invokeBySigOrThrow(player,
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t1) {
                 try {
-                    FabricReflection.tryCallOrThrow(player, "sendMessage",
+                    // 1.18.2 chat: sendMessage(Component, UUID)
+                    FabricReflection.invokeBySigOrThrow(player,
                         new Class<?>[]{textCls, java.util.UUID.class},
                         new Object[]{text, java.util.UUID.randomUUID()});
                 } catch (Throwable t2) {
                     try {
-                        FabricReflection.tryCallOrThrow(player, "displayClientMessage",
+                        // 1.18.2 action bar: displayClientMessage(Component, boolean)
+                        FabricReflection.invokeBySigOrThrow(player,
                             new Class<?>[]{textCls, boolean.class},
                             new Object[]{text, false});
                     } catch (Throwable t3) { /* silent */ }
@@ -327,13 +329,15 @@ public class FabricCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = resolveTextComponentClass();
             if (textCls == null) return;
-            // MC 26.1+: sendSystemMessage(Component); 1.18-1.21: sendMessage(Text, UUID)
+            // Multi-version fallback via signature-only scanning.
             try {
-                FabricReflection.tryCallOrThrow(server, "sendSystemMessage",
+                // MC 26.1+: sendSystemMessage(Component)
+                FabricReflection.invokeBySigOrThrow(server,
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t1) {
                 try {
-                    FabricReflection.tryCallOrThrow(server, "sendMessage",
+                    // 1.18.2: sendMessage(Component, UUID)
+                    FabricReflection.invokeBySigOrThrow(server,
                         new Class<?>[]{textCls, java.util.UUID.class},
                         new Object[]{text, java.util.UUID.randomUUID()});
                 } catch (Throwable t2) { /* silent */ }
@@ -343,29 +347,48 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public boolean toggleVerbose() {
         if (source != null) {
-            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
-                new Class<?>[0], new Object[0]);
-            if (r instanceof Boolean && (Boolean) r) {
-                UUID id = null;
-                try {
-                    // getPlayer() exists on MC 26.1+; getEntity() works on all
-                    // versions (1.18.2 through 26.1+).  Try getPlayer first
-                    // (direct type, no ambiguity), fall back to getEntity.
-                    Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
-                    if (player == null) {
-                        player = FabricReflection.callAny(source, "getEntity", new Class<?>[0], new Object[0]);
-                    }
-                    if (player != null) {
-                        Object uuid = FabricReflection.callUuid(player);
-                        if (uuid instanceof UUID) id = (UUID) uuid;
-                    }
-                } catch (Throwable t) { return false; }
-                if (id == null) return false;
+            // Determine whether the source is a player by trying to get
+            // an entity that has a UUID.  Do NOT use callMigrated(isPlayer,..)
+            // — on 1.18.2 both names fail and scanMethod matches a 0-param
+            // method like getDisplayName(), returning a Component instead of
+            // Boolean, causing the entire player branch to be skipped.
+            UUID id = extractPlayerUuid(source);
+            if (id != null) {
                 if (verbosePlayers.contains(id)) { verbosePlayers.remove(id); return false; }
                 else { verbosePlayers.add(id); return true; }
             }
         }
         verboseConsole = !verboseConsole; return verboseConsole;
+    }
+
+    /**
+     * Try to extract a player UUID from a CommandSourceStack.
+     * Returns null if the source is not backed by a player.
+     *
+     * <p>Avoids METHOD_REDIRECT by using signature-only scanning:
+     * <ol>
+     *   <li>{@code getPlayer()} — detected by 0-param, non-null return with UUID</li>
+     *   <li>{@code getEntity()} — detected by 0-param, non-null return with UUID</li>
+     * </ol>
+     */
+    private static UUID extractPlayerUuid(Object css) {
+        if (css == null) return null;
+        // Try 0-param methods — callAny uses redirectMethod which is fine
+        // for simple 0-param accessors in most cases.  Fall back to
+        // signature-only scan if callAny returns a non-UUID result
+        // (which happens on 1.18.2 when getPlayer() doesn't exist and
+        // scanMethod matches getDisplayName()).
+        Object entity = FabricReflection.callAny(css, "getPlayer",
+            new Class<?>[0], new Object[0]);
+        if (entity == null) {
+            entity = FabricReflection.callAny(css, "getEntity",
+                new Class<?>[0], new Object[0]);
+        }
+        if (entity != null) {
+            Object uid = FabricReflection.callUuid(entity);
+            if (uid instanceof UUID) return (UUID) uid;
+        }
+        return null;
     }
 
     // ── Permission checks ──────────────────────────────────────────
