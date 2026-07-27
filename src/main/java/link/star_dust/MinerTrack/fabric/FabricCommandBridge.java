@@ -312,28 +312,59 @@ public class FabricCommandBridge implements CommandBridge {
 
     @Override public boolean toggleVerbose() {
         if (source != null) {
-            if (isPlayer()) {
-                UUID id = null;
-                try {
-                    // getEntity() works on all MC versions (1.18.2 through 26.1+).
-                    // Do NOT try getPlayer() first — on 1.18.2 CommandSourceStack
-                    // does not have getPlayer(), so findMethodImpl falls through to
-                    // scanMethod which matches the first 0-param method it finds
-                    // (e.g. getDisplayName()), returning a wrong object.
-                    // isPlayer() above already verified the entity is a ServerPlayer.
-                    Object player = FabricReflection.callAny(source, "getEntity",
-                        new Class<?>[0], new Object[0]);
-                    if (player != null) {
-                        Object uuid = FabricReflection.callUuid(player);
-                        if (uuid instanceof UUID) id = (UUID) uuid;
-                    }
-                } catch (Throwable t) { return false; }
-                if (id == null) return false;
-                if (verbosePlayers.contains(id)) { verbosePlayers.remove(id); return false; }
-                else { verbosePlayers.add(id); return true; }
+            // Try to obtain a player UUID from the source regardless of what
+            // isPlayer() reports.  isPlayer() may return false negatives on
+            // some MC versions (e.g. when ServerPlayer class loading fails
+            // on old intermediary runtimes), which would cause the verbose
+            // toggle to hit the console branch instead of the player branch.
+            //
+            // Strategy: try getPlayer() first (MC 26.1+), then getEntity()
+            // (all versions).  On 1.18.2 getPlayer() does not exist, so
+            // scanMethod matches getDisplayName() and returns a Component —
+            // but callUuid() then fails to extract a UUID, so we safely
+            // fall through to getEntity() which works on every version.
+            UUID id = lookUpPlayerId(source);
+            if (id != null) {
+                if (verbosePlayers.contains(id)) {
+                    verbosePlayers.remove(id);
+                    return false;
+                } else {
+                    verbosePlayers.add(id);
+                    return true;
+                }
             }
         }
-        verboseConsole = !verboseConsole; return verboseConsole;
+        verboseConsole = !verboseConsole;
+        return verboseConsole;
+    }
+
+    /**
+     * Extract a player UUID from a CommandSourceStack, or null if the
+     * source is not backed by a player entity.
+     *
+     * <p>Try order:
+     * <ol>
+     *   <li>{@code getPlayer()} — MC 26.1+ (direct, no ambiguity)</li>
+     *   <li>{@code getEntity()} — 1.18.2 through 26.1+ (always works)</li>
+     * </ol>
+     */
+    private static UUID lookUpPlayerId(Object css) {
+        if (css == null) return null;
+        // 1) getPlayer() — MC 26.1+
+        try {
+            Object p = FabricReflection.callAny(css, "getPlayer",
+                new Class<?>[0], new Object[0]);
+            Object uid = FabricReflection.callUuid(p);
+            if (uid instanceof UUID) return (UUID) uid;
+        } catch (Throwable t) { /* fall through */ }
+        // 2) getEntity() — all versions
+        try {
+            Object p = FabricReflection.callAny(css, "getEntity",
+                new Class<?>[0], new Object[0]);
+            Object uid = FabricReflection.callUuid(p);
+            if (uid instanceof UUID) return (UUID) uid;
+        } catch (Throwable t) { /* fall through */ }
+        return null;
     }
 
     // ── Permission checks ──────────────────────────────────────────
