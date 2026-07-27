@@ -22,6 +22,13 @@ public interface ViolationManagerBridge {
     Set<UUID> getVerbosePlayers();
     boolean isVerboseConsoleEnabled();
     void sendMessageToPlayer(UUID playerId, String message);
+
+    /**
+     * Check whether a player has a specific permission node.
+     * Used by {@code ViolationEngine} to filter verbose recipients.
+     */
+    boolean hasPermission(UUID playerId, String node);
+
     Object getConfigSection(String path);
     Object getConfig(String path);
     String getPrefixedMessage(String key);
