@@ -116,12 +116,18 @@ final class FabricReflection {
      * Send a text component to a server player, trying every known API
      * across MC versions (1.18.2 through 1.26+).
      *
+     * <p>Uses signature-only scanning (no global METHOD_REDIRECT) because
+     * the same mojang method name (e.g. {@code sendSystemMessage}) maps to
+     * different intermediary names on {@code MinecraftServer} vs
+     * {@code ServerPlayer}.  Matching purely by parameter types avoids
+     * calling the wrong method.
+     *
      * <p>Priority:
      * <ol>
      *   <li>{@code sendSystemMessage(Component)} — 1.19.3+</li>
-     *   <li>{@code displayClientMessage(Component, boolean)} — 1.18.2 action bar</li>
      *   <li>{@code sendMessage(Component, UUID)} — 1.18.2 chat</li>
-     *   <li>{@code sendMessage(Component)} — 1.18-1.19.2 fallback</li>
+     *   <li>{@code displayClientMessage(Component, boolean)} — 1.18.2 action bar fallback</li>
+     *   <li>{@code sendMessage(Component)} — 1.18-1.19.2 plain</li>
      * </ol>
      *
      * @param player the ServerPlayer object
@@ -132,37 +138,31 @@ final class FabricReflection {
         Class<?> textCls = resolveTextComponentClass();
         if (textCls == null) return;
 
-        // 1) sendSystemMessage(Component) — 1.19.3+
-        if (trySend(player, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
+        // 1) sendSystemMessage(Component) — 1.19.3+ Entity/ServerPlayer
+        if (trySendBySig1(player, text, textCls)) return;
 
-        // 2) sendMessage(Component, UUID) — 1.18.2 chat (prefer over
-        //    displayClientMessage which sends to action bar on 1.18.2)
-        if (trySend(player, "sendMessage", new Class<?>[]{textCls, java.util.UUID.class}, new Object[]{text, java.util.UUID.randomUUID()})) return;
+        // 2) sendMessage(Component, UUID) — 1.18.2 chat
+        if (trySendBySig(player, text, textCls, java.util.UUID.class, java.util.UUID.randomUUID())) return;
 
         // 3) displayClientMessage(Component, boolean) — 1.18.2 action bar fallback
-        if (trySend(player, "displayClientMessage", new Class<?>[]{textCls, boolean.class}, new Object[]{text, false})) return;
+        if (trySendBySig(player, text, textCls, boolean.class, Boolean.FALSE)) return;
 
         // 4) sendMessage(Component) — 1.18-1.19.2 plain
-        trySend(player, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
-    }
-
-    private static boolean trySend(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
-        if (target == null) return false;
-        Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
-        if (m == null) return false;
-        try {
-            m.invoke(target, args);
-            return true;
-        } catch (Throwable t) { return false; }
+        if (trySendBySig1(player, text, textCls)) return;
     }
 
     /**
      * Send a text component to the server console / server log.
      *
+     * <p>Uses signature-only scanning (no global METHOD_REDIRECT) for the
+     * same reason as {@link #sendMessageToPlayer}: the global table maps
+     * {@code sendMessage} to a {@code ServerPlayer}-scoped intermediary,
+     * which does not exist on {@code MinecraftServer}.
+     *
      * <p>Priority:
      * <ol>
+     *   <li>{@code sendMessage(Component, UUID)} — 1.18.2 MinecraftServer</li>
      *   <li>{@code sendSystemMessage(Component)} — 1.19.3+</li>
-     *   <li>{@code sendMessage(Component, UUID)} — 1.18.2</li>
      *   <li>{@code sendMessage(Component)} — legacy</li>
      * </ol>
      */
@@ -171,14 +171,55 @@ final class FabricReflection {
         Class<?> textCls = resolveTextComponentClass();
         if (textCls == null) return;
 
-        // 1) sendMessage(Component, UUID) — 1.18.2 (MinecraftServer.sendMessage)
-        if (trySend(server, "sendMessage", new Class<?>[]{textCls, java.util.UUID.class}, new Object[]{text, java.util.UUID.randomUUID()})) return;
+        // 1) sendMessage(Component, UUID) — 1.18.2
+        if (trySendBySig(server, text, textCls, java.util.UUID.class, java.util.UUID.randomUUID())) return;
 
         // 2) sendSystemMessage(Component) — 1.19.3+
-        if (trySend(server, "sendSystemMessage", new Class<?>[]{textCls}, new Object[]{text})) return;
+        if (trySendBySig1(server, text, textCls)) return;
 
         // 3) sendMessage(Component) — legacy
-        trySend(server, "sendMessage", new Class<?>[]{textCls}, new Object[]{text});
+        trySendBySig1(server, text, textCls);
+    }
+
+    /**
+     * Find and invoke ANY method on {@code target} whose parameter types
+     * match {@code (textCls, [extraTypes...])}.  Completely ignores method
+     * names — works purely by parameter-type signature across the entire
+     * class hierarchy (declared + inherited).  This avoids the global
+     * {@link FabricReflectionConstants#redirectMethod} table which can
+     * produce per-class wrong intermediary names.
+     *
+     * @param target    the object to invoke on
+     * @param text      the Component/Text arg (first positional arg)
+     * @param textCls   the runtime Component class
+     * @param extraType the type of the second positional arg (may be {@code null}
+     *                  to indicate a single-param signature)
+     * @param extraArg  the value of the second positional arg
+     * @return true if a matching method was found and invoked successfully
+     */
+    private static boolean trySendBySig(Object target, Object text, Class<?> textCls,
+                                        Class<?> extraType, Object extraArg) {
+        if (target == null) return false;
+        Class<?>[] paramTypes = (extraType != null)
+            ? new Class<?>[]{textCls, extraType}
+            : new Class<?>[]{textCls};
+        Object[] args = (extraType != null)
+            ? new Object[]{text, extraArg}
+            : new Object[]{text};
+
+        // Walk class hierarchy: declared first, then inherited public methods
+        Method m = scanMethod(target.getClass(), paramTypes);
+        if (m == null) return false;
+        try {
+            m.invoke(target, args);
+            return true;
+        } catch (Throwable t) { return false; }
+    }
+
+    /** Variant for single-param {@code (Component)} — avoids ambiguity with
+     *  the two-param overload when {@code extraType} is null. */
+    private static boolean trySendBySig1(Object target, Object text, Class<?> textCls) {
+        return trySendBySig(target, text, textCls, null, null);
     }
 
     // ==================================================================
