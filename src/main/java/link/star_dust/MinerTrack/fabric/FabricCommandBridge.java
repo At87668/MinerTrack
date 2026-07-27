@@ -287,16 +287,26 @@ public class FabricCommandBridge implements CommandBridge {
         try {
             Object server = FabricReflection.getServer();
             if (server == null) return;
-            Object pm = FabricReflection.callMigrated(server,
-                FabricReflectionConstants.M_GET_PLAYER_LIST, "getPlayerManager",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
             if (pm == null) return;
-            Object player = FabricReflection.call(pm, FabricReflectionConstants.M_GET_PLAYER_UUID,
-                new Class<?>[]{UUID.class}, new Object[]{playerId});
+            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createText(message);
             if (text == null) return;
-            FabricReflection.sendMessageToPlayer(player, text);
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text, boolean)
+            try {
+                FabricReflection.callAny(player, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                try {
+                    FabricReflection.callAny(player, "sendMessage",
+                        new Class<?>[]{textCls, boolean.class},
+                        new Object[]{text, false});
+                } catch (Throwable t2) { /* silent */ }
+            }
         } catch (Throwable t) { /* silent */ }
     }
 
@@ -306,65 +316,39 @@ public class FabricCommandBridge implements CommandBridge {
             if (server == null) return;
             Object text = createText(message);
             if (text == null) return;
-            FabricReflection.sendMessageToConsole(server, text);
+            Class<?> textCls = resolveTextComponentClass();
+            if (textCls == null) return;
+            // Direct: MC 26.1+ has sendSystemMessage(Component); earlier has sendMessage(Text, boolean)
+            try {
+                FabricReflection.callAny(server, "sendSystemMessage",
+                    new Class<?>[]{textCls}, new Object[]{text});
+            } catch (Throwable t1) {
+                FabricReflection.callAny(server, "sendMessage",
+                    new Class<?>[]{textCls, boolean.class},
+                    new Object[]{text, false});
+            }
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
     }
 
     @Override public boolean toggleVerbose() {
         if (source != null) {
-            // Try to obtain a player UUID from the source regardless of what
-            // isPlayer() reports.  isPlayer() may return false negatives on
-            // some MC versions (e.g. when ServerPlayer class loading fails
-            // on old intermediary runtimes), which would cause the verbose
-            // toggle to hit the console branch instead of the player branch.
-            //
-            // Strategy: try getPlayer() first (MC 26.1+), then getEntity()
-            // (all versions).  On 1.18.2 getPlayer() does not exist, so
-            // scanMethod matches getDisplayName() and returns a Component —
-            // but callUuid() then fails to extract a UUID, so we safely
-            // fall through to getEntity() which works on every version.
-            UUID id = lookUpPlayerId(source);
-            if (id != null) {
-                if (verbosePlayers.contains(id)) {
-                    verbosePlayers.remove(id);
-                    return false;
-                } else {
-                    verbosePlayers.add(id);
-                    return true;
-                }
+            Object r = FabricReflection.callMigrated(source, "isPlayer", "isExecutedByPlayer",
+                new Class<?>[0], new Object[0]);
+            if (r instanceof Boolean && (Boolean) r) {
+                UUID id = null;
+                try {
+                    Object player = FabricReflection.callAny(source, "getPlayer", new Class<?>[0], new Object[0]);
+                    if (player != null) {
+                        Object uuid = FabricReflection.callUuid(player);
+                        if (uuid instanceof UUID) id = (UUID) uuid;
+                    }
+                } catch (Throwable t) { return false; }
+                if (id == null) return false;
+                if (verbosePlayers.contains(id)) { verbosePlayers.remove(id); return false; }
+                else { verbosePlayers.add(id); return true; }
             }
         }
-        verboseConsole = !verboseConsole;
-        return verboseConsole;
-    }
-
-    /**
-     * Extract a player UUID from a CommandSourceStack, or null if the
-     * source is not backed by a player entity.
-     *
-     * <p>Try order:
-     * <ol>
-     *   <li>{@code getPlayer()} — MC 26.1+ (direct, no ambiguity)</li>
-     *   <li>{@code getEntity()} — 1.18.2 through 26.1+ (always works)</li>
-     * </ol>
-     */
-    private static UUID lookUpPlayerId(Object css) {
-        if (css == null) return null;
-        // 1) getPlayer() — MC 26.1+
-        try {
-            Object p = FabricReflection.callAny(css, "getPlayer",
-                new Class<?>[0], new Object[0]);
-            Object uid = FabricReflection.callUuid(p);
-            if (uid instanceof UUID) return (UUID) uid;
-        } catch (Throwable t) { /* fall through */ }
-        // 2) getEntity() — all versions
-        try {
-            Object p = FabricReflection.callAny(css, "getEntity",
-                new Class<?>[0], new Object[0]);
-            Object uid = FabricReflection.callUuid(p);
-            if (uid instanceof UUID) return (UUID) uid;
-        } catch (Throwable t) { /* fall through */ }
-        return null;
+        verboseConsole = !verboseConsole; return verboseConsole;
     }
 
     // ── Permission checks ──────────────────────────────────────────
