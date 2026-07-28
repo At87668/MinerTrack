@@ -232,7 +232,6 @@ public class FabricCommandExecutor {
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
                 // MC 26.1+: connection field; 1.18-1.21: networkHandler field.
-                // Both are public fields, NOT methods — use getField().
                 Object network = FabricReflection.getField(player, "connection");
                 if (network == null) {
                     network = FabricReflection.getField(player, "networkHandler");
@@ -242,12 +241,17 @@ public class FabricCommandExecutor {
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
-                // MC 26.1+: disconnect(Component); 1.18-1.21: disconnect(Text)
+                // disconnect(Component) — exists on all MC versions.
+                // Use invokeBySigOrThrow to bypass METHOD_REDIRECT table.
+                // callAny() silently returns null on invoke failure, making
+                // kick no-op.
                 try {
-                    FabricReflection.callAny(network, "disconnect", new Class<?>[]{textCls}, new Object[]{text});
+                    FabricReflection.invokeBySigOrThrow(network,
+                        new Class<?>[]{textCls}, new Object[]{text});
                 } catch (Throwable t1) {
-                    // On older MC, "disconnect" may take DisconnectionDetails; try onDisconnect
-                    FabricReflection.callAny(network, "onDisconnect", new Class<?>[]{textCls}, new Object[]{text});
+                    // Older MC: onDisconnect(Text) alias
+                    FabricReflection.invokeBySigOrThrow(network,
+                        new Class<?>[]{textCls}, new Object[]{text});
                 }
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
@@ -344,11 +348,15 @@ public class FabricCommandExecutor {
                 Class<?> textCls = resolveTextComponentClass();
 
                 // 1.21.1+: broadcastSystemMessage(Component, boolean)
+                // 1.18.2 lacks this method — suppress the expected M-MISS.
+                boolean oldDebug = FabricReflection.DEBUG_REFLECTION;
+                FabricReflection.DEBUG_REFLECTION = false;
                 try {
                     FabricReflection.call(pm, "broadcastSystemMessage",
                         new Class<?>[]{textCls, boolean.class}, new Object[]{text, false});
                     return;
                 } catch (Throwable t1) { /* fall through */ }
+                finally { FabricReflection.DEBUG_REFLECTION = oldDebug; }
 
                 // 1.18.2: broadcastMessage(Component, ChatType, UUID)
                 // Need to resolve ChatType.CHAT reflectively
