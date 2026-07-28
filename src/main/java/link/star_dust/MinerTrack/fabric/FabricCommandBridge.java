@@ -597,25 +597,20 @@ public class FabricCommandBridge implements CommandBridge {
         try {
             // Resolve the player entity from source: it may be a
             // CommandSourceStack or a direct ServerPlayer object.
-            Object player;
-            String cls = source.getClass().getName();
-            if (cls.contains("Player") || cls.contains("class_3222")) {
-                player = source;  // already a player entity
-            } else {
+            // Class-name heuristics are fragile across MC versions
+            // (intermediary names differ).  Instead, probe functionally:
+            // if source itself has getGameProfile(), it IS the player entity.
+            Object player = source;
+            Object gameProfile = FabricReflection.callAny(source, "getGameProfile",
+                new Class<?>[0], new Object[0]);
+            if (gameProfile == null) {
+                // source is not a player entity — likely a CommandSourceStack.
                 player = FabricReflection.callAny(source, "getEntity",
                     new Class<?>[0], new Object[0]);
+                if (player == null) return false;
+                gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                    new Class<?>[0], new Object[0]);
             }
-            if (player == null) return false;
-
-            // Use MinecraftServer.getProfilePermissions(GameProfile) instead
-            // of PlayerList.isOp(GameProfile). PlayerList has three methods
-            // with the (GameProfile)Z signature (isWhiteListed, isOp,
-            // canBypassPlayerLimit) in that declaration order, and scanMethod
-            // matches isWhiteListed first — returning false for any player
-            // not on the whitelist. getProfilePermissions returns int and has
-            // a unique signature, avoiding any scanMethod ambiguity.
-            Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                new Class<?>[0], new Object[0]);
             if (gameProfile == null) return false;
             Object server = FabricReflection.getServer();
             if (server == null) return false;
