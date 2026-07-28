@@ -372,14 +372,39 @@ public class FabricDetectionBridge implements DetectionBridge {
             //    used by FabricCommandBridge; it iterates the registered
             //    permission providers and returns true on first match.
             if (FabricCommandBridge.checkLPPermission(player, node, 2)) return true;
-            // 2) Fall back to vanilla op-level check.  The command source
-            //    stack is a Player object on Fabric, so the op-level
-            //    resolution in FabricCommandBridge.checkVanillaOpLevel can
-            //    be reused directly (player is the source object).
-            return FabricCommandBridge.checkVanillaOpLevel(player, 2);
+            // 2) PlayerList.isOp() — proven reliable across all MC versions.
+            //    Avoid checkVanillaOpLevel() which routes through
+            //    isSourceOperator() → getProfilePermissions(MinecraftServer)
+            //    that is NOT in the METHOD_REDIRECT table.
+            return isPlayerOp(pm, player);
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    private static boolean isPlayerOp(Object pm, Object player) {
+        try {
+            // 1.18-1.21: getGameProfile() → isOp(GameProfile)
+            Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                new Class<?>[0], new Object[0]);
+            if (gameProfile != null) {
+                Object r = FabricReflection.call(pm, "isOp",
+                    new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                return r instanceof Boolean && (Boolean) r;
+            }
+        } catch (Throwable t1) {
+            // MC 26.1+: nameAndId() → isOp(NameAndId)
+            try {
+                Object nameAndId = FabricReflection.callAny(player, "nameAndId",
+                    new Class<?>[0], new Object[0]);
+                if (nameAndId != null) {
+                    Object r = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                    return r instanceof Boolean && (Boolean) r;
+                }
+            } catch (Throwable t2) { /* fall through */ }
+        }
+        return false;
     }
 
     @Override
