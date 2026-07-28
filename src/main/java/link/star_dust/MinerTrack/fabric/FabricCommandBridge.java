@@ -507,32 +507,28 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) PlayerList.isOp() — MC 26.1+ uses nameAndId(), 1.18-1.21 uses GameProfile.
-            //    Both must be tried unconditionally because isOp(GameProfile) does not exist
-            //    in MC 26.1+, so the GameProfile path returns null silently (no exception).
-            return isOperator(pm, player);
+            // 2) MinecraftServer.getProfilePermissions(GameProfile) → int.
+            //    Uses (GameProfile)I signature which is unique on every MC
+            //    version — scanMethod cannot confuse it with anything else.
+            //    Avoid PlayerList.isOp(GameProfile)Z — 3 methods share that
+            //    signature (isWhiteListed, isOp, canBypassPlayerLimit) and
+            //    scanMethod always matches isWhiteListed first.
+            return isOperator(server, player);
         } catch (Throwable t) {
             return false;
         }
     }
 
-    /** Check operator status via PlayerList, probing both GameProfile and nameAndId. */
-    private static boolean isOperator(Object pm, Object player) {
-        // 1.18-1.21: getGameProfile() → isOp(GameProfile)
+    /** Check operator status via MinecraftServer.getProfilePermissions. */
+    private static boolean isOperator(Object server, Object player) {
         Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
-        if (gameProfile != null) {
-            Object r = FabricReflection.call(pm, "isOp",
-                new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-            if (r instanceof Boolean && (Boolean) r) return true;
-        }
-        // MC 26.1+: nameAndId() → isOp(NameAndId)
-        Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
-        if (nameAndId != null) {
-            Object r = FabricReflection.call(pm, "isOp",
-                new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
-            return r instanceof Boolean && (Boolean) r;
-        }
-        return false;
+        if (gameProfile == null) return false;
+        // MinecraftServer.getProfilePermissions(GameProfile) → int.
+        // Unique (GameProfile)I signature — scanMethod cannot confuse it.
+        // PlayerList.isOp(GameProfile)Z has 3 siblings with identical sig.
+        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
+            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+        return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
     }
 
     /**
