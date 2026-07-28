@@ -534,88 +534,57 @@ public class FabricCommandBridge implements CommandBridge {
     /**
      * Vanilla op-level / operator check — the catch-all fallback.
      *
-     * <p>Layered approach:
-     * <ol>
-     *   <li>If the source is NOT a player (console / command block / RCON),
-     *       always return {@code true}.</li>
-     *   <li>Try {@code hasPermission(int)} / {@code hasPermissionLevel(int)}
-     *       via plain {@link Class#getMethod} (works on 1.18–1.21).</li>
-     *   <li>Check player operator status via PlayerList (works on all versions
-     *       including MC 26.x where the old permission methods are gone).</li>
-     * </ol>
-     *
      * <p>Package-private so that {@link FabricDetectionBridge} can reuse it
      * for the {@code hasPermission(UUID, String)} bridge method.
      */
     static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
 
-        // Determine whether source is a CommandSourceStack (CSS) or a direct
-        // ServerPlayer entity.  Do NOT use return-type or signature probing
-        // — on intermediary runtimes all hardcoded numbers are wrong and
-        // scanMethod is unreliable for 0-param methods.
-        String clsName = source.getClass().getName();
-
-        // ── Layer 1: non-player → always allowed ──────────────────
-        if (isCommandSourceStack(clsName)) {
-            // Resolve the player entity from CSS and check op level.
-            Object player = resolvePlayerFromCSS(source);
-            if (player == null) return true;  // console / command block
-            // Fall through to Layers 2+3 with the resolved player.
-            source = player;
-        }
-
-        // ── Layer 2: hasPermission(int) — unique (int)Z signature ──
-        // Ignore METHOD_REDIRECT; use invokeBySigOrThrow for unique sig.
-        try {
-            FabricReflection.invokeBySigOrThrow(source,
-                new Class<?>[]{int.class},
-                new Object[]{Integer.valueOf(minLevel)});
-            // If invoke didn't throw, check return value via callAny.
-        } catch (Throwable t) { /* fall through */ }
-        Object r = FabricReflection.callAny(source, "hasPermission",
-            new Class<?>[]{int.class}, new Object[]{Integer.valueOf(minLevel)});
-        if (r instanceof Boolean && (Boolean) r) return true;
-
-        // ── Layer 3: getProfilePermissions(GameProfile) → int ─────────
+        // Discriminate CSS/console vs direct player entity functionally.
+        // If source's own getGameProfile() succeeds, it IS a player entity.
         Object gameProfile = FabricReflection.callAny(source, "getGameProfile",
             new Class<?>[0], new Object[0]);
-        if (gameProfile != null) {
-            Object server = FabricReflection.getServer();
-            if (server != null) {
-                Object permLevel = FabricReflection.callAny(server,
-                    "getProfilePermissions",
-                    new Class<?>[]{gameProfile.getClass()},
-                    new Object[]{gameProfile});
-                if (permLevel instanceof Number)
-                    return ((Number) permLevel).intValue() >= minLevel;
-            }
+
+        if (gameProfile == null) {
+            // Not a direct player entity — extract from CSS if possible.
+            // Try getEntity() first (works on ALL versions including 1.18.2
+            // where getPlayer() doesn't exist and scanMethod matches wrong things).
+            Object player = resolvePlayerFromCSS(source);
+            if (player == null) return true;  // console / command block → allowed
+            gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                new Class<?>[0], new Object[0]);
         }
+        if (gameProfile == null) return false;
+
+        // ── getProfilePermissions(GameProfile) → int ─────────────
+        // Unique (GameProfile)I signature across all MC versions.
+        Object server = FabricReflection.getServer();
+        if (server == null) return false;
+        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
+            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+        if (permLevel instanceof Number)
+            return ((Number) permLevel).intValue() >= minLevel;
         return false;
     }
 
-    /** True if the class name indicates a CommandSourceStack. */
-    private static boolean isCommandSourceStack(String clsName) {
-        return clsName.contains("CommandSourceStack");
-    }
-
-    /** Extract the ServerPlayer entity from a CommandSourceStack. */
+    /** Extract the ServerPlayer entity from a CommandSourceStack, or null
+     *  if the source is not a player (console / command block).  On 1.18.2
+     *  getPlayer() doesn't exist—scanMethod matches getDisplayName()—so
+     *  try getEntity() first which works across all versions. */
     private static Object resolvePlayerFromCSS(Object css) {
-        // Try getPlayer() first (MC 26.1+).
-        Object p = FabricReflection.callAny(css, "getPlayer",
+        // Try getEntity() first (works 1.18.2 through 26.1+).
+        Object p = FabricReflection.callAny(css, "getEntity",
             new Class<?>[0], new Object[0]);
         if (p != null) {
-            Object uid = FabricReflection.callUuid(p);
-            if (uid != null) return p;
+            // Verify it's a player by probing getGameProfile.
+            Object gp = FabricReflection.callAny(p, "getGameProfile",
+                new Class<?>[0], new Object[0]);
+            if (gp != null) return p;
         }
-        // Fall back to getEntity() (all versions).
-        p = FabricReflection.callAny(css, "getEntity",
+        // Try getPlayer() (MC 26.1+).
+        p = FabricReflection.callAny(css, "getPlayer",
             new Class<?>[0], new Object[0]);
-        if (p != null) {
-            Object uid = FabricReflection.callUuid(p);
-            if (uid != null) return p;
-        }
-        return null;
+        return p;  // non-null = player
     }
 
     // ── Text/Component class resolution ─────────────────────────────
