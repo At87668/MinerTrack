@@ -507,13 +507,30 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) Fall back to vanilla op-level check.
-            //    Use checkVanillaOpLevel(player) directly — it resolves
-            //    isSourcePlayer() then tries hasPermission(int) and
-            //    isSourceOperator().  This is the same path used by
-            //    FabricDetectionBridge.hasPermission() and works across
-            //    all MC versions including 1.18.2 without LP.
-            return checkVanillaOpLevel(player, 2);
+            // 2) Fall back to PlayerList.isOp() — proven reliable across
+            //    all MC versions. isOp is in the METHOD_REDIRECT table.
+            //    Use getGameProfile() (1.18-1.21) or nameAndId() (MC 26).
+            try {
+                Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                    new Class<?>[0], new Object[0]);
+                if (gameProfile != null) {
+                    Object isOp = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                    if (isOp instanceof Boolean && (Boolean) isOp) return true;
+                }
+            } catch (Throwable t1) {
+                // MC 26.1+ fallback: nameAndId() → isOp(NameAndId)
+                try {
+                    Object nameAndId = FabricReflection.callAny(player, "nameAndId",
+                        new Class<?>[0], new Object[0]);
+                    if (nameAndId != null) {
+                        Object isOp = FabricReflection.call(pm, "isOp",
+                            new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                        if (isOp instanceof Boolean && (Boolean) isOp) return true;
+                    }
+                } catch (Throwable t2) { /* fall through */ }
+            }
+            return false;
         } catch (Throwable t) {
             return false;
         }
