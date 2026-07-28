@@ -218,11 +218,37 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (FabricCommandBridge.checkLPPermission(player, node, 2)) return true;
-            // 2) Fall back to vanilla op-level check
-            return FabricCommandBridge.checkVanillaOpLevel(player, 2);
+            // 2) PlayerList.isOp() — proven reliable across all MC versions
+            //    (isOp is in the METHOD_REDIRECT table)
+            return isPlayerOp(pm, player);
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    private static boolean isPlayerOp(Object pm, Object player) {
+        try {
+            // 1.18-1.21: getGameProfile() → isOp(GameProfile)
+            Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+                new Class<?>[0], new Object[0]);
+            if (gameProfile != null) {
+                Object r = FabricReflection.call(pm, "isOp",
+                    new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+                return r instanceof Boolean && (Boolean) r;
+            }
+        } catch (Throwable t1) {
+            // MC 26.1+: nameAndId() → isOp(NameAndId)
+            try {
+                Object nameAndId = FabricReflection.callAny(player, "nameAndId",
+                    new Class<?>[0], new Object[0]);
+                if (nameAndId != null) {
+                    Object r = FabricReflection.call(pm, "isOp",
+                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                    return r instanceof Boolean && (Boolean) r;
+                }
+            } catch (Throwable t2) { /* fall through */ }
+        }
+        return false;
     }
 
     @Override
