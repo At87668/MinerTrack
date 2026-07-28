@@ -227,26 +227,19 @@ public class FabricViolationManager implements ViolationManagerBridge {
     }
 
     private static boolean isPlayerOp(Object pm, Object player) {
-        try {
-            // 1.18-1.21: getGameProfile() → isOp(GameProfile)
-            Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                new Class<?>[0], new Object[0]);
-            if (gameProfile != null) {
-                Object r = FabricReflection.call(pm, "isOp",
-                    new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                return r instanceof Boolean && (Boolean) r;
-            }
-        } catch (Throwable t1) {
-            // MC 26.1+: nameAndId() → isOp(NameAndId)
-            try {
-                Object nameAndId = FabricReflection.callAny(player, "nameAndId",
-                    new Class<?>[0], new Object[0]);
-                if (nameAndId != null) {
-                    Object r = FabricReflection.call(pm, "isOp",
-                        new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
-                    return r instanceof Boolean && (Boolean) r;
-                }
-            } catch (Throwable t2) { /* fall through */ }
+        // 1.18-1.21: getGameProfile() → isOp(GameProfile)
+        Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
+        if (gameProfile != null) {
+            Object r = FabricReflection.call(pm, "isOp",
+                new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+            if (r instanceof Boolean && (Boolean) r) return true;
+        }
+        // MC 26.1+: nameAndId() → isOp(NameAndId)
+        Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
+        if (nameAndId != null) {
+            Object r = FabricReflection.call(pm, "isOp",
+                new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+            return r instanceof Boolean && (Boolean) r;
         }
         return false;
     }

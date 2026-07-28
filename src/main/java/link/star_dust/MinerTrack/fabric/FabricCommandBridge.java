@@ -507,33 +507,32 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) Fall back to PlayerList.isOp() — proven reliable across
-            //    all MC versions. isOp is in the METHOD_REDIRECT table.
-            //    Use getGameProfile() (1.18-1.21) or nameAndId() (MC 26).
-            try {
-                Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                    new Class<?>[0], new Object[0]);
-                if (gameProfile != null) {
-                    Object isOp = FabricReflection.call(pm, "isOp",
-                        new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                    if (isOp instanceof Boolean && (Boolean) isOp) return true;
-                }
-            } catch (Throwable t1) {
-                // MC 26.1+ fallback: nameAndId() → isOp(NameAndId)
-                try {
-                    Object nameAndId = FabricReflection.callAny(player, "nameAndId",
-                        new Class<?>[0], new Object[0]);
-                    if (nameAndId != null) {
-                        Object isOp = FabricReflection.call(pm, "isOp",
-                            new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
-                        if (isOp instanceof Boolean && (Boolean) isOp) return true;
-                    }
-                } catch (Throwable t2) { /* fall through */ }
-            }
-            return false;
+            // 2) PlayerList.isOp() — MC 26.1+ uses nameAndId(), 1.18-1.21 uses GameProfile.
+            //    Both must be tried unconditionally because isOp(GameProfile) does not exist
+            //    in MC 26.1+, so the GameProfile path returns null silently (no exception).
+            return isOperator(pm, player);
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** Check operator status via PlayerList, probing both GameProfile and nameAndId. */
+    private static boolean isOperator(Object pm, Object player) {
+        // 1.18-1.21: getGameProfile() → isOp(GameProfile)
+        Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
+        if (gameProfile != null) {
+            Object r = FabricReflection.call(pm, "isOp",
+                new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+            if (r instanceof Boolean && (Boolean) r) return true;
+        }
+        // MC 26.1+: nameAndId() → isOp(NameAndId)
+        Object nameAndId = FabricReflection.callAny(player, "nameAndId", new Class<?>[0], new Object[0]);
+        if (nameAndId != null) {
+            Object r = FabricReflection.call(pm, "isOp",
+                new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+            return r instanceof Boolean && (Boolean) r;
+        }
+        return false;
     }
 
     /**
