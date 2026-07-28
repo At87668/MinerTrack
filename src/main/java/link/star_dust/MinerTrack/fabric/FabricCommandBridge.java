@@ -550,90 +550,72 @@ public class FabricCommandBridge implements CommandBridge {
     static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
 
-        // Determine if source is a CommandSourceStack or a direct player entity.
-        // method-probing (callAny) is unreliable because scanMethod matches
-        // wrong methods on mismatched classes.  Class-name heuristics are the
-        // only safe discriminator when we can't import Minecraft types.
+        // Determine whether source is a CommandSourceStack (CSS) or a direct
+        // ServerPlayer entity.  Do NOT use return-type or signature probing
+        // — on intermediary runtimes all hardcoded numbers are wrong and
+        // scanMethod is unreliable for 0-param methods.
         String clsName = source.getClass().getName();
-        boolean isCSS = clsName.contains("CommandSourceStack") || clsName.contains("class_2168");
 
         // ── Layer 1: non-player → always allowed ──────────────────
-        if (isCSS && !isSourcePlayer(source)) return true;
-
-        // ── Layer 2: hasPermission(int) / hasPermissionLevel(int) ──
-        // Use FabricReflection.callAny() so intermediary names are resolved.
-        // On MC 26.1+ neither alias exists — the fallback (Layer 3) handles
-        // permissions correctly.  Suppress debug during the trial to avoid
-        // harmless M-MISS diagnostics.
-        boolean oldDebug = FabricReflection.DEBUG_REFLECTION;
-        FabricReflection.DEBUG_REFLECTION = false;
-        try {
-            for (String name : new String[]{"hasPermission", "hasPermissionLevel"}) {
-                try {
-                    Object r = FabricReflection.callAny(source, name,
-                        new Class<?>[]{int.class}, new Object[]{minLevel});
-                    if (r instanceof Boolean && (Boolean) r) return true;
-                } catch (Throwable t) { /* try next name */ }
-            }
-        } finally {
-            FabricReflection.DEBUG_REFLECTION = oldDebug;
+        if (isCommandSourceStack(clsName)) {
+            // Resolve the player entity from CSS and check op level.
+            Object player = resolvePlayerFromCSS(source);
+            if (player == null) return true;  // console / command block
+            // Fall through to Layers 2+3 with the resolved player.
+            source = player;
         }
 
-        // ── Layer 3: operator check ─────────────────────────────────
-        return isSourceOperator(source);
-    }
-
-    /** Check if the command source is a player (not console / command block). */
-    private static boolean isSourcePlayer(Object source) {
-        // MC 26.1+: isPlayer()
+        // ── Layer 2: hasPermission(int) — unique (int)Z signature ──
+        // Ignore METHOD_REDIRECT; use invokeBySigOrThrow for unique sig.
         try {
-            Method m = source.getClass().getMethod("isPlayer");
-            Object r = m.invoke(source);
-            if (r instanceof Boolean && (Boolean) r) return true;
+            FabricReflection.invokeBySigOrThrow(source,
+                new Class<?>[]{int.class},
+                new Object[]{Integer.valueOf(minLevel)});
+            // If invoke didn't throw, check return value via callAny.
         } catch (Throwable t) { /* fall through */ }
-        // 1.18-1.21: use getEntity() + game-profile probe.
-        try {
-            Object entity = FabricReflection.callAny(source, "getEntity",
-                new Class<?>[0], new Object[0]);
-            if (entity != null) {
-                Object gp = FabricReflection.callAny(entity, "getGameProfile",
-                    new Class<?>[0], new Object[0]);
-                if (gp != null) return true;
-            }
-        } catch (Throwable t) { return false; }
-        return false;
-    }
+        Object r = FabricReflection.callAny(source, "hasPermission",
+            new Class<?>[]{int.class}, new Object[]{Integer.valueOf(minLevel)});
+        if (r instanceof Boolean && (Boolean) r) return true;
 
-    /** Check if the player behind this command source is an operator (>= level 2). */
-    private static boolean isSourceOperator(Object source) {
-        try {
-            // Resolve the player entity from source: it may be a
-            // CommandSourceStack or a direct ServerPlayer object.
-            // Class-name heuristics are fragile across MC versions
-            // (intermediary names differ).  Instead, probe functionally:
-            // if source itself has getGameProfile(), it IS the player entity.
-            Object player = source;
-            Object gameProfile = FabricReflection.callAny(source, "getGameProfile",
-                new Class<?>[0], new Object[0]);
-            if (gameProfile == null) {
-                // source is not a player entity — likely a CommandSourceStack.
-                player = FabricReflection.callAny(source, "getEntity",
-                    new Class<?>[0], new Object[0]);
-                if (player == null) return false;
-                gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                    new Class<?>[0], new Object[0]);
-            }
-            if (gameProfile == null) return false;
+        // ── Layer 3: getProfilePermissions(GameProfile) → int ─────────
+        Object gameProfile = FabricReflection.callAny(source, "getGameProfile",
+            new Class<?>[0], new Object[0]);
+        if (gameProfile != null) {
             Object server = FabricReflection.getServer();
-            if (server == null) return false;
-            try {
-                Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-                    new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-                if (permLevel instanceof Number) return ((Number) permLevel).intValue() >= 2;
-            } catch (Throwable t) { /* fall through */ }
-            return false;
-        } catch (Throwable t) { /* fall through */ }
+            if (server != null) {
+                Object permLevel = FabricReflection.callAny(server,
+                    "getProfilePermissions",
+                    new Class<?>[]{gameProfile.getClass()},
+                    new Object[]{gameProfile});
+                if (permLevel instanceof Number)
+                    return ((Number) permLevel).intValue() >= minLevel;
+            }
+        }
         return false;
+    }
+
+    /** True if the class name indicates a CommandSourceStack. */
+    private static boolean isCommandSourceStack(String clsName) {
+        return clsName.contains("CommandSourceStack");
+    }
+
+    /** Extract the ServerPlayer entity from a CommandSourceStack. */
+    private static Object resolvePlayerFromCSS(Object css) {
+        // Try getPlayer() first (MC 26.1+).
+        Object p = FabricReflection.callAny(css, "getPlayer",
+            new Class<?>[0], new Object[0]);
+        if (p != null) {
+            Object uid = FabricReflection.callUuid(p);
+            if (uid != null) return p;
+        }
+        // Fall back to getEntity() (all versions).
+        p = FabricReflection.callAny(css, "getEntity",
+            new Class<?>[0], new Object[0]);
+        if (p != null) {
+            Object uid = FabricReflection.callUuid(p);
+            if (uid != null) return p;
+        }
+        return null;
     }
 
     // ── Text/Component class resolution ─────────────────────────────
