@@ -149,6 +149,7 @@ final class FabricReflectionConstants {
     static final String M_GET_TICK_COUNT       = im("net.minecraft.server.MinecraftServer", "getTickCount",          "()I",                                                          "method_3780");
     static final String M_GET_LEVEL            = im("net.minecraft.server.MinecraftServer", "getLevel",              "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/server/level/ServerLevel;", "method_3847");
     static final String M_SEND_SYSTEM_MSG_SRV  = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;)V",                     "method_9203");
+    static final String M_GET_PROFILE_PERMISSIONS = im("net.minecraft.server.MinecraftServer", "getProfilePermissions", "(Lcom/mojang/authlib/GameProfile;)I",               "method_14568");
 
     // -- ServerPlayer ----------------------------------------------------
     static final String M_GET_NAME             = im("net.minecraft.world.entity.Entity", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "method_5477");
@@ -255,6 +256,7 @@ final class FabricReflectionConstants {
         putM("getCommandManager",   M_GET_COMMANDS);       // 1.18 alias
         putM("getWorlds",           M_GET_ALL_LEVELS);     // 1.18 alias
         putM("getCommandSource",    M_CREATE_COMMAND_SOURCE_STACK);
+        putM("getProfilePermissions", M_GET_PROFILE_PERMISSIONS);
         // ServerPlayer / Entity
         putM("getName",             M_GET_NAME);
         // redirect getUUID/getUuid to avoid scanMethod matching getId() first.
