@@ -507,84 +507,111 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) MinecraftServer.getProfilePermissions(GameProfile) → int.
-            //    Uses (GameProfile)I signature which is unique on every MC
-            //    version — scanMethod cannot confuse it with anything else.
-            //    Avoid PlayerList.isOp(GameProfile)Z — 3 methods share that
-            //    signature (isWhiteListed, isOp, canBypassPlayerLimit) and
-            //    scanMethod always matches isWhiteListed first.
-            return isOperator(server, player);
+            // 2) Vanilla operator check via getProfilePermissions(GameProfile)→int
+            return isPlayerOperator(player);
         } catch (Throwable t) {
             return false;
         }
     }
 
-    /** Check operator status via MinecraftServer.getProfilePermissions. */
-    private static boolean isOperator(Object server, Object player) {
-        Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
-        if (gameProfile == null) return false;
-        // MinecraftServer.getProfilePermissions(GameProfile) → int.
-        // Unique (GameProfile)I signature — scanMethod cannot confuse it.
-        // PlayerList.isOp(GameProfile)Z has 3 siblings with identical sig.
-        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-        return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
-    }
-
     /**
      * Vanilla op-level / operator check — the catch-all fallback.
      *
-     * <p>Package-private so that {@link FabricDetectionBridge} can reuse it
-     * for the {@code hasPermission(UUID, String)} bridge method.
+     * <p>For CommandSourceStack (command execution path on 1.18–1.21):
+     * use {@code hasPermission(int)} matched by signature {@code (I)Z}.
+     * For player entities / MC 26+: use
+     * {@code MinecraftServer.getProfilePermissions(GameProfile)→int}.
+     *
+     * <p>Package-private so that {@link FabricDetectionBridge} can reuse it.
      */
     static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
 
-        // Discriminate CSS/console vs direct player entity functionally.
-        // If source's own getGameProfile() succeeds, it IS a player entity.
-        Object gameProfile = FabricReflection.callAny(source, "getGameProfile",
-            new Class<?>[0], new Object[0]);
+        String clsName = source.getClass().getName();
+        boolean isCSS = clsName.contains("CommandSourceStack") || clsName.contains("class_2168");
 
-        if (gameProfile == null) {
-            // Not a direct player entity — extract from CSS if possible.
-            // Try getEntity() first (works on ALL versions including 1.18.2
-            // where getPlayer() doesn't exist and scanMethod matches wrong things).
-            Object player = resolvePlayerFromCSS(source);
-            if (player == null) return true;  // console / command block → allowed
-            gameProfile = FabricReflection.callAny(player, "getGameProfile",
-                new Class<?>[0], new Object[0]);
+        // Console / command block / RCON → always allowed
+        if (isCSS && !isSourcePlayer(source)) return true;
+
+        // CommandSourceStack.hasPermission(int) → boolean
+        // Match by (I)Z so we never hit unrelated (I) methods via blind scan.
+        if (isCSS) {
+            Object r = FabricReflection.callBySig(source,
+                new Class<?>[]{int.class}, new Object[]{minLevel}, boolean.class);
+            if (r instanceof Boolean) return (Boolean) r;
         }
-        if (gameProfile == null) return false;
 
-        // ── getProfilePermissions(GameProfile) → int ─────────────
-        // Unique (GameProfile)I signature across all MC versions.
-        Object server = FabricReflection.getServer();
-        if (server == null) return false;
-        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-        if (permLevel instanceof Number)
-            return ((Number) permLevel).intValue() >= minLevel;
-        return false;
+        // Player entity path (or CSS fallback): getProfilePermissions
+        Object player = source;
+        if (isCSS) {
+            player = resolvePlayerEntity(source);
+            if (player == null) return false;
+        }
+        return isPlayerOperator(player);
     }
 
-    /** Extract the ServerPlayer entity from a CommandSourceStack, or null
-     *  if the source is not a player (console / command block).  On 1.18.2
-     *  getPlayer() doesn't exist—scanMethod matches getDisplayName()—so
-     *  try getEntity() first which works across all versions. */
-    private static Object resolvePlayerFromCSS(Object css) {
-        // Try getEntity() first (works 1.18.2 through 26.1+).
-        Object p = FabricReflection.callAny(css, "getEntity",
-            new Class<?>[0], new Object[0]);
-        if (p != null) {
-            // Verify it's a player by probing getGameProfile.
-            Object gp = FabricReflection.callAny(p, "getGameProfile",
-                new Class<?>[0], new Object[0]);
-            if (gp != null) return p;
+    /** Check if the command source is a player (not console / command block). */
+    private static boolean isSourcePlayer(Object source) {
+        // Prefer named isPlayer() when available (MC 1.19.1+ / named runtime)
+        try {
+            Method m = source.getClass().getMethod("isPlayer");
+            Object r = m.invoke(source);
+            if (r instanceof Boolean) return (Boolean) r;
+        } catch (Throwable t) { /* fall through */ }
+        // 1.18.2 CSS: getEntity() + getGameProfile on the entity
+        return resolvePlayerEntity(source) != null;
+    }
+
+    /**
+     * Extract the ServerPlayer entity from a CommandSourceStack, or return
+     * {@code source} itself if it already is a player entity.
+     */
+    private static Object resolvePlayerEntity(Object source) {
+        if (source == null) return null;
+        // Direct player entity: has getGameProfile()
+        Object gp = FabricReflection.callAny(source, "getGameProfile",
+            FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+        if (gp != null) return source;
+
+        // CommandSourceStack: getEntity() / getPlayer()
+        // Prefer getEntity — present on all versions; getPlayer is 1.19.1+.
+        // Do NOT use blind 0-arg scan (matches getDisplayName etc.).
+        Object entity = FabricReflection.callAny(source, "getEntity",
+            FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+        if (entity != null) {
+            Object egp = FabricReflection.callAny(entity, "getGameProfile",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            if (egp != null) return entity;
         }
-        // Try getPlayer() (MC 26.1+).
-        p = FabricReflection.callAny(css, "getPlayer",
-            new Class<?>[0], new Object[0]);
-        return p;  // non-null = player
+        Object player = FabricReflection.callAny(source, "getPlayer",
+            FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+        if (player != null) {
+            Object pgp = FabricReflection.callAny(player, "getGameProfile",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            if (pgp != null) return player;
+        }
+        return null;
+    }
+
+    /**
+     * Operator check via {@code MinecraftServer.getProfilePermissions(GameProfile)}.
+     * Matched by signature {@code (GameProfile)I} so it cannot collide with
+     * other GameProfile methods.  Works on 1.18.2 through 1.21.x.
+     */
+    static boolean isPlayerOperator(Object player) {
+        if (player == null) return false;
+        Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
+            FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+        if (gameProfile == null) return false;
+        Object server = FabricReflection.getServer();
+        if (server == null) return false;
+        // Match by (GameProfile) → int only.  Never use name-based redirect
+        // for this: intermediary names differ (official 'b'/'c' in tiny files,
+        // method_NNNN in yarn intermediary) and METHOD_REDIRECT hardcodes fail.
+        Object permLevel = FabricReflection.callBySig(server,
+            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile},
+            int.class);
+        return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
     }
 
     // ── Text/Component class resolution ─────────────────────────────
