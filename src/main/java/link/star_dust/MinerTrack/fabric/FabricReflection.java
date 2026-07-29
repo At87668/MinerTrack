@@ -68,7 +68,7 @@ final class FabricReflection {
      */
     static void invokeBySigOrThrow(Object target, Class<?>[] paramTypes, Object[] args) {
         if (target == null) throw new IllegalArgumentException("target is null");
-        Method m = scanMethod(target.getClass(), paramTypes);
+        Method m = scanMethod(target.getClass(), paramTypes, null);
         if (m == null)
             throw new RuntimeException(new NoSuchMethodException(
                 target.getClass().getName() + ".(*sig " + paramTypes.length + " params)"));
@@ -76,6 +76,28 @@ final class FabricReflection {
             m.invoke(target, args);
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Invoke by parameter signature AND return type.  Unlike
+     * {@link #call}/{@link #findMethodImpl}, this never uses METHOD_REDIRECT
+     * and never falls back to the first param-only match — critical when
+     * multiple methods share the same parameter types (e.g. several
+     * {@code (GameProfile)} methods, or several {@code (I)Z} methods).
+     *
+     * @param returnType required return type, or {@code null} to ignore it
+     * @return the invoke result, or {@code null} if no match / invoke failed
+     */
+    static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args,
+                            Class<?> returnType) {
+        if (target == null) return null;
+        Method m = scanMethod(target.getClass(), paramTypes, returnType);
+        if (m == null) return null;
+        try {
+            return m.invoke(target, args);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            return null;
         }
     }
 
@@ -456,7 +478,13 @@ final class FabricReflection {
         // 3. Parameter-type scan — try EVERY declared method with matching
         //    paramTypes.  Critical for classes like BlockPos / Vec3i whose
         //    getX/getY/getZ have different intermediary names than Entity's.
-        m = scanMethod(cls, paramTypes);
+        //    Prefer methods whose name equals the resolved/original name when
+        //    multiple signatures collide (e.g. several (GameProfile) methods).
+        m = scanMethodNamed(cls, resolved, paramTypes);
+        if (m == null && !resolved.equals(name))
+            m = scanMethodNamed(cls, name, paramTypes);
+        if (m == null)
+            m = scanMethod(cls, paramTypes, null);
         if (m != null) return m;
 
         // 4. Walk up to superclass
@@ -484,20 +512,39 @@ final class FabricReflection {
     }
 
     /**
-     * Scan all declared AND inherited public methods on {@code cls} for
-     * one whose parameter types match {@code paramTypes}.  Returns the
-     * first match.
-     *
-     * <p>{@link Class#getDeclaredMethods()} is tried first (most specific),
-     * then {@link Class#getMethods()} (includes inherited public methods
-     * from superclasses and interfaces).  The inherited scan is essential
-     * for methods like {@code sendSuccess(Supplier, boolean)} which may be
-     * declared on a parent class or command-source interface.
+     * Scan methods whose name equals {@code name} and params match.
+     * Used before blind param-only scan so overloaded same-sig methods
+     * (isOp vs isWhiteListed) are not confused when the name is known.
      */
-    private static Method scanMethod(Class<?> cls, Class<?>[] paramTypes) {
+    private static Method scanMethodNamed(Class<?> cls, String name, Class<?>[] paramTypes) {
+        if (name == null) return null;
+        for (Method candidate : cls.getDeclaredMethods()) {
+            if (!candidate.getName().equals(name)) continue;
+            if (paramsMatch(candidate, paramTypes) && returnOk(candidate, null)) {
+                candidate.setAccessible(true);
+                return candidate;
+            }
+        }
+        for (Method candidate : cls.getMethods()) {
+            if (candidate.getDeclaringClass() == Object.class) continue;
+            if (!candidate.getName().equals(name)) continue;
+            if (paramsMatch(candidate, paramTypes) && returnOk(candidate, null)) {
+                candidate.setAccessible(true);
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Scan all declared AND inherited public methods on {@code cls} for
+     * one whose parameter types match {@code paramTypes} and optionally
+     * whose return type is assignable to {@code returnType}.
+     */
+    private static Method scanMethod(Class<?> cls, Class<?>[] paramTypes, Class<?> returnType) {
         // 1. Declared (most specific — avoids duplicates from getMethods)
         for (Method candidate : cls.getDeclaredMethods()) {
-            if (paramsMatch(candidate, paramTypes)) {
+            if (paramsMatch(candidate, paramTypes) && returnOk(candidate, returnType)) {
                 candidate.setAccessible(true);
                 return candidate;
             }
@@ -505,7 +552,7 @@ final class FabricReflection {
         // 2. Inherited public methods (includes superclass + interfaces)
         for (Method candidate : cls.getMethods()) {
             if (candidate.getDeclaringClass() == Object.class) continue;
-            if (paramsMatch(candidate, paramTypes)) {
+            if (paramsMatch(candidate, paramTypes) && returnOk(candidate, returnType)) {
                 candidate.setAccessible(true);
                 return candidate;
             }
@@ -520,6 +567,24 @@ final class FabricReflection {
             if (!pts[i].isAssignableFrom(paramTypes[i])) return false;
         }
         return true;
+    }
+
+    private static boolean returnOk(Method m, Class<?> returnType) {
+        if (returnType == null) return true;
+        Class<?> rt = m.getReturnType();
+        if (returnType == void.class) return rt == void.class;
+        if (rt == void.class) return false;
+        // Allow primitive int for Integer.class etc.
+        if (returnType.isPrimitive()) return rt == returnType;
+        if (rt.isPrimitive()) {
+            if (returnType == Integer.class) return rt == int.class;
+            if (returnType == Boolean.class) return rt == boolean.class;
+            if (returnType == Long.class) return rt == long.class;
+            if (returnType == Double.class) return rt == double.class;
+            if (returnType == Float.class) return rt == float.class;
+            return false;
+        }
+        return returnType.isAssignableFrom(rt);
     }
 
     /** Find a field by bare mojang name, redirected to runtime name. */
