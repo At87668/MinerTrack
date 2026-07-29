@@ -12,6 +12,8 @@ server-*/
 Papyrus/
 *.jar
 tools/
+*.md
+!README*.md
 
 # Wiki
 wiki/
