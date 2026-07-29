@@ -534,10 +534,10 @@ public class FabricCommandBridge implements CommandBridge {
         if (isCSS && !isSourcePlayer(source)) return true;
 
         // CommandSourceStack.hasPermission(int) → boolean
-        // Match by (I)Z so we never hit unrelated (I) methods via blind scan.
+        // M_HAS_PERMISSION has correct hardcoded interFallback method_9259.
         if (isCSS) {
-            Object r = FabricReflection.callBySig(source,
-                new Class<?>[]{int.class}, new Object[]{minLevel}, boolean.class);
+            Object r = FabricReflection.callAny(source, "hasPermission",
+                new Class<?>[]{int.class}, new Object[]{minLevel});
             if (r instanceof Boolean) return (Boolean) r;
         }
 
@@ -595,8 +595,7 @@ public class FabricCommandBridge implements CommandBridge {
 
     /**
      * Operator check via {@code MinecraftServer.getProfilePermissions(GameProfile)}.
-     * Matched by signature {@code (GameProfile)I} so it cannot collide with
-     * other GameProfile methods.  Works on 1.18.2 through 1.21.x.
+     * Uses METHOD_REDIRECT (now has correct hardcoded interFallback).
      */
     static boolean isPlayerOperator(Object player) {
         if (player == null) return false;
@@ -605,12 +604,8 @@ public class FabricCommandBridge implements CommandBridge {
         if (gameProfile == null) return false;
         Object server = FabricReflection.getServer();
         if (server == null) return false;
-        // Match by (GameProfile) → int only.  Never use name-based redirect
-        // for this: intermediary names differ (official 'b'/'c' in tiny files,
-        // method_NNNN in yarn intermediary) and METHOD_REDIRECT hardcodes fail.
-        Object permLevel = FabricReflection.callBySig(server,
-            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile},
-            int.class);
+        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
+            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
         return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
     }
 
