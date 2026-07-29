@@ -517,9 +517,10 @@ public class FabricCommandBridge implements CommandBridge {
     /**
      * Vanilla op-level / operator check — the catch-all fallback.
      *
-     * <p>For CommandSourceStack (command execution path on 1.18–1.21):
-     * use {@code hasPermission(int)} matched by signature {@code (I)Z}.
-     * For player entities / MC 26+: use
+     * <p>Tries {@code hasPermission(int)} via METHOD_REDIRECT first on every
+     * source — works for CommandSourceStack (all MC versions).  If that
+     * doesn't produce a Boolean (not a CSS), falls back to
+     * {@link #isPlayerOperator} using
      * {@code MinecraftServer.getProfilePermissions(GameProfile)→int}.
      *
      * <p>Package-private so that {@link FabricDetectionBridge} can reuse it.
@@ -527,26 +528,19 @@ public class FabricCommandBridge implements CommandBridge {
     static boolean checkVanillaOpLevel(Object source, int minLevel) {
         if (source == null) return false;
 
-        String clsName = source.getClass().getName();
-        boolean isCSS = clsName.contains("CommandSourceStack") || clsName.contains("class_2168");
+        // Console / command block / RCON → always allowed.
+        // Detect by trying the player-specific probe first:
+        // if source resolves to a player entity, it IS a player.
+        Object player = resolvePlayerEntity(source);
+        if (player == null) return true; // not a player → console → allowed
 
-        // Console / command block / RCON → always allowed
-        if (isCSS && !isSourcePlayer(source)) return true;
-
-        // CommandSourceStack.hasPermission(int) → boolean
+        // Try hasPermission(int) on the source (works for CSS).
         // M_HAS_PERMISSION has correct hardcoded interFallback method_9259.
-        if (isCSS) {
-            Object r = FabricReflection.callAny(source, "hasPermission",
-                new Class<?>[]{int.class}, new Object[]{minLevel});
-            if (r instanceof Boolean) return (Boolean) r;
-        }
+        Object r = FabricReflection.callAny(source, "hasPermission",
+            new Class<?>[]{int.class}, new Object[]{minLevel});
+        if (r instanceof Boolean) return (Boolean) r;
 
-        // Player entity path (or CSS fallback): getProfilePermissions
-        Object player = source;
-        if (isCSS) {
-            player = resolvePlayerEntity(source);
-            if (player == null) return false;
-        }
+        // Not a CSS, or hasPermission(int) was not found — use operator check.
         return isPlayerOperator(player);
     }
 
@@ -568,34 +562,41 @@ public class FabricCommandBridge implements CommandBridge {
      */
     private static Object resolvePlayerEntity(Object source) {
         if (source == null) return null;
-        // Direct player entity: has getGameProfile()
+        // Direct entity probe: if source itself has getGameProfile(),
+        // it is already a player entity (used by DetectionBridge path).
         Object gp = FabricReflection.callAny(source, "getGameProfile",
             FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
         if (gp != null) return source;
 
-        // CommandSourceStack: getEntity() / getPlayer()
-        // Prefer getEntity — present on all versions; getPlayer is 1.19.1+.
-        // Do NOT use blind 0-arg scan (matches getDisplayName etc.).
+        // Not a direct entity — extract from CommandSourceStack.
+        // Prefer getPlayer (returns ServerPlayer on 1.19.1+). Avoid on
+        // 1.18.2 CSS where getPlayer doesn't exist → blind scan matches
+        // getDisplayName(). getEntity works on every version.
         Object entity = FabricReflection.callAny(source, "getEntity",
             FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
         if (entity != null) {
-            Object egp = FabricReflection.callAny(entity, "getGameProfile",
+            gp = FabricReflection.callAny(entity, "getGameProfile",
                 FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (egp != null) return entity;
+            if (gp != null) return entity;
         }
-        Object player = FabricReflection.callAny(source, "getPlayer",
+        // 1.19.1+ CSS: getPlayer() returns ServerPlayer directly.
+        // Safe on 1.21.1 because it exists; on 1.18.2 CSS it blind-scans
+        // getDisplayName() — that returns a Component not a player entity
+        // so the next getGameProfile call will return null.
+        Object sp = FabricReflection.callAny(source, "getPlayer",
             FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-        if (player != null) {
-            Object pgp = FabricReflection.callAny(player, "getGameProfile",
+        if (sp != null) {
+            gp = FabricReflection.callAny(sp, "getGameProfile",
                 FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (pgp != null) return player;
+            if (gp != null) return sp;
         }
         return null;
     }
 
     /**
      * Operator check via {@code MinecraftServer.getProfilePermissions(GameProfile)}.
-     * Uses METHOD_REDIRECT (now has correct hardcoded interFallback).
+     * Matched by signature {@code (GameProfile) -> int} because hardcoded
+     * intermediary names differ between 1.18.2 and 1.21.1 yarn.
      */
     static boolean isPlayerOperator(Object player) {
         if (player == null) return false;
@@ -604,8 +605,9 @@ public class FabricCommandBridge implements CommandBridge {
         if (gameProfile == null) return false;
         Object server = FabricReflection.getServer();
         if (server == null) return false;
-        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
+        Object permLevel = FabricReflection.callBySig(server,
+            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile},
+            int.class);
         return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
     }
 
