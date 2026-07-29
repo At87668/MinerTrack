@@ -149,7 +149,11 @@ final class FabricReflectionConstants {
     static final String M_GET_TICK_COUNT       = im("net.minecraft.server.MinecraftServer", "getTickCount",          "()I",                                                          "method_3780");
     static final String M_GET_LEVEL            = im("net.minecraft.server.MinecraftServer", "getLevel",              "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/server/level/ServerLevel;", "method_3847");
     static final String M_SEND_SYSTEM_MSG_SRV  = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;)V",                     "method_9203");
-    static final String M_GET_PROFILE_PERMISSIONS = im("net.minecraft.server.MinecraftServer", "getProfilePermissions", "(Lcom/mojang/authlib/GameProfile;)I",               "method_14568");
+    // NOTE: do NOT hardcode intermediary for getProfilePermissions.
+    // Official tiny maps it to single-letter names (b/c) that differ by version;
+    // yarn intermediary numbers also differ.  Call sites must use
+    // FabricReflection.callBySig(..., int.class) instead of name redirect.
+    static final String M_GET_PROFILE_PERMISSIONS = im("net.minecraft.server.MinecraftServer", "getProfilePermissions", "(Lcom/mojang/authlib/GameProfile;)I",               null);
 
     // -- ServerPlayer ----------------------------------------------------
     static final String M_GET_NAME             = im("net.minecraft.world.entity.Entity", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "method_5477");

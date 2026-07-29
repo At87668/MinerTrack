@@ -227,16 +227,7 @@ public class FabricViolationManager implements ViolationManagerBridge {
     }
 
     private static boolean isPlayerOp(Object pm, Object player) {
-        Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
-        if (gameProfile == null) return false;
-        // MinecraftServer.getProfilePermissions(GameProfile) → int.
-        // Unique (GameProfile)I signature — scanMethod cannot confuse it.
-        // PlayerList.isOp(GameProfile)Z has 3 siblings with identical sig.
-        Object server = FabricReflection.getServer();
-        if (server == null) return false;
-        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-        return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
+        return FabricCommandBridge.isPlayerOperator(player);
     }
 
     @Override

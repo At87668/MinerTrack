@@ -383,15 +383,7 @@ public class FabricDetectionBridge implements DetectionBridge {
     }
 
     private static boolean isPlayerOp(Object pm, Object player) {
-        Object gameProfile = FabricReflection.callAny(player, "getGameProfile", new Class<?>[0], new Object[0]);
-        if (gameProfile == null) return false;
-        // MinecraftServer.getProfilePermissions(GameProfile) → int.
-        // Unique (GameProfile)I signature — scanMethod cannot confuse it.
-        Object server = FabricReflection.getServer();
-        if (server == null) return false;
-        Object permLevel = FabricReflection.callAny(server, "getProfilePermissions",
-            new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile});
-        return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
+        return FabricCommandBridge.isPlayerOperator(player);
     }
 
     @Override
