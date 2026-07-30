@@ -1,5 +1,5 @@
 ---
-name: BUG Report
+name: BUG Report (Fabric)
 about: If you want to report a bug, select this.
 title: "[Minecraft Version] Issue Title"
 labels: "❌BUG, 📃Fabric"
