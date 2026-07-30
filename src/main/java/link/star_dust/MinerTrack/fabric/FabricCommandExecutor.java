@@ -250,7 +250,7 @@ public class FabricCommandExecutor {
                 // disconnect(Component) — public API on all versions.
                 // 1.18-1.20.3: ServerGamePacketListenerImpl.disconnect (method_14367)
                 // 1.20.4+:       ServerCommonPacketListenerImpl.disconnect (method_52396)
-                FabricReflection.callAny(network, "disconnect",
+                FabricReflection.callAny(network, FabricReflectionConstants.M_DISCONNECT,
                     new Class<?>[]{textCls}, new Object[]{text});
                 FabricReflection.callAny(network, FabricReflectionConstants.M_DISCONNECT_NEW,
                     new Class<?>[]{textCls}, new Object[]{text});
