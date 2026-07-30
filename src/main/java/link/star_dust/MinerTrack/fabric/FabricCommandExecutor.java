@@ -248,7 +248,6 @@ public class FabricCommandExecutor {
                 }
 
                 // disconnect(Component) — public API on all versions (1.18.2–1.26+).
-                // On 1.21+ DisconnectionDetails is an internal detail of disconnect().
                 // Uses METHOD_REDIRECT (M_DISCONNECT → method_10839 intermediary).
                 FabricReflection.callAny(network, "disconnect",
                     new Class<?>[]{textCls}, new Object[]{text});
