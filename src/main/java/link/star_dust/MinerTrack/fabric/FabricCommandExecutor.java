@@ -247,44 +247,14 @@ public class FabricCommandExecutor {
                     return;
                 }
 
-                // 1) 1.21.x: onDisconnect(DisconnectionDetails).
-                //    Build DisconnectionDetails(Component) via hardcoded CLS_DISCONNECTION_DETAILS.
-                //    callAny → METHOD_REDIRECT(onDisconnect) → tryMethod fails
-                //    (wrong descriptor) → scanMethod finds by param type.
-                Object details = buildDisconnectionDetails(text);
-                if (details != null) {
-                    FabricReflection.callAny(network, "onDisconnect",
-                        new Class<?>[]{details.getClass()},
-                        new Object[]{details});
-                    return;
-                }
-
-                // 2) 1.18.2-1.20.x: disconnect(Component) / onDisconnect(Component).
-                //    Uses METHOD_REDIRECT (M_DISCONNECT → method_10839).
+                // disconnect(Component) — public API on all versions (1.18.2–1.26+).
+                // On 1.21+ DisconnectionDetails is an internal detail of disconnect().
+                // Uses METHOD_REDIRECT (M_DISCONNECT → method_10839 intermediary).
                 FabricReflection.callAny(network, "disconnect",
-                    new Class<?>[]{textCls}, new Object[]{text});
-                FabricReflection.callAny(network, "onDisconnect",
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
             }
-        }
-
-        /**
-         * Build DisconnectionDetails from Component via hardcoded class path.
-         * {@code CLS_DISCONNECTION_DETAILS = net.minecraft.network.DisconnectionDetails}
-         * with intermediary fallback {@code class_9812}.
-         */
-        private static Object buildDisconnectionDetails(Object component) {
-            if (component == null) return null;
-            Class<?> ddCls = FabricReflection.forName(
-                FabricReflectionConstants.CLS_DISCONNECTION_DETAILS);
-            if (ddCls == null) return null;
-            try {
-                java.lang.reflect.Constructor<?> ctor = ddCls.getDeclaredConstructor(component.getClass());
-                ctor.setAccessible(true);
-                return ctor.newInstance(component);
-            } catch (Throwable t) { return null; }
         }
 
         @Override

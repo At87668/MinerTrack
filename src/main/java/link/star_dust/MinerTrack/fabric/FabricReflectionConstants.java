@@ -135,7 +135,6 @@ final class FabricReflectionConstants {
     static final String CLS_INTERACTION_RESULT        = "net.minecraft.world.InteractionResult";
     static final String CLS_VEC3                      = "net.minecraft.world.phys.Vec3";
     static final String CLS_SERVER_GAME_PACKET_LISTENER = "net.minecraft.server.network.ServerGamePacketListenerImpl";
-    static final String CLS_DISCONNECTION_DETAILS = "net.minecraft.network.DisconnectionDetails";
 
     // ==================================================================
     // METHOD NAMES
@@ -190,7 +189,7 @@ final class FabricReflectionConstants {
     static final String M_GET_STILL            = im("net.minecraft.world.level.material.FlowingFluid", "getSource",     "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15751");
 
     // -- ServerGamePacketListenerImpl ------------------------------------
-    static final String M_DISCONNECT           = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "onDisconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_10839");
+    static final String M_DISCONNECT           = im("net.minecraft.server.network.ServerCommonPacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_10839");
 
     // -- Commands --------------------------------------------------------
     static final String M_PERFORM_COMMAND      = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_9249");
@@ -291,7 +290,6 @@ final class FabricReflectionConstants {
         putM("getStill",            M_GET_STILL);
         // ServerGamePacketListenerImpl
         putM("disconnect",          M_DISCONNECT);
-        putM("onDisconnect",        M_DISCONNECT);         // 1.18 alias
         // Commands
         putM("performCommand",      M_PERFORM_COMMAND);
         putM("performPrefixedCommand", M_PERFORM_PREFIXED_CMD);
@@ -393,7 +391,6 @@ final class FabricReflectionConstants {
         NAMED_TO_INTER.put("net.minecraft.world.phys.Vec3",                     "net.minecraft.class_243");
         NAMED_TO_INTER.put("net.minecraft.server.network.ServerGamePacketListenerImpl", "net.minecraft.class_3244");
         NAMED_TO_INTER.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.class_2585");
-        NAMED_TO_INTER.put("net.minecraft.network.DisconnectionDetails",          "net.minecraft.class_9812");
     }
 
     static String toIntermediaryClass(String named) { return NAMED_TO_INTER.get(named); }
