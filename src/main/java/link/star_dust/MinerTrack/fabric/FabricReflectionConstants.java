@@ -135,6 +135,7 @@ final class FabricReflectionConstants {
     static final String CLS_INTERACTION_RESULT        = "net.minecraft.world.InteractionResult";
     static final String CLS_VEC3                      = "net.minecraft.world.phys.Vec3";
     static final String CLS_SERVER_GAME_PACKET_LISTENER = "net.minecraft.server.network.ServerGamePacketListenerImpl";
+    static final String CLS_DISCONNECTION_DETAILS = "net.minecraft.network.DisconnectionDetails";
 
     // ==================================================================
     // METHOD NAMES
@@ -392,6 +393,7 @@ final class FabricReflectionConstants {
         NAMED_TO_INTER.put("net.minecraft.world.phys.Vec3",                     "net.minecraft.class_243");
         NAMED_TO_INTER.put("net.minecraft.server.network.ServerGamePacketListenerImpl", "net.minecraft.class_3244");
         NAMED_TO_INTER.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.class_2585");
+        NAMED_TO_INTER.put("net.minecraft.network.DisconnectionDetails",          "net.minecraft.class_9812");
     }
 
     static String toIntermediaryClass(String named) { return NAMED_TO_INTER.get(named); }
