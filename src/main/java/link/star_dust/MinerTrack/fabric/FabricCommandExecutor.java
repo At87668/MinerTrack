@@ -231,23 +231,36 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
-                // Resolve the network connection field by type rather than
-                // name: hardcoded intermediary field_13987 only works on
-                // 1.18.2 and fails silently on 1.21.1.
-                Object network = findNetworkField(player);
-                if (network == null) return;
                 Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
-                // disconnect(Component) — the single-param overload exists
-                // on all MC versions.  METHOD_REDIRECT maps "disconnect" to
-                // the correct resolved name; scanMethod disambiguates the
-                // (Component) vs (DisconnectionDetails) overloads by sig.
+
+                // Find the network connection field.
+                Object network = findNetworkField(player);
+                if (network == null) {
+                    adapter.warning("Failed to kick player " + playerId + ": no connection field");
+                    return;
+                }
+
+                // 1) 1.21.x: onDisconnect(DisconnectionDetails).
+                //    Wrap Component in DisconnectionDetails via its (Component) ctor.
+                Object details = buildDisconnectionDetails(text);
+                if (details != null) {
+                    try {
+                        FabricReflection.invokeBySigOrThrow(network,
+                            new Class<?>[]{details.getClass()},
+                            new Object[]{details});
+                        return;
+                    } catch (Throwable t1) { /* fall through */ }
+                }
+
+                // 2) 1.18.2-1.20.x: disconnect(Component) on the connection.
                 try {
                     FabricReflection.callAny(network, "disconnect",
                         new Class<?>[]{textCls}, new Object[]{text});
-                } catch (Throwable t1) {
+                    return;
+                } catch (Throwable t2) {
                     FabricReflection.callAny(network, "onDisconnect",
                         new Class<?>[]{textCls}, new Object[]{text});
                 }
@@ -256,20 +269,12 @@ public class FabricCommandExecutor {
             }
         }
 
-        /**
-         * Find the ServerGamePacketListenerImpl / ServerPlayNetworkHandler
-         * field on a player entity, by scanning declared + inherited fields
-         * for one whose type name contains "PacketListener" or "NetworkHandler".
-         */
         private static Object findNetworkField(Object player) {
             if (player == null) return null;
-            // Try name-based lookup first (works on named / MC 26+).
             for (String fieldName : new String[]{"connection", "networkHandler"}) {
                 Object r = FabricReflection.getField(player, fieldName);
                 if (r != null) return r;
             }
-            // Type-based fallback: resolve the ServerGamePacketListenerImpl
-            // class via forName (handles intermediary), then scan fields.
             Class<?> netCls = FabricReflection.forName(
                 FabricReflectionConstants.CLS_SERVER_GAME_PACKET_LISTENER);
             if (netCls == null) return null;
@@ -277,15 +282,28 @@ public class FabricCommandExecutor {
             while (cls != null && cls != Object.class) {
                 for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
                     if (netCls.isAssignableFrom(f.getType())) {
-                        try {
-                            f.setAccessible(true);
-                            return f.get(player);
-                        } catch (Throwable ignored) {}
+                        try { f.setAccessible(true); return f.get(player); }
+                        catch (Throwable ignored) {}
                     }
                 }
                 cls = cls.getSuperclass();
             }
             return null;
+        }
+
+        /**
+         * Build a DisconnectionDetails from a Component.
+         * Uses {@code new DisconnectionDetails(Component)} constructor.
+         */
+        private static Object buildDisconnectionDetails(Object component) {
+            if (component == null) return null;
+            // Try DisconnectionDetails(Component) constructor by name first.
+            try {
+                Class<?> ddCls = Class.forName("net.minecraft.network.DisconnectionDetails");
+                java.lang.reflect.Constructor<?> ctor = ddCls.getDeclaredConstructor(component.getClass());
+                ctor.setAccessible(true);
+                return ctor.newInstance(component);
+            } catch (Throwable t) { return null; }
         }
 
         @Override
