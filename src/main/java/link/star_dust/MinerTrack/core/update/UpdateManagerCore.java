@@ -240,6 +240,9 @@ public class UpdateManagerCore {
                 if (selected != null) {
                     this.latestVersion = selected.getString("version_number");
                     this.downloadUrl = DOWNLOAD_URL_PREFIX + this.latestVersion;
+                } else {
+                    this.latestVersion = null;
+                    this.downloadUrl = null;
                 }
             } else {
                 logSafely("No versions found on Modrinth.");
@@ -444,6 +447,13 @@ public class UpdateManagerCore {
 
     private Version parseVersion(String versionStr) {
         versionStr = versionStr.replaceFirst("^v", "");
+        // Strip SemVer build metadata (+fabric, +bukkit, etc.) — it
+        // does not affect version precedence and must not leak into
+        // the pre-release tag parsed below.
+        int plusIdx = versionStr.indexOf('+');
+        if (plusIdx >= 0) {
+            versionStr = versionStr.substring(0, plusIdx);
+        }
         String[] parts = versionStr.split("-", 2);
         String main = parts[0];
         String pre = parts.length > 1 ? parts[1] : null;
