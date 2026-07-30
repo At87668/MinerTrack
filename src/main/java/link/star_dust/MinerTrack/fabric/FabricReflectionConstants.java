@@ -189,7 +189,11 @@ final class FabricReflectionConstants {
     static final String M_GET_STILL            = im("net.minecraft.world.level.material.FlowingFluid", "getSource",     "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15751");
 
     // -- ServerGamePacketListenerImpl ------------------------------------
-    static final String M_DISCONNECT           = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "onDisconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_10839");
+    // disconnect(Component) — 1.18-1.20.3 declared on ServerGamePacketListenerImpl (method_14367),
+    // 1.20.4+ pulled up to ServerCommonPacketListenerImpl (method_52396).
+    // findMethodImpl walks to parent class on 1.20.4+ automatically.
+    static final String M_DISCONNECT_NEW       = im("net.minecraft.server.network.ServerCommonPacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_52396");
+    static final String M_DISCONNECT           = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_14367");
 
     // -- Commands --------------------------------------------------------
     static final String M_PERFORM_COMMAND      = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_9249");

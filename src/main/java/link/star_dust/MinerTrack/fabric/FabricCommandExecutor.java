@@ -247,9 +247,12 @@ public class FabricCommandExecutor {
                     return;
                 }
 
-                // disconnect(Component) — public API on all versions (1.18.2–1.26+).
-                // Uses METHOD_REDIRECT (M_DISCONNECT → method_10839 intermediary).
+                // disconnect(Component) — public API on all versions.
+                // 1.18-1.20.3: ServerGamePacketListenerImpl.disconnect (method_14367)
+                // 1.20.4+:       ServerCommonPacketListenerImpl.disconnect (method_52396)
                 FabricReflection.callAny(network, "disconnect",
+                    new Class<?>[]{textCls}, new Object[]{text});
+                FabricReflection.callAny(network, FabricReflectionConstants.M_DISCONNECT_NEW,
                     new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
