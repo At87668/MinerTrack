@@ -235,69 +235,40 @@ public class FabricCommandExecutor {
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
-
-                // Try single-param (Component)V first (1.18.2–1.20.x).
-                if (tryInvokeOnField(player, new Class<?>[]{textCls}, new Object[]{text})) return;
-
-                // 1.21.1+: onDisconnect(DisconnectionDetails).
-                // Construct DisconnectionDetails via createDisconnectionInfo(Component, Throwable).
-                Object details = buildDisconnectionDetails(text);
-                if (details != null) {
-                    if (tryInvokeOnField(player, new Class<?>[]{details.getClass()},
-                            new Object[]{details})) return;
+                // Walk every field of the player entity and try calling a
+                // single-param (Component)V method on each one.  The method
+                // that succeeds IS the disconnect — we don't need to know
+                // its name or the field's name.  Combines field discovery
+                // + disconnect into a single scan that works on every MC
+                // version (1.18.2 through 1.21.1) without any hardcoded
+                // intermediary class or field numbers.
+                Class<?> cls = player.getClass();
+                while (cls != null && cls != Object.class) {
+                    for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
+                        // Skip primitives, strings, arrays, collections.
+                        Class<?> ft = f.getType();
+                        if (ft.isPrimitive() || ft == String.class || ft.isArray()
+                            || java.util.Collection.class.isAssignableFrom(ft)
+                            || java.util.Map.class.isAssignableFrom(ft)
+                            || Number.class.isAssignableFrom(ft)) continue;
+                        Object val;
+                        try { f.setAccessible(true); val = f.get(player); }
+                        catch (Throwable ignored) { continue; }
+                        if (val == null) continue;
+                        try {
+                            FabricReflection.invokeBySigOrThrow(val,
+                                new Class<?>[]{textCls}, new Object[]{text});
+                            return; // disconnect succeeded
+                        } catch (Throwable ignored) {
+                            // Not the right field — continue scanning.
+                        }
+                    }
+                    cls = cls.getSuperclass();
                 }
-
                 adapter.warning("Failed to kick player " + playerId + ": no disconnect method found");
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
             }
-        }
-
-        /**
-         * Walk every non-primitive field of {@code player}, try
-         * {@code invokeBySigOrThrow(val, paramTypes, args)} on each.
-         * Returns true on first success.
-         */
-        private static boolean tryInvokeOnField(Object player, Class<?>[] paramTypes, Object[] args) {
-            Class<?> cls = player.getClass();
-            while (cls != null && cls != Object.class) {
-                for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
-                    Class<?> ft = f.getType();
-                    if (ft.isPrimitive() || ft == String.class || ft.isArray()
-                        || java.util.Collection.class.isAssignableFrom(ft)
-                        || java.util.Map.class.isAssignableFrom(ft)
-                        || Number.class.isAssignableFrom(ft)) continue;
-                    Object val;
-                    try { f.setAccessible(true); val = f.get(player); }
-                    catch (Throwable ignored) { continue; }
-                    if (val == null) continue;
-                    try {
-                        FabricReflection.invokeBySigOrThrow(val, paramTypes, args);
-                        return true;
-                    } catch (Throwable ignored) { /* continue scanning */ }
-                }
-                cls = cls.getSuperclass();
-            }
-            return false;
-        }
-
-        /**
-         * Build a DisconnectionDetails instance from a Component.
-         * Uses MinecraftServer.createDisconnectionInfo(Component, Throwable)
-         * which exists on 1.21.1+.
-         */
-        private static Object buildDisconnectionDetails(Object component) {
-            try {
-                Object server = FabricReflection.getServer();
-                if (server == null) return null;
-                // createDisconnectionInfo(Component, Throwable)
-                // M_DISCONNECT maps both "disconnect" and "onDisconnect" —
-                // but createDisconnectionInfo is not in METHOD_REDIRECT.
-                // Try by name first, then fall back to signature scan.
-                return FabricReflection.callAny(server, "createDisconnectionInfo",
-                    new Class<?>[]{component.getClass(), Throwable.class},
-                    new Object[]{component, new Throwable()});
-            } catch (Throwable t) { return null; }
         }
 
         @Override
