@@ -249,25 +249,22 @@ public class FabricCommandExecutor {
 
                 // 1) 1.21.x: onDisconnect(DisconnectionDetails).
                 //    Build DisconnectionDetails(Component) via hardcoded CLS_DISCONNECTION_DETAILS.
+                //    callAny → METHOD_REDIRECT(onDisconnect) → tryMethod fails
+                //    (wrong descriptor) → scanMethod finds by param type.
                 Object details = buildDisconnectionDetails(text);
                 if (details != null) {
-                    try {
-                        FabricReflection.invokeBySigOrThrow(network,
-                            new Class<?>[]{details.getClass()},
-                            new Object[]{details});
-                        return;
-                    } catch (Throwable t1) { /* fall through to (Component) path */ }
+                    FabricReflection.callAny(network, "onDisconnect",
+                        new Class<?>[]{details.getClass()},
+                        new Object[]{details});
+                    return;
                 }
 
                 // 2) 1.18.2-1.20.x: disconnect(Component) / onDisconnect(Component).
                 //    Uses METHOD_REDIRECT (M_DISCONNECT → method_10839).
-                try {
-                    FabricReflection.callAny(network, "disconnect",
-                        new Class<?>[]{textCls}, new Object[]{text});
-                } catch (Throwable t2) {
-                    FabricReflection.callAny(network, "onDisconnect",
-                        new Class<?>[]{textCls}, new Object[]{text});
-                }
+                FabricReflection.callAny(network, "disconnect",
+                    new Class<?>[]{textCls}, new Object[]{text});
+                FabricReflection.callAny(network, "onDisconnect",
+                    new Class<?>[]{textCls}, new Object[]{text});
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
             }
