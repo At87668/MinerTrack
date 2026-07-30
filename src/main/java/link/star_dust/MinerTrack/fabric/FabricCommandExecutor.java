@@ -231,41 +231,45 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
-                // Resolve the network connection field by TYPE, not hardcoded
-                // intermediary name — field_13987 differs across versions.
+                // Resolve the network connection field by type rather than
+                // name: hardcoded intermediary field_13987 only works on
+                // 1.18.2 and fails silently on 1.21.1.
                 Object network = findNetworkField(player);
                 if (network == null) return;
                 Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
-                // disconnect(Component) — METHOD_REDIRECT resolves to correct
-                // intermediary name.  callAny silently returns null on failure;
-                // use invokeBySigOrThrow instead so the fallback actually runs.
+                // disconnect(Component) — the single-param overload exists
+                // on all MC versions.  METHOD_REDIRECT maps "disconnect" to
+                // the correct resolved name; scanMethod disambiguates the
+                // (Component) vs (DisconnectionDetails) overloads by sig.
                 try {
-                    FabricReflection.invokeBySigOrThrow(network,
+                    FabricReflection.callAny(network, "disconnect",
                         new Class<?>[]{textCls}, new Object[]{text});
                 } catch (Throwable t1) {
-                    // 1.18.2 alias: onDisconnect(Component) — same METHOD_REDIRECT entry.
-                    // Also try with Messenger/Connection subclass on some versions.
-                    FabricReflection.invokeBySigOrThrow(network,
-                        new Class<?>[]{textCls, boolean.class},
-                        new Object[]{text, true});
+                    FabricReflection.callAny(network, "onDisconnect",
+                        new Class<?>[]{textCls}, new Object[]{text});
                 }
             } catch (Throwable t) {
                 adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
             }
         }
 
+        /**
+         * Find the ServerGamePacketListenerImpl / ServerPlayNetworkHandler
+         * field on a player entity, by scanning declared + inherited fields
+         * for one whose type name contains "PacketListener" or "NetworkHandler".
+         */
         private static Object findNetworkField(Object player) {
             if (player == null) return null;
-            // Name-based lookup (works on named/MC 26+).
+            // Try name-based lookup first (works on named / MC 26+).
             for (String fieldName : new String[]{"connection", "networkHandler"}) {
                 Object r = FabricReflection.getField(player, fieldName);
                 if (r != null) return r;
             }
-            // Type-based fallback: scan all declared+inherited fields for
-            // ServerGamePacketListenerImpl (avoids hardcoded intermediary).
+            // Type-based fallback: resolve the ServerGamePacketListenerImpl
+            // class via forName (handles intermediary), then scan fields.
             Class<?> netCls = FabricReflection.forName(
                 FabricReflectionConstants.CLS_SERVER_GAME_PACKET_LISTENER);
             if (netCls == null) return null;
