@@ -236,15 +236,19 @@ public class FabricCommandExecutor {
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
 
-                // Find the network connection field.
-                Object network = findNetworkField(player);
+                // Get ServerGamePacketListenerImpl via the `connection` field.
+                // Uses FIELD_REDIRECT (F_CONNECTION) with hardcoded fallback.
+                Object network = FabricReflection.getField(player, "connection");
+                if (network == null) {
+                    network = FabricReflection.getField(player, "networkHandler");
+                }
                 if (network == null) {
                     adapter.warning("Failed to kick player " + playerId + ": no connection field");
                     return;
                 }
 
                 // 1) 1.21.x: onDisconnect(DisconnectionDetails).
-                //    Wrap Component in DisconnectionDetails via its (Component) ctor.
+                //    Build DisconnectionDetails(Component) via hardcoded CLS_DISCONNECTION_DETAILS.
                 Object details = buildDisconnectionDetails(text);
                 if (details != null) {
                     try {
@@ -252,14 +256,14 @@ public class FabricCommandExecutor {
                             new Class<?>[]{details.getClass()},
                             new Object[]{details});
                         return;
-                    } catch (Throwable t1) { /* fall through */ }
+                    } catch (Throwable t1) { /* fall through to (Component) path */ }
                 }
 
-                // 2) 1.18.2-1.20.x: disconnect(Component) on the connection.
+                // 2) 1.18.2-1.20.x: disconnect(Component) / onDisconnect(Component).
+                //    Uses METHOD_REDIRECT (M_DISCONNECT → method_10839).
                 try {
                     FabricReflection.callAny(network, "disconnect",
                         new Class<?>[]{textCls}, new Object[]{text});
-                    return;
                 } catch (Throwable t2) {
                     FabricReflection.callAny(network, "onDisconnect",
                         new Class<?>[]{textCls}, new Object[]{text});
@@ -269,37 +273,17 @@ public class FabricCommandExecutor {
             }
         }
 
-        private static Object findNetworkField(Object player) {
-            if (player == null) return null;
-            for (String fieldName : new String[]{"connection", "networkHandler"}) {
-                Object r = FabricReflection.getField(player, fieldName);
-                if (r != null) return r;
-            }
-            Class<?> netCls = FabricReflection.forName(
-                FabricReflectionConstants.CLS_SERVER_GAME_PACKET_LISTENER);
-            if (netCls == null) return null;
-            Class<?> cls = player.getClass();
-            while (cls != null && cls != Object.class) {
-                for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
-                    if (netCls.isAssignableFrom(f.getType())) {
-                        try { f.setAccessible(true); return f.get(player); }
-                        catch (Throwable ignored) {}
-                    }
-                }
-                cls = cls.getSuperclass();
-            }
-            return null;
-        }
-
         /**
-         * Build a DisconnectionDetails from a Component.
-         * Uses {@code new DisconnectionDetails(Component)} constructor.
+         * Build DisconnectionDetails from Component via hardcoded class path.
+         * {@code CLS_DISCONNECTION_DETAILS = net.minecraft.network.DisconnectionDetails}
+         * with intermediary fallback {@code class_9812}.
          */
         private static Object buildDisconnectionDetails(Object component) {
             if (component == null) return null;
-            // Try DisconnectionDetails(Component) constructor by name first.
+            Class<?> ddCls = FabricReflection.forName(
+                FabricReflectionConstants.CLS_DISCONNECTION_DETAILS);
+            if (ddCls == null) return null;
             try {
-                Class<?> ddCls = Class.forName("net.minecraft.network.DisconnectionDetails");
                 java.lang.reflect.Constructor<?> ctor = ddCls.getDeclaredConstructor(component.getClass());
                 ctor.setAccessible(true);
                 return ctor.newInstance(component);
