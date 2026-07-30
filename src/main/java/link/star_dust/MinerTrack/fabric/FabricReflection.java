@@ -24,6 +24,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Lightweight reflection helpers for accessing Minecraft internals.
@@ -47,6 +49,79 @@ final class FabricReflection {
     static Object getServer() { return cachedServer; }
 
     private static void log(String msg) { System.out.println("[MinerTrack:Reflection] " + msg); }
+
+    // ==================================================================
+    // Reflection caches — avoid repeated getDeclaredMethod/Field scans
+    // ==================================================================
+
+    /** Sentinel for "not found" results (ConcurrentHashMap forbids null values). */
+    private static final Object NOT_FOUND = new Object();
+
+    /** Cache: className → Class<?> (or NOT_FOUND). */
+    private static final ConcurrentHashMap<String, Object> classCache = new ConcurrentHashMap<>(64);
+
+    /** Cache: (Class, methodName, paramTypes) → Method (or NOT_FOUND). */
+    private static final ConcurrentHashMap<MethodKey, Object> methodCache = new ConcurrentHashMap<>(128);
+
+    /** Cache: (className, methodName, paramTypes) → Method (or NOT_FOUND). */
+    private static final ConcurrentHashMap<StaticMethodKey, Object> staticMethodCache = new ConcurrentHashMap<>(64);
+
+    /** Cache: (Class, fieldName) → Field (or NOT_FOUND). */
+    private static final ConcurrentHashMap<FieldKey, Object> fieldCache = new ConcurrentHashMap<>(64);
+
+    // -- Key types -----------------------------------------------------
+
+    private static final class MethodKey {
+        final Class<?> cls;
+        final String name;
+        final Class<?>[] paramTypes;
+        MethodKey(Class<?> cls, String name, Class<?>[] paramTypes) {
+            this.cls = cls; this.name = name; this.paramTypes = paramTypes;
+        }
+        @Override public boolean equals(Object o) {
+            if (!(o instanceof MethodKey)) return false;
+            MethodKey k = (MethodKey) o;
+            return cls == k.cls && name.equals(k.name) && Arrays.equals(paramTypes, k.paramTypes);
+        }
+        @Override public int hashCode() {
+            return cls.hashCode() * 31 + name.hashCode() + Arrays.hashCode(paramTypes);
+        }
+    }
+
+    private static final class StaticMethodKey {
+        final String className;
+        final String methodName;
+        final Class<?>[] paramTypes;
+        StaticMethodKey(String className, String methodName, Class<?>[] paramTypes) {
+            this.className = className; this.methodName = methodName; this.paramTypes = paramTypes;
+        }
+        @Override public boolean equals(Object o) {
+            if (!(o instanceof StaticMethodKey)) return false;
+            StaticMethodKey k = (StaticMethodKey) o;
+            return className.equals(k.className) && methodName.equals(k.methodName)
+                && Arrays.equals(paramTypes, k.paramTypes);
+        }
+        @Override public int hashCode() {
+            return className.hashCode() * 31 + methodName.hashCode() + Arrays.hashCode(paramTypes);
+        }
+    }
+
+    private static final class FieldKey {
+        final Class<?> cls;
+        final String name;
+        FieldKey(Class<?> cls, String name) { this.cls = cls; this.name = name; }
+        @Override public boolean equals(Object o) {
+            if (!(o instanceof FieldKey)) return false;
+            FieldKey k = (FieldKey) o;
+            return cls == k.cls && name.equals(k.name);
+        }
+        @Override public int hashCode() { return cls.hashCode() * 31 + name.hashCode(); }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T unwrap(Object cached) {
+        return (cached == NOT_FOUND) ? null : (T) cached;
+    }
 
     // -- reusable empty arrays -------------------------------------------
 
@@ -107,21 +182,28 @@ final class FabricReflection {
 
     /**
      * Load a Minecraft class by its mojang/named name, falling back to
-     * intermediary class name on production servers.
+     * intermediary class name on production servers.  Results are cached.
      */
     static Class<?> forName(String namedClassName) {
+        if (namedClassName == null) return null;
+        Object cached = classCache.get(namedClassName);
+        if (cached != null) return unwrap(cached);
+
         Class<?> cls = tryLoad(namedClassName);
-        if (cls != null) return cls;
+        if (cls != null) { classCache.put(namedClassName, cls); return cls; }
         String inter = FabricReflectionConstants.toIntermediaryClass(namedClassName);
-        if (inter != null && !inter.equals(namedClassName))
+        if (inter != null && !inter.equals(namedClassName)) {
             cls = tryLoad(inter);
-        if (cls == null && DEBUG_REFLECTION) {
+            if (cls != null) { classCache.put(namedClassName, cls); return cls; }
+        }
+        if (DEBUG_REFLECTION) {
             // Suppress noise for Fabric API classes that are conditionally
             // available (v2 vs v1, optional modules, etc.)
             if (!namedClassName.startsWith("net.fabricmc.fabric.api."))
                 log("CLS-MISS " + namedClassName);
         }
-        return cls;
+        classCache.put(namedClassName, NOT_FOUND);
+        return null;
     }
 
     private static Class<?> tryLoad(String name) {
@@ -189,45 +271,68 @@ final class FabricReflection {
     // ==================================================================
 
     /**
-     * Call a static method.
+     * Call a static method.  Looked-up Methods are cached by (className, methodName, paramTypes).
      *
      * @param className  mojang/named class name (resolved via {@link #forName})
      * @param methodName runtime method name (bare mojang name — will be redirected)
      */
     static Object callStatic(String className, String methodName,
                              Class<?>[] paramTypes, Object[] args) {
+        StaticMethodKey key = new StaticMethodKey(className, methodName, paramTypes);
+        Object cached = staticMethodCache.get(key);
+        if (cached != null) {
+            Method m = unwrap(cached);
+            if (m == null) return null;
+            try { return m.invoke(null, args); }
+            catch (IllegalAccessException | InvocationTargetException e) { return null; }
+        }
+
         Class<?> cls = forName(className);
-        if (cls == null) return null;
+        if (cls == null) { staticMethodCache.put(key, NOT_FOUND); return null; }
         String r = FabricReflectionConstants.redirectMethod(methodName);
 
         // 1. Exact match with resolved name
+        Method found = null;
         try {
             Method m = cls.getDeclaredMethod(r, paramTypes);
             m.setAccessible(true);
-            return m.invoke(null, args);
+            Object result = m.invoke(null, args);
+            staticMethodCache.put(key, m);
+            return result;
         } catch (NoSuchMethodException e) {
-            try { return cls.getMethod(r, paramTypes).invoke(null, args); }
-            catch (Throwable t2) { /* fall through */ }
+            try {
+                Method m = cls.getMethod(r, paramTypes);
+                Object result = m.invoke(null, args);
+                staticMethodCache.put(key, m);
+                return result;
+            } catch (Throwable t2) { /* fall through */ }
         } catch (IllegalAccessException | InvocationTargetException e) {
+            staticMethodCache.put(key, NOT_FOUND);
             return null;
         }
 
         // 2. If resolved name ≠ original, try original name
         if (!r.equals(methodName)) {
             try {
-                Method m = cls.getDeclaredMethod(methodName, paramTypes);
-                m.setAccessible(true);
-                return m.invoke(null, args);
+                found = cls.getDeclaredMethod(methodName, paramTypes);
+                found.setAccessible(true);
+                Object result = found.invoke(null, args);
+                staticMethodCache.put(key, found);
+                return result;
             } catch (NoSuchMethodException ignored) {
             } catch (IllegalAccessException | InvocationTargetException e) {
+                staticMethodCache.put(key, NOT_FOUND);
                 return null;
             }
             try {
-                Method m = cls.getMethod(methodName, paramTypes);
-                m.setAccessible(true);
-                return m.invoke(null, args);
+                found = cls.getMethod(methodName, paramTypes);
+                found.setAccessible(true);
+                Object result = found.invoke(null, args);
+                staticMethodCache.put(key, found);
+                return result;
             } catch (NoSuchMethodException ignored) {
             } catch (IllegalAccessException | InvocationTargetException e) {
+                staticMethodCache.put(key, NOT_FOUND);
                 return null;
             }
         }
@@ -244,13 +349,16 @@ final class FabricReflection {
             if (match) {
                 try {
                     candidate.setAccessible(true);
-                    return candidate.invoke(null, args);
+                    Object result = candidate.invoke(null, args);
+                    staticMethodCache.put(key, candidate);
+                    return result;
                 } catch (Throwable ignored) {}
             }
         }
 
         if (DEBUG_REFLECTION)
             log("STATIC-MISS " + className + "." + methodName + " (resolved=" + r + ")");
+        staticMethodCache.put(key, NOT_FOUND);
         return null;
     }
 
@@ -463,16 +571,20 @@ final class FabricReflection {
      */
     static Method findMethodImpl(Class<?> cls, String name, Class<?>[] paramTypes) {
         if (cls == null || name == null) return null;
+        MethodKey key = new MethodKey(cls, name, paramTypes);
+        Object cached = methodCache.get(key);
+        if (cached != null) return unwrap(cached);
+
         String resolved = FabricReflectionConstants.redirectMethod(name);
 
         // 1. Try resolved name
         Method m = tryMethod(cls, resolved, paramTypes);
-        if (m != null) return m;
+        if (m != null) { methodCache.put(key, m); return m; }
 
         // 2. If resolved ≠ original, try original
         if (!resolved.equals(name)) {
             m = tryMethod(cls, name, paramTypes);
-            if (m != null) return m;
+            if (m != null) { methodCache.put(key, m); return m; }
         }
 
         // 3. Parameter-type scan — try EVERY declared method with matching
@@ -485,15 +597,18 @@ final class FabricReflection {
             m = scanMethodNamed(cls, name, paramTypes);
         if (m == null)
             m = scanMethod(cls, paramTypes, null);
-        if (m != null) return m;
+        if (m != null) { methodCache.put(key, m); return m; }
 
         // 4. Walk up to superclass
         Class<?> sup = cls.getSuperclass();
-        if (sup != null && sup != Object.class)
-            return findMethodImpl(sup, name, paramTypes);
+        if (sup != null && sup != Object.class) {
+            m = findMethodImpl(sup, name, paramTypes);
+            if (m != null) { methodCache.put(key, m); return m; }
+        }
 
         if (DEBUG_REFLECTION)
             log("M-MISS " + cls.getName() + "." + name + " (resolved=" + resolved + ")");
+        methodCache.put(key, NOT_FOUND);
         return null;
     }
 
@@ -587,23 +702,36 @@ final class FabricReflection {
         return returnType.isAssignableFrom(rt);
     }
 
-    /** Find a field by bare mojang name, redirected to runtime name. */
+    /** Find a field by bare mojang name, redirected to runtime name.  Results are cached. */
     private static Field findField(Class<?> cls, String name) {
         if (cls == null || name == null) return null;
+        FieldKey key = new FieldKey(cls, name);
+        Object cached = fieldCache.get(key);
+        if (cached != null) return unwrap(cached);
+
         String resolved = FabricReflectionConstants.redirectField(name);
-        try { return cls.getDeclaredField(resolved); }
-        catch (NoSuchFieldException ignored) {}
-        try { return cls.getField(resolved); }
-        catch (NoSuchFieldException ignored) {}
+        Field f = tryField(cls, resolved);
+        if (f != null) { fieldCache.put(key, f); return f; }
+
         if (!resolved.equals(name)) {
-            try { return cls.getDeclaredField(name); }
-            catch (NoSuchFieldException ignored) {}
-            try { return cls.getField(name); }
-            catch (NoSuchFieldException ignored) {}
+            f = tryField(cls, name);
+            if (f != null) { fieldCache.put(key, f); return f; }
         }
         Class<?> sup = cls.getSuperclass();
-        if (sup != null && sup != Object.class)
-            return findField(sup, name);
+        if (sup != null && sup != Object.class) {
+            f = findField(sup, name);
+            if (f != null) { fieldCache.put(key, f); return f; }
+        }
+
+        fieldCache.put(key, NOT_FOUND);
+        return null;
+    }
+
+    private static Field tryField(Class<?> cls, String name) {
+        try { return cls.getDeclaredField(name); }
+        catch (NoSuchFieldException ignored) {}
+        try { return cls.getField(name); }
+        catch (NoSuchFieldException ignored) {}
         return null;
     }
 }
