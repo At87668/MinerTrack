@@ -82,7 +82,7 @@ public class BukkitUpdateManager {
     public BukkitUpdateManager(BukkitAdapter adapter, DetectionBridge detectionBridge) {
         this.adapter = adapter;
         UpdateConfigSource source = new DetectionBridgeConfigSource(detectionBridge, adapter);
-        this.core = new UpdateManagerCore(source, adapter.getVersion());
+        this.core = new UpdateManagerCore(source, adapter.getVersion(), "bukkit");
     }
 
     /**

@@ -90,6 +90,7 @@ public class UpdateManagerCore {
     private final UpdateConfigSource configSource;
     private final String currentVersion;
     private final String channel;
+    private final String platform; // "fabric", "bukkit", etc.; null for generic
 
     // Volatile because refresh() can be called from a background
     // dispatcher on some platforms; reads (isHasNewerVersion etc.) come
@@ -104,10 +105,15 @@ public class UpdateManagerCore {
      *                       {@code "2.0.0.0-dev"}). Compared against the
      *                       Modrinth latest to decide whether an update
      *                       notification is warranted.
+     * @param platform      the platform identifier used to filter Modrinth
+     *                      versions by {@code +platform} suffix (e.g.
+     *                      {@code "fabric"}, {@code "bukkit"}).
+     *                      May be {@code null} to match any version.
      */
-    public UpdateManagerCore(UpdateConfigSource configSource, String currentVersion) {
+    public UpdateManagerCore(UpdateConfigSource configSource, String currentVersion, String platform) {
         this.configSource = configSource;
         this.currentVersion = currentVersion;
+        this.platform = platform != null ? platform.toLowerCase() : null;
 
         boolean enabled = true;
         String ch = "stable";
@@ -227,9 +233,14 @@ public class UpdateManagerCore {
 
             JSONArray versions = new JSONArray(response.toString());
             if (versions.length() > 0) {
-                JSONObject latest = versions.getJSONObject(0);
-                this.latestVersion = latest.getString("version_number");
-                this.downloadUrl = DOWNLOAD_URL_PREFIX + this.latestVersion;
+                // If a platform filter is set, try to find the first
+                // version matching `+platform`. Fall back to the first
+                // generic version (no platform suffix) if none found.
+                JSONObject selected = selectVersionForPlatform(versions);
+                if (selected != null) {
+                    this.latestVersion = selected.getString("version_number");
+                    this.downloadUrl = DOWNLOAD_URL_PREFIX + this.latestVersion;
+                }
             } else {
                 logSafely("No versions found on Modrinth.");
                 this.latestVersion = null;
@@ -240,6 +251,35 @@ public class UpdateManagerCore {
             this.latestVersion = null;
             this.downloadUrl = null;
         }
+    }
+
+    /**
+     * Select the best version from the Modrinth version list for the
+     * current platform filter. When {@code platform} is non-null,
+     * prefers the first version whose version number contains
+     * {@code +<platform>}. Falls back to the first version with no
+     * platform suffix at all. When {@code platform} is {@code null},
+     * returns the very first version (match-all behaviour).
+     */
+    private JSONObject selectVersionForPlatform(JSONArray versions) {
+        if (platform == null) {
+            return versions.getJSONObject(0);
+        }
+        String suffix = "+" + platform;
+        JSONObject fallback = null;
+        for (int i = 0; i < versions.length(); i++) {
+            JSONObject obj = versions.getJSONObject(i);
+            String ver = obj.optString("version_number", "");
+            if (ver.toLowerCase().endsWith(suffix)) {
+                return obj;
+            }
+            // Remember the first generic version (no +platform suffix)
+            // as a fallback in case no platform-specific one exists.
+            if (fallback == null && !ver.contains("+")) {
+                fallback = obj;
+            }
+        }
+        return fallback != null ? fallback : null;
     }
 
     /**

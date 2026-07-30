@@ -36,7 +36,7 @@ public class FabricUpdateManager {
     public FabricUpdateManager(FabricAdapter adapter, DetectionBridge detectionBridge) {
         this.adapter = adapter;
         UpdateConfigSource source = new DetectionBridgeConfigSource(detectionBridge, adapter);
-        this.core = new UpdateManagerCore(source, adapter.getVersion());
+        this.core = new UpdateManagerCore(source, adapter.getVersion(), "fabric");
     }
 
     public boolean isHasNewerVersion() {
