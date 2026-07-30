@@ -231,44 +231,89 @@ public class FabricCommandExecutor {
             try {
                 Object player = playerByUuid(playerId);
                 if (player == null) return;
+                Object network = findNetworkField(player);
+                if (network == null) return;
                 Object text = literalText(reason == null ? "Kicked by MinerTrack" : reason);
                 if (text == null) return;
                 Class<?> textCls = resolveTextComponentClass();
                 if (textCls == null) return;
-                // Walk every field of the player entity and try calling a
-                // single-param (Component)V method on each one.  The method
-                // that succeeds IS the disconnect — we don't need to know
-                // its name or the field's name.  Combines field discovery
-                // + disconnect into a single scan that works on every MC
-                // version (1.18.2 through 1.21.1) without any hardcoded
-                // intermediary class or field numbers.
+                // disconnect(Component) — METHOD_REDIRECT resolves to correct
+                // intermediary name; scanMethod disambiguates overloads by sig.
+                try {
+                    FabricReflection.callAny(network, "disconnect",
+                        new Class<?>[]{textCls}, new Object[]{text});
+                } catch (Throwable t1) {
+                    FabricReflection.callAny(network, "onDisconnect",
+                        new Class<?>[]{textCls}, new Object[]{text});
+                }
+            } catch (Throwable t) {
+                adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
+            }
+        }
+
+        private static Object findNetworkField(Object player) {
+            if (player == null) return null;
+            // Name-based lookup via redirectField.
+            for (String fieldName : new String[]{"connection", "networkHandler"}) {
+                Object r = FabricReflection.getField(player, fieldName);
+                if (r != null) return r;
+            }
+            // forName-based type scan (depends on correct hardcoded class_3244).
+            Class<?> netCls = FabricReflection.forName(
+                FabricReflectionConstants.CLS_SERVER_GAME_PACKET_LISTENER);
+            if (netCls != null) {
                 Class<?> cls = player.getClass();
                 while (cls != null && cls != Object.class) {
                     for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
-                        // Skip primitives, strings, arrays, collections.
-                        Class<?> ft = f.getType();
-                        if (ft.isPrimitive() || ft == String.class || ft.isArray()
-                            || java.util.Collection.class.isAssignableFrom(ft)
-                            || java.util.Map.class.isAssignableFrom(ft)
-                            || Number.class.isAssignableFrom(ft)) continue;
-                        Object val;
-                        try { f.setAccessible(true); val = f.get(player); }
-                        catch (Throwable ignored) { continue; }
-                        if (val == null) continue;
-                        try {
-                            FabricReflection.invokeBySigOrThrow(val,
-                                new Class<?>[]{textCls}, new Object[]{text});
-                            return; // disconnect succeeded
-                        } catch (Throwable ignored) {
-                            // Not the right field — continue scanning.
+                        if (netCls.isAssignableFrom(f.getType())) {
+                            try { f.setAccessible(true); return f.get(player); }
+                            catch (Throwable ignored) {}
                         }
                     }
                     cls = cls.getSuperclass();
                 }
-                adapter.warning("Failed to kick player " + playerId + ": no disconnect method found");
-            } catch (Throwable t) {
-                adapter.warning("Failed to kick player " + playerId + ": " + t.getMessage());
             }
+            // Last resort: raw scan — walk every field, pick the first one
+            // whose type has a disconnect(Component) method (by signature).
+            // Avoids hardcoded intermediary class/field numbers entirely.
+            Class<?> cls = player.getClass();
+            while (cls != null && cls != Object.class) {
+                for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
+                    // Skip fields without a disconnect(Component) method.
+                    if (!hasDisconnectMethod(f.getType())) continue;
+                    try {
+                        f.setAccessible(true);
+                        return f.get(player);
+                    } catch (Throwable ignored) {}
+                }
+                cls = cls.getSuperclass();
+            }
+            return null;
+        }
+
+        private static boolean hasDisconnectMethod(Class<?> cls) {
+            if (cls == null) return false;
+            // Try name-based first (works on named runtime / MC 26+).
+            try { cls.getDeclaredMethod("disconnect", Class.forName("net.minecraft.network.chat.Component")); return true; }
+            catch (Throwable ignored) {}
+            // Signature scan: any method with 1 param accepting a Component
+            // via isAssignableFrom (works on intermediary runtimes).
+            for (java.lang.reflect.Method m : cls.getDeclaredMethods()) {
+                if (m.getParameterCount() != 1) continue;
+                Class<?> pt = m.getParameterTypes()[0];
+                // Check if parameter type name contains "Component" or "class_2561"
+                if (pt.getName().contains("Component") || pt.getName().contains("class_2561")
+                        || pt.getName().contains("Text")) return true;
+            }
+            // Also check inherited public methods
+            for (java.lang.reflect.Method m : cls.getMethods()) {
+                if (m.getDeclaringClass() == Object.class) continue;
+                if (m.getParameterCount() != 1) continue;
+                Class<?> pt = m.getParameterTypes()[0];
+                if (pt.getName().contains("Component") || pt.getName().contains("class_2561")
+                        || pt.getName().contains("Text")) return true;
+            }
+            return false;
         }
 
         @Override
