@@ -1,0 +1,93 @@
+#### MinerTrack Anti-Xray Configuration - language.yml ##################################################
+#
+#     Привет! Добро пожаловать в использование анти-чит системы MinerTrack. Это файл language.yml, который используется
+#  для определения языка отображения сообщений анти-xray. Здесь вы можете настроить, какие сообщения
+#  будет показывать анти-xray.
+#
+#  Полезные ссылки:
+#  Получить обновление: https://modrinth.com/plugin/minertrack
+#  Исходный код: https://github.com/At87668/MinerTrack
+#  Сообщить о проблеме: https://github.com/At87668/MinerTrack/issues
+#  Запрос на слияние: https://github.com/At87668/MinerTrack/pulls
+#  Посетить вики: https://minertrack.pages.dev/wiki/
+#  Присоединиться к Discord: https://discord.gg/MzTea2W9cb
+#  Поддержать проект: https://patreon.com/Author87668/join
+#
+#  В любом случае, спасибо за использование анти-xray MinerTrack! ❤
+#
+#####################################################################################
+
+# Здесь можно определить префикс сообщений
+prefix: '&8[&9&lMiner&c&lTrack&8]&r '
+
+# Определите сообщение об извещении после того, как игрок был исключён анти-xray системой
+# Заполнители: %player% %reason%
+kick-format: '&b%player% &7был исключён с сервера за предполагаемое использование X-Ray! &8(%reason%)'
+
+# Определите формат подробных сообщений
+# Заполнители: %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+verbose-format: '&7%player% не прошёл &fX-Ray &7проверку &7VL:%vl%&b(+%add_vl%) &7Блок:&6%block_type%&ex%count%&7(Жила&ax%vein_count%&7) &7Мир: %world% Позиция: X%pos_x% Y%pos_y% Z%pos_z%'
+
+# Определите формат логов
+# Заполнители: %year% %month% %day% %hour% %minute% %second% %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+log-format: '%year%-%month%-%day% %hour%:%minute%:%second% | %player% не прошёл X-Ray проверку VL:%vl%(+%add_vl%) Блок:%block_type%x%count%(Жилax%vein_count%) Мир: %world% Позиция: X%pos_x% Y%pos_y% Z%pos_z%'
+
+# Должен ли MinerTrack транслировать сообщение при исключении игрока?
+kick-broadcast: true
+
+help:
+  - "&8----[&9&lMiner&c&lTrack &6Помощь&8]-----------"
+  - ""
+  - "&f/mtrack reload &7- Перезагрузить конфигурационный файл плагина"
+  - "&f/mtrack notify <сообщение> &7- Отправить оповещения администрации"
+  - "&f/mtrack verbose &7- Включить подробный режим и отправлять уведомления администрации с включённым подробным режимом при каждом увеличении VL игрока"
+  - "&f/mtrack check <игрок> &7- Проверить историю нарушений игрока"
+  - "&f/mtrack reset <игрок> &7- Сбросить запись нарушений игрока"
+  - "&f/mtrack help &7- Получить справку по плагину"
+  - "&f/mtrack update &7- Проверить наличие обновлений"
+  - "&f/mtrack kick <игрок> <причина> &7- Исключить игрока с указанной причиной"
+  - "&f/mtrack logs <имя_лога.log> &7- Просмотреть файл лога MinerTrack"
+  
+no-permission: "&cУ вас нет прав для использования этой команды."
+
+usage-notify: "&cИспользование: /mtrack notify <сообщение>"
+usage-check: "&cИспользование: /mtrack check <игрок>"
+usage-reset: "&cИспользование: /mtrack reset <игрок>"
+usage-kick: "&cИспользование: /mtrack kick <игрок> <причина>"
+usage-logs: "&cИспользование: /mtrack logs <имя_лога.log>"
+
+# Заполнители: {player}
+reset-success: "&aЗапись нарушений {player} успешно сброшена."
+
+# Заполнители: {player} {level}
+violation-level: "&eУровень нарушений {player}: {level}."
+
+# Заполнители: {player}
+player-not-found: "&cИгрок {player} не найден."
+
+config-reloaded: "&aКонфигурация и язык успешно перезагружены."
+
+unknown-command: "&cНеизвестная подкоманда. Используйте /mtrack help для списка команд."
+
+verbose-enable: "&7Подробный режим &aвключён&7!"
+verbose-disable: "&7Подробный режим &cотключён&7!"
+
+# Заполнители: {current_page} {max_page} {log_file} {next_page}
+log-viewer-lines-per-page: 10
+log-viewer-header: "&7---- &9&lMiner&c&lTrack &bЛоги &7({current_page}/{max_page}) ----"
+log-viewer-logs-color: "&7"
+log-viewer-not-found: "&cФайл лога {log_file} не найден."
+log-viewer-not-log-file: "&cМожно просматривать только файлы логов."
+log-viewer-cant-read: "&cНе удалось прочитать логи."
+log-viewer-page-invalid: "&cНомер страницы выходит за пределы диапазона (1 - {max_page})"
+log-viewer-page-nan: "&cНомер страницы должен быть числом"
+log-viewer-next-page: "&6Используйте &a/mtrack logs page {next_page} &6для просмотра следующей страницы."
+log-viewer-empty: "&7Нет записей лога для отображения."
+
+# Заполнители: %latest_version%
+update:
+  alpha-available: '&cДоступна новая альфа-версия %latest_version%!'
+  beta-available: '&eДоступна новая бета-версия %latest_version%!'
+  stable-available: '&aДоступна новая стабильная версия %latest_version%!'
+  using-latest: '&2Вы используете последнюю версию.'
+  check-failed: '&cНе удалось проверить наличие обновлений.'
