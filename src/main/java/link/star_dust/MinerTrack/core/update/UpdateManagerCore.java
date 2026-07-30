@@ -233,10 +233,14 @@ public class UpdateManagerCore {
 
             JSONArray versions = new JSONArray(response.toString());
             if (versions.length() > 0) {
-                // If a platform filter is set, try to find the first
-                // version matching `+platform`. Fall back to the first
-                // generic version (no platform suffix) if none found.
-                JSONObject selected = selectVersionForPlatform(versions);
+                // Walk the version list (newest first) and pick the
+                // first candidate that matches both the platform
+                // filter AND the configured channel. Falls back to
+                // the first platform match (ignoring channel) when
+                // no channel-compatible version is found, so that a
+                // stable user still sees "a newer beta is available"
+                // rather than a silent "up to date".
+                JSONObject selected = selectVersionForPlatformAndChannel(versions);
                 if (selected != null) {
                     this.latestVersion = selected.getString("version_number");
                     this.downloadUrl = DOWNLOAD_URL_PREFIX + this.latestVersion;
@@ -257,32 +261,45 @@ public class UpdateManagerCore {
     }
 
     /**
-     * Select the best version from the Modrinth version list for the
-     * current platform filter. When {@code platform} is non-null,
-     * prefers the first version whose version number contains
-     * {@code +<platform>}. Falls back to the first version with no
-     * platform suffix at all. When {@code platform} is {@code null},
-     * returns the very first version (match-all behaviour).
+     * Select the best version considering both the platform filter and
+     * the channel setting. Walk the version list (newest first): the
+     * first version that matches <em>both</em> the platform and the
+     * channel wins. If no channel-compatible version is found, fall
+     * back to the best platform match regardless of channel.
      */
-    private JSONObject selectVersionForPlatform(JSONArray versions) {
-        if (platform == null) {
-            return versions.getJSONObject(0);
-        }
-        String suffix = "+" + platform;
-        JSONObject fallback = null;
+    private JSONObject selectVersionForPlatformAndChannel(JSONArray versions) {
+        JSONObject bestPlatformMatch = null; // first platform match, any channel
+
         for (int i = 0; i < versions.length(); i++) {
             JSONObject obj = versions.getJSONObject(i);
             String ver = obj.optString("version_number", "");
-            if (ver.toLowerCase().endsWith(suffix)) {
-                return obj;
+
+            if (!matchesPlatform(ver)) continue;
+
+            if (bestPlatformMatch == null) {
+                bestPlatformMatch = obj;
             }
-            // Remember the first generic version (no +platform suffix)
-            // as a fallback in case no platform-specific one exists.
-            if (fallback == null && !ver.contains("+")) {
-                fallback = obj;
+
+            // Check if this version is allowed by the current channel.
+            Version parsed = parseVersion(ver);
+            if (isVersionAllowedByChannel(parsed, channel)) {
+                return obj; // first platform+channel match = best
             }
         }
-        return fallback != null ? fallback : null;
+
+        // No channel-compatible version found — fall back to the
+        // first platform match. shouldConsiderAsUpdate() will still
+        // reject it if the channel doesn't allow it, so the user
+        // sees "already up to date" rather than a stale cached
+        // latestVersion from a previous fetch.
+        return bestPlatformMatch;
+    }
+
+    private boolean matchesPlatform(String versionNumber) {
+        if (platform == null) return true;
+        String suffix = "+" + platform;
+        // Either has the platform suffix or no platform suffix at all (generic)
+        return versionNumber.toLowerCase().endsWith(suffix) || !versionNumber.contains("+");
     }
 
     /**
