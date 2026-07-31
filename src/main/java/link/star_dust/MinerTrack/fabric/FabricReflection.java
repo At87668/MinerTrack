@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Lightweight reflection helpers for accessing Minecraft internals.
  *
  * <p>Uses {@link FabricReflectionConstants} to redirect bare mojang method
- * and field names to their runtime form (intermediary on 1.18â€?.21.x,
+ * and field names to their runtime form (intermediary on 1.18â€“1.21.x,
  * named/mojang on MC&nbsp;26+ and in dev).
  */
 final class FabricReflection {
@@ -51,22 +51,22 @@ final class FabricReflection {
     private static void log(String msg) { System.out.println("[MinerTrack:Reflection] " + msg); }
 
     // ==================================================================
-    // Reflection caches â€?avoid repeated getDeclaredMethod/Field scans
+    // Reflection caches â€” avoid repeated getDeclaredMethod/Field scans
     // ==================================================================
 
     /** Sentinel for "not found" results (ConcurrentHashMap forbids null values). */
     private static final Object NOT_FOUND = new Object();
 
-    /** Cache: className â†?Class<?> (or NOT_FOUND). */
+    /** Cache: className â†’ Class<?> (or NOT_FOUND). */
     private static final ConcurrentHashMap<String, Object> classCache = new ConcurrentHashMap<>(64);
 
-    /** Cache: (Class, methodName, paramTypes) â†?Method (or NOT_FOUND). */
+    /** Cache: (Class, methodName, paramTypes) â†’ Method (or NOT_FOUND). */
     private static final ConcurrentHashMap<MethodKey, Object> methodCache = new ConcurrentHashMap<>(128);
 
-    /** Cache: (className, methodName, paramTypes) â†?Method (or NOT_FOUND). */
+    /** Cache: (className, methodName, paramTypes) â†’ Method (or NOT_FOUND). */
     private static final ConcurrentHashMap<StaticMethodKey, Object> staticMethodCache = new ConcurrentHashMap<>(64);
 
-    /** Cache: (Class, fieldName) â†?Field (or NOT_FOUND). */
+    /** Cache: (Class, fieldName) â†’ Field (or NOT_FOUND). */
     private static final ConcurrentHashMap<FieldKey, Object> fieldCache = new ConcurrentHashMap<>(64);
 
     // -- Key types -----------------------------------------------------
@@ -130,7 +130,7 @@ final class FabricReflection {
 
     /**
      * Find and invoke ANY instance method on {@code target} whose parameter
-     * types match {@code paramTypes}.  Completely ignores method names â€?
+     * types match {@code paramTypes}.  Completely ignores method names â€”
      * works purely by parameter-type signature across declared + public
      * inherited methods.  Throws if no matching method is found or
      * invocation fails.
@@ -157,7 +157,7 @@ final class FabricReflection {
     /**
      * Invoke by parameter signature AND return type.  Unlike
      * {@link #call}/{@link #findMethodImpl}, this never uses METHOD_REDIRECT
-     * and never falls back to the first param-only match â€?critical when
+     * and never falls back to the first param-only match â€” critical when
      * multiple methods share the same parameter types (e.g. several
      * {@code (GameProfile)} methods, or several {@code (I)Z} methods).
      *
@@ -165,11 +165,7 @@ final class FabricReflection {
      * @return the invoke result, or {@code null} if no match / invoke failed
      */
     static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args,
-<<<<<<< HEAD
-                                   Class<?> returnType) {
-=======
                             Class<?> returnType) {
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         if (target == null) return null;
         Method m = scanMethod(target.getClass(), paramTypes, returnType);
         if (m == null) return null;
@@ -216,7 +212,7 @@ final class FabricReflection {
     }
 
     // ==================================================================
-    // Text/Component creation (unified â€?used by all callers)
+    // Text/Component creation (unified â€” used by all callers)
     // ==================================================================
 
     /** Cached result of {@link #resolveTextComponentClass()}. */
@@ -239,17 +235,17 @@ final class FabricReflection {
      * Create a Minecraft text component from a plain string.
      *
      * <p>Priority (all go through {@link #forName}/{@link #callStatic} so
-     * intermediary name resolution works on 1.18â€?.21.x production servers):
+     * intermediary name resolution works on 1.18â€“1.21.x production servers):
      * <ol>
-     *   <li>{@code Component.literal(String)} â€?1.19.3+ / MC 26.1+</li>
-     *   <li>{@code new TextComponent(String)} â€?1.18â€?.19.2</li>
+     *   <li>{@code Component.literal(String)} â€” 1.19.3+ / MC 26.1+</li>
+     *   <li>{@code new TextComponent(String)} â€” 1.18â€“1.19.2</li>
      * </ol>
      *
      * @return the text component object, or {@code null} if all approaches fail
      */
     static Object createText(String message) {
         if (message == null) return null;
-        // 1) Component.literal(String) â€?1.19.3+ / MC 26.1+
+        // 1) Component.literal(String) â€” 1.19.3+ / MC 26.1+
         //    Tried first to avoid a spurious CLS-MISS for TextComponent on
         //    MC 26.1+ where that class was removed.
         Object r = callStatic(FabricReflectionConstants.CLS_COMPONENT,
@@ -257,7 +253,7 @@ final class FabricReflection {
             new Class<?>[]{String.class}, new Object[]{message});
         if (r != null) return r;
 
-        // 2) new TextComponent(String) â€?1.18â€?.19.2 (legacy)
+        // 2) new TextComponent(String) â€” 1.18â€“1.19.2 (legacy)
         //    Intermediary: net/minecraft/class_2585
         Class<?> tcCls = forName("net.minecraft.network.chat.TextComponent");
         if (tcCls != null) {
@@ -278,14 +274,10 @@ final class FabricReflection {
      * Call a static method.  Looked-up Methods are cached by (className, methodName, paramTypes).
      *
      * @param className  mojang/named class name (resolved via {@link #forName})
-     * @param methodName runtime method name (bare mojang name â€?will be redirected)
+     * @param methodName runtime method name (bare mojang name â€” will be redirected)
      */
     static Object callStatic(String className, String methodName,
-<<<<<<< HEAD
-                                    Class<?>[] paramTypes, Object[] args) {
-=======
                              Class<?>[] paramTypes, Object[] args) {
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         StaticMethodKey key = new StaticMethodKey(className, methodName, paramTypes);
         Object cached = staticMethodCache.get(key);
         if (cached != null) {
@@ -319,7 +311,7 @@ final class FabricReflection {
             return null;
         }
 
-        // 2. If resolved name â‰?original, try original name
+        // 2. If resolved name â‰  original, try original name
         if (!r.equals(methodName)) {
             try {
                 found = cls.getDeclaredMethod(methodName, paramTypes);
@@ -345,7 +337,7 @@ final class FabricReflection {
             }
         }
 
-        // 3. Parameter-type scan â€?match any static method with compatible params
+        // 3. Parameter-type scan â€” match any static method with compatible params
         for (Method candidate : cls.getDeclaredMethods()) {
             if (!java.lang.reflect.Modifier.isStatic(candidate.getModifiers())) continue;
             Class<?>[] pts = candidate.getParameterTypes();
@@ -374,14 +366,10 @@ final class FabricReflection {
      * Call an instance method.
      *
      * @param target     the object to invoke on
-     * @param methodName bare mojang method name â€?redirected automatically
+     * @param methodName bare mojang method name â€” redirected automatically
      */
     static Object call(Object target, String methodName,
-<<<<<<< HEAD
-                              Class<?>[] paramTypes, Object[] args) {
-=======
                        Class<?>[] paramTypes, Object[] args) {
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         if (target == null) return null;
         Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
         if (m == null) return null;
@@ -391,11 +379,7 @@ final class FabricReflection {
 
     /** Alias for {@link #call}. */
     static Object callAny(Object target, String methodName,
-<<<<<<< HEAD
-                                 Class<?>[] paramTypes, Object[] args) {
-=======
                           Class<?>[] paramTypes, Object[] args) {
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         return call(target, methodName, paramTypes, args);
     }
 
@@ -404,11 +388,7 @@ final class FabricReflection {
      * Both are bare mojang names and will be redirected.
      */
     static Object callMigrated(Object target, String mc26Method, String legacyMethod,
-<<<<<<< HEAD
-                                      Class<?>[] paramTypes, Object[] args) {
-=======
                                Class<?>[] paramTypes, Object[] args) {
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         if (target == null) return null;
         Object r = call(target, mc26Method, paramTypes, args);
         if (r != null) return r;
@@ -448,11 +428,7 @@ final class FabricReflection {
     // Version-aware helpers
     // ==================================================================
 
-<<<<<<< HEAD
-    /** Get player UUID â€?tries getUUID then getUuid. */
-=======
     /** Get player UUID â€” tries getUUID then getUuid. */
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
     static Object callUuid(Object target) {
         if (target == null) return null;
         Object r = call(target, "getUUID", NO_PARAMS, NO_ARGS);
@@ -460,11 +436,7 @@ final class FabricReflection {
         return call(target, "getUuid", NO_PARAMS, NO_ARGS);
     }
 
-<<<<<<< HEAD
-    /** Get world dimension ResourceKey â€?dimension() then getRegistryKey(). */
-=======
     /** Get world dimension ResourceKey â€” dimension() then getRegistryKey(). */
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
     static Object callDimension(Object world) {
         if (world == null) return null;
         Object r = call(world, "dimension", NO_PARAMS, NO_ARGS);
@@ -503,15 +475,15 @@ final class FabricReflection {
      */
     static String getBlockId(Object block) {
         if (block == null) return null;
-        // 1. Block.toString() â†?"Block{minecraft:diorite}"
-        //    Works on every MC version (1.18â€?.26+), no reflection needed.
+        // 1. Block.toString() â†’ "Block{minecraft:diorite}"
+        //    Works on every MC version (1.18â€“1.26+), no reflection needed.
         String s = block.toString();
         int brace = s.indexOf('{');
         int close  = s.indexOf('}');
         if (brace >= 0 && close > brace) {
             return s.substring(brace + 1, close);
         }
-        // 2. block.builtInRegistryHolder().getKey() â€?direct getMethod
+        // 2. block.builtInRegistryHolder().getKey() â€” direct getMethod
         //    bypasses redirectMethod issues with getKey having different
         //    intermediary names for different signatures.
         Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
@@ -586,7 +558,7 @@ final class FabricReflection {
     }
 
     // ==================================================================
-    // Internal lookup â€?with bare-name redirect
+    // Internal lookup â€” with bare-name redirect
     // ==================================================================
 
     /**
@@ -609,13 +581,13 @@ final class FabricReflection {
         Method m = tryMethod(cls, resolved, paramTypes);
         if (m != null) { methodCache.put(key, m); return m; }
 
-        // 2. If resolved â‰?original, try original
+        // 2. If resolved â‰  original, try original
         if (!resolved.equals(name)) {
             m = tryMethod(cls, name, paramTypes);
             if (m != null) { methodCache.put(key, m); return m; }
         }
 
-        // 3. Parameter-type scan â€?try EVERY declared method with matching
+        // 3. Parameter-type scan â€” try EVERY declared method with matching
         //    paramTypes.  Critical for classes like BlockPos / Vec3i whose
         //    getX/getY/getZ have different intermediary names than Entity's.
         //    Prefer methods whose name equals the resolved/original name when
@@ -684,13 +656,8 @@ final class FabricReflection {
      * one whose parameter types match {@code paramTypes} and optionally
      * whose return type is assignable to {@code returnType}.
      */
-<<<<<<< HEAD
-    static Method scanMethod(Class<?> cls, Class<?>[] paramTypes, Class<?> returnType) {
-        // 1. Declared (most specific â€?avoids duplicates from getMethods)
-=======
     private static Method scanMethod(Class<?> cls, Class<?>[] paramTypes, Class<?> returnType) {
         // 1. Declared (most specific â€” avoids duplicates from getMethods)
->>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         for (Method candidate : cls.getDeclaredMethods()) {
             if (paramsMatch(candidate, paramTypes) && returnOk(candidate, returnType)) {
                 candidate.setAccessible(true);
