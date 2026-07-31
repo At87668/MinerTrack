@@ -27,7 +27,6 @@ import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.config.ConfigMerger;
 import link.star_dust.MinerTrack.core.violation.ViolationEngine;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -43,8 +42,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Forge ViolationManagerBridge. Mirrors FabricViolationManager structurally.
- * Uses Forge's ServerTickEvent for decay scheduling.
+ * Forge ViolationManagerBridge. Uses Forge tick event for decay.
  */
 public class ForgeViolationManager implements ViolationManagerBridge {
     private static volatile ForgeViolationManager active;
@@ -60,250 +58,85 @@ public class ForgeViolationManager implements ViolationManagerBridge {
     private String currentLogFileName;
     private long globalDecayIntervalTicks = 20L * 60L * 20L;
     private long lastGlobalDecayRunTick = -1;
+    private final Map<UUID, String> playerNameCache = new ConcurrentHashMap<>();
 
     public ForgeViolationManager(ForgeAdapter adapter) {
         this.adapter = adapter;
         this.engine = new ViolationEngine(this);
         active = this;
         this.currentLogFileName = generateLogFileName();
-
         File f = new File(adapter.getDataFolder(), "config.yml");
         this.config = ConfigMerger.loadAndMerge(f, "config.yml", adapter, new ForgeYamlLoader());
     }
 
     public void scheduleGlobalDecayTask(long decayIntervalTicks) {
         this.globalDecayIntervalTicks = decayIntervalTicks;
-        // Register on the Forge event bus for ServerTickEvent
         ForgeReflection.registerEventListener(
             ForgeReflection.getMainEventBus(),
             ForgeReflection.forgeClass("net.minecraftforge.event.TickEvent$ServerTickEvent"),
             rawEvent -> {
                 try {
-                    // Check which phase (use reflection-sig — field 'phase')
-                    Object phase = ForgeReflection.callAny(rawEvent, "getPhase",
-                        ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
-                    if (phase == null) return;
-                    // TickEvent.Phase.END
-                    if (!phase.toString().contains("END")) return;
-                    Object server = ForgeReflection.getServer();
-                    if (server == null) return;
-                    Object tickObj = ForgeReflection.callMigrated(server, "getTickCount", "getTicks",
-                        ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                    Object phase = ForgeReflection.callAny(rawEvent, "getPhase", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                    if (phase == null || !phase.toString().contains("END")) return;
+                    Object server = ForgeReflection.getServer(); if (server == null) return;
+                    Object tickObj = ForgeReflection.callMigrated(server, "getTickCount", "getTicks", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
                     long tick = tickObj instanceof Number ? ((Number) tickObj).longValue() : 0L;
-                    if (lastGlobalDecayRunTick < 0
-                            || tick - lastGlobalDecayRunTick >= globalDecayIntervalTicks) {
-                        lastGlobalDecayRunTick = tick;
-                        try {
-                            engine.processDecay();
-                        } catch (Throwable t) {
-                            adapter.warning("Global VL decay tick failed: " + t.getMessage());
-                        }
+                    if (lastGlobalDecayRunTick < 0 || tick - lastGlobalDecayRunTick >= globalDecayIntervalTicks) {
+                        lastGlobalDecayRunTick = tick; try { engine.processDecay(); } catch (Throwable t) { adapter.warning("Global VL decay tick failed: " + t.getMessage()); }
                     }
-                } catch (Throwable t) {
-                    adapter.warning("ServerTick handler error: " + t.getMessage());
-                }
+                } catch (Throwable t) {}
             });
     }
 
-    public void cancelAllVLDecayTasks() {
-        playerDecayTasks.clear();
-    }
+    @Override public void cancelAllVLDecayTasks() { playerDecayTasks.clear(); }
+    @Override public void cancelGlobalDecayTask() {}
+    public void setWebhookEngine(WebhookEngine we) { engine.setWebhookEngine(we); }
+    public void setLanguageBridge(LanguageBridge lb) { this.languageBridge = lb; }
+    public CommonYaml getMainConfig() { return config; }
 
-    public void cancelGlobalDecayTask() {
-        // No global handle on Forge; the tick callback runs until server stops.
-    }
+    public void reloadConfig() { try { File f = new File(adapter.getDataFolder(), "config.yml"); this.config = ConfigMerger.loadAndMerge(f, "config.yml", adapter, new ForgeYamlLoader()); } catch (Exception e) { adapter.info("Failed to reload config: " + e.getMessage()); } }
 
-    public void setWebhookEngine(WebhookEngine webhookEngine) {
-        engine.setWebhookEngine(webhookEngine);
-    }
+    @Override public int getViolationLevel(UUID pid) { return engine.getViolationLevel(pid); }
+    @Override public void increaseViolationLevel(UUID pid, String pn, int inc, String bt, int count, int vein, CommonLocation loc) { cancelVLDecayTask(pid); engine.increaseViolation(pid, pn, inc, bt, count, vein, loc); scheduleVLDecayTask(pid); if (pn != null) playerNameCache.put(pid, pn); }
+    @Override public void processVLDecay() { engine.processDecay(); }
+    @Override public void scheduleVLDecayTask(UUID pid) { if (pid != null) playerDecayTasks.putIfAbsent(pid, System.currentTimeMillis()); }
+    @Override public void cancelVLDecayTask(UUID pid) { if (pid != null) playerDecayTasks.remove(pid); }
+    @Override public boolean isLogFileEnabled() { return config.getBoolean("log_file", false); }
+    @Override public String getLogFormat() { if (languageBridge != null) return languageBridge.getLogFormat(); return "%year%-%month%-%day% %hour%-%minute%-%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%"; }
+    @Override public void appendLogLine(String line) { writeLogLine(line); }
+    @Override public void runConsoleCommand(String command) { try { Object server = ForgeReflection.getServer(); if (server == null) return; Object cm = ForgeReflection.callAny(server, "getCommands", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (cm == null) cm = ForgeReflection.callAny(server, "getCommandManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (cm == null) return; Object css = ForgeReflection.callAny(server, "createCommandSourceStack", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (css == null) return; Class<?> cssCls = css.getClass(); try { ForgeReflection.callAny(cm, "performPrefixedCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t1) { try { ForgeReflection.callAny(cm, "performCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t2) {} } } catch (Throwable t) {} }
+    @Override public Set<UUID> getVerbosePlayers() { return verbosePlayers; }
+    @Override public boolean isVerboseConsoleEnabled() { return false; }
+    @Override public String getDisplayWorldName(String wk) { return wk; }
 
-    public void setLanguageBridge(LanguageBridge languageBridge) {
-        this.languageBridge = languageBridge;
-    }
+    @Override public boolean hasPermission(UUID pid, String node) { try { Object server = ForgeReflection.getServer(); if (server == null) return false; Object pm = ForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) return false; Object player = ForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return false; if (ForgeCommandBridge.checkLPPermission(player, node, 2)) return true; return ForgeCommandBridge.isPlayerOperator(player); } catch (Throwable t) { return false; } }
 
-    public CommonYaml getMainConfig() {
-        return config;
-    }
+    @Override public void sendMessageToPlayer(UUID pid, String msg) {
+        try { Object server = ForgeReflection.getServer(); if (server == null) return; Object pm = ForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) return; Object player = ForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return; Object text = ForgeReflection.createText(msg); if (text == null) return; Class<?> tc = ForgeReflection.resolveTextComponentClass(); if (tc == null) return; try { ForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, UUID.class}, new Object[]{text, UUID.randomUUID()}); } catch (Throwable t1) { try { ForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t2) { try { ForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, boolean.class}, new Object[]{text, false}); } catch (Throwable t3) {} } } } catch (Throwable t) {} }
 
-    public void reloadConfig() {
+    @Override public Object getConfigSection(String p) { return config.get(p); }
+    @Override public Object getConfig(String p) { return config.get(p); }
+    @Override public String getPrefixedMessage(String key) { if (languageBridge != null) return languageBridge.getPrefixedMessage(key); return "[" + key + "]"; }
+    @Override public File getDataFolder() { return adapter.getDataFolder(); }
+    @Override public void resetViolation(UUID pid) { if (!resetViolationRecursionGuard.add(pid)) return; try { engine.resetViolation(pid); } finally { resetViolationRecursionGuard.remove(pid); } }
+    @Override public void clearPlayerState(UUID pid) {
+        cancelVLDecayTask(pid); verbosePlayers.remove(pid);
+        ForgeDetectionBridge bridge = ForgeDetectionBridge.getActive(); if (bridge != null) bridge.clearPlayerPath(pid);
+        resetViolation(pid); playerNameCache.remove(pid);
+    }
+    @Override public void appendCommandLog(String cmd) { appendLogLine("[CMD] " + cmd); }
+    @Override public String getPlayerName(UUID pid) { String n = playerNameCache.get(pid); if (n != null) return n; try { Object server = ForgeReflection.getServer(); if (server != null) { Object pm = ForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm != null) { Object player = ForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player != null) { Object name = ForgeReflection.callAny(player, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(name); if (s != null) { playerNameCache.put(pid, s); return s; } } } } } catch (Throwable t) {} return pid.toString(); }
+    @Override public int getConfigInt(String p, int d) { return config.getInt(p, d); }
+    @Override public boolean getConfigBoolean(String p, boolean d) { return config.getBoolean(p, d); }
+    @Override public double getConfigDouble(String p, double d) { return config.getDouble(p, d); }
+
+    private void writeLogLine(String line) {
         try {
-            File f = new File(adapter.getDataFolder(), "config.yml");
-            this.config = ConfigMerger.loadAndMerge(f, "config.yml", adapter, new ForgeYamlLoader());
-        } catch (Exception e) {
-            adapter.info("Failed to reload config: " + e.getMessage());
-        }
+            if (currentLogFileName == null) currentLogFileName = generateLogFileName();
+            File logDir = new File(adapter.getDataFolder(), "logs"); if (!logDir.exists()) logDir.mkdirs();
+            File logFile = new File(logDir, currentLogFileName);
+            try (FileWriter fw = new FileWriter(logFile, true)) { fw.write(line + System.lineSeparator()); }
+        } catch (IOException e) { adapter.warning("Failed to write violation log: " + e.getMessage()); }
     }
-
-    // ── ViolationManagerBridge surface ───────────────────────────────
-
-    @Override
-    public int getViolationLevel(UUID playerId) {
-        return engine.getViolationLevel(playerId);
-    }
-
-    @Override
-    public void increaseViolationLevel(UUID playerId, String playerName, int increment,
-                                        String blockType, int count, int vein, CommonLocation location) {
-        cancelVLDecayTask(playerId);
-        engine.increaseViolation(playerId, playerName, increment, blockType, count, vein, location);
-        scheduleVLDecayTask(playerId);
-    }
-
-    @Override
-    public void processVLDecay() {
-        engine.processDecay();
-    }
-
-    @Override
-    public void scheduleVLDecayTask(UUID playerId) {
-        if (playerDecayTasks.containsKey(playerId)) return;
-        playerDecayTasks.put(playerId, System.currentTimeMillis());
-    }
-
-    @Override
-    public void cancelVLDecayTask(UUID playerId) {
-        if (playerId == null) return;
-        playerDecayTasks.remove(playerId);
-    }
-
-    @Override
-    public boolean isLogFileEnabled() {
-        return config.getBoolean("log_file", false);
-    }
-
-    @Override
-    public String getLogFormat() {
-        if (languageBridge != null) return languageBridge.getLogFormat();
-        return "%year%-%month%-%day% %hour%-%minute%-%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%";
-    }
-
-    @Override
-    public String getDisplayWorldName(String worldKey) {
-        return worldKey;
-    }
-
-    @Override
-    public String getPrefixedMessage(String key) {
-        if (languageBridge != null) return languageBridge.getPrefixedMessage(key);
-        return "[" + key + "]";
-    }
-
-    @Override
-    public Set<UUID> getVerbosePlayers() {
-        return verbosePlayers;
-    }
-
-    @Override
-    public boolean isVerboseConsoleEnabled() {
-        return false;
-    }
-
-    @Override
-    public boolean hasPermission(UUID playerId, String node) {
-        try {
-            Object server = FabricReflection.getServer();
-            if (server == null) return false;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (pm == null) return false;
-            Object player = FabricReflection.call(pm, "getPlayerByUUID",
-                new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) return false;
-            if (ForgeCommandBridge.checkLPPermission(player, node, 2)) return true;
-            return ForgeCommandBridge.isPlayerOperator(player);
-        } catch (Throwable t) { return false; }
-    }
-
-    @Override
-    public void sendMessageToPlayer(UUID playerId, String message) {
-        try {
-            Object server = FabricReflection.getServer();
-            if (server == null) return;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (pm == null) return;
-            Object player = FabricReflection.call(pm, "getPlayerByUUID",
-                new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) return;
-            Object text = FabricReflection.createText(message);
-            if (text == null) return;
-            Class<?> textCls = FabricReflection.resolveTextComponentClass();
-            if (textCls == null) return;
-            try {
-                FabricReflection.invokeBySigOrThrow(player,
-                    new Class<?>[]{textCls, UUID.class},
-                    new Object[]{text, UUID.randomUUID()});
-            } catch (Throwable t1) {
-                try {
-                    FabricReflection.invokeBySigOrThrow(player,
-                        new Class<?>[]{textCls}, new Object[]{text});
-                } catch (Throwable t2) {
-                    try {
-                        FabricReflection.invokeBySigOrThrow(player,
-                            new Class<?>[]{textCls, boolean.class},
-                            new Object[]{text, false});
-                    } catch (Throwable t3) {}
-                }
-            }
-        } catch (Throwable t) {}
-    }
-
-    @Override
-    public Object getConfigSection(String path) {
-        return config.get(path);
-    }
-
-    @Override
-    public Object getConfig(String path) {
-        return config.get(path);
-    }
-
-    @Override
-    public File getDataFolder() {
-        return adapter.getDataFolder();
-    }
-
-    @Override
-    public void resetViolation(UUID playerId) {
-        if (!resetViolationRecursionGuard.add(playerId)) return;
-        try {
-            engine.resetViolation(playerId);
-        } finally {
-            resetViolationRecursionGuard.remove(playerId);
-        }
-    }
-
-    private String currentLogFileName() {
-        return currentLogFileName;
-    }
-
-    private void updateCurrentLogFileName(String newName) {
-        this.currentLogFileName = newName;
-    }
-
-    // ── Log writer (called by ViolationEngine) ───────────────────────
-
-    @Override
-    public void writeToLogFile(String line) {
-        try {
-            String fileName = currentLogFileName();
-            if (fileName == null) {
-                String newFileName = generateLogFileName();
-                updateCurrentLogFileName(newFileName);
-                fileName = newFileName;
-            }
-            File logDir = new File(adapter.getDataFolder(), "logs");
-            if (!logDir.exists()) logDir.mkdirs();
-            File logFile = new File(logDir, fileName);
-            try (FileWriter fw = new FileWriter(logFile, true)) {
-                fw.write(line + System.lineSeparator());
-            }
-        } catch (IOException e) {
-            adapter.warning("Failed to write violation log: " + e.getMessage());
-        }
-    }
-
-    private static String generateLogFileName() {
-        return "violations-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + ".log";
-    }
+    private static String generateLogFileName() { return "violations-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + ".log"; }
 }
