@@ -33,7 +33,6 @@ import link.star_dust.MinerTrack.core.CoreLogger;
 import link.star_dust.MinerTrack.core.config.WebhookConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.util.ArrayList;
 import java.util.List;
