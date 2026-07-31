@@ -42,12 +42,12 @@ public class ForgeMod {
         // must defer server-specific init to ServerStartingEvent.
         Object eventBus = ForgeReflection.getMainEventBus();
         if (eventBus != null) {
-            // ServerStartingEvent �?call platform.onServerStarting()
+            // ServerStartingEvent -> call platform.onServerStarting()
             ForgeReflection.registerEventListener(eventBus,
                 ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStartingEvent"),
                 platform::onServerStarting);
 
-            // ServerStoppingEvent �?call platform.onServerStopping()
+            // ServerStoppingEvent -> call platform.onServerStopping()
             ForgeReflection.registerEventListener(eventBus,
                 ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStoppingEvent"),
                 event -> platform.onServerStopping());

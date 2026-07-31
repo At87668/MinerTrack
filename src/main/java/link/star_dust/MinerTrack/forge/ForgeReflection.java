@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Forge 1.18+ uses Mojang names at runtime for both class and method names.
  * No intermediary/SRG fallback needed unlike Fabric. This module is fully
- * independent �?zero dependency on {@code link.star_dust.MinerTrack.fabric}.
+ * independent -> zero dependency on {@code link.star_dust.MinerTrack.fabric}.
  */
 final class ForgeReflection {
 
@@ -102,7 +102,7 @@ final class ForgeReflection {
     }
 
     // ==================================================================
-    // Method invocation �?instance
+    // Method invocation -> instance
     // ==================================================================
 
     static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
@@ -137,7 +137,7 @@ final class ForgeReflection {
     }
 
     // ==================================================================
-    // Method invocation �?static
+    // Method invocation -> static
     // ==================================================================
 
     static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {

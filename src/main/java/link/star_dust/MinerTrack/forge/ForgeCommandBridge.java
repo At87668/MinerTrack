@@ -137,7 +137,7 @@ public class ForgeCommandBridge implements CommandBridge {
     }
 
     /**
-     * Replicated from FabricCommandBridge.sendFeedback â€?uses the same
+     * Replicated from FabricCommandBridge.sendFeedback -> uses the same
      * multi-version fallback strategy.
      */
     private static boolean fabricSendFeedback(Object target, Object text, boolean isSuccess) {

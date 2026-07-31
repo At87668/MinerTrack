@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Uses {@link FabricReflectionConstants} to redirect bare mojang method
  * and field names to their runtime form (intermediary on 1.18–1.21.x,
- * named/mojang on MC&nbsp;26+ and in dev).
+ * named/mojang on MC 26+ and in dev).
  */
 final class FabricReflection {
 
