@@ -32,7 +32,6 @@ import link.star_dust.MinerTrack.core.CoreLogger;
 import link.star_dust.MinerTrack.core.config.WebhookConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -98,8 +97,8 @@ public class NeoForgePlatform {
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.RegisterCommandsEvent"),
             rawEvent -> {
                 try {
-                    Object dispatcher = FabricReflection.callAny(rawEvent, "getDispatcher",
-                        FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                    Object dispatcher = NeoForgeReflection.callAny(rawEvent, "getDispatcher",
+                        NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     if (dispatcher instanceof CommandDispatcher) {
                         @SuppressWarnings("unchecked")
                         CommandDispatcher<Object> d = (CommandDispatcher<Object>) dispatcher;
