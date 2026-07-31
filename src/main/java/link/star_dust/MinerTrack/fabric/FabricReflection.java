@@ -165,7 +165,11 @@ final class FabricReflection {
      * @return the invoke result, or {@code null} if no match / invoke failed
      */
     static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args,
+<<<<<<< HEAD
                                    Class<?> returnType) {
+=======
+                            Class<?> returnType) {
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         if (target == null) return null;
         Method m = scanMethod(target.getClass(), paramTypes, returnType);
         if (m == null) return null;
@@ -277,7 +281,11 @@ final class FabricReflection {
      * @param methodName runtime method name (bare mojang name â€?will be redirected)
      */
     static Object callStatic(String className, String methodName,
+<<<<<<< HEAD
                                     Class<?>[] paramTypes, Object[] args) {
+=======
+                             Class<?>[] paramTypes, Object[] args) {
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         StaticMethodKey key = new StaticMethodKey(className, methodName, paramTypes);
         Object cached = staticMethodCache.get(key);
         if (cached != null) {
@@ -369,7 +377,11 @@ final class FabricReflection {
      * @param methodName bare mojang method name â€?redirected automatically
      */
     static Object call(Object target, String methodName,
+<<<<<<< HEAD
                               Class<?>[] paramTypes, Object[] args) {
+=======
+                       Class<?>[] paramTypes, Object[] args) {
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         if (target == null) return null;
         Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
         if (m == null) return null;
@@ -379,7 +391,11 @@ final class FabricReflection {
 
     /** Alias for {@link #call}. */
     static Object callAny(Object target, String methodName,
+<<<<<<< HEAD
                                  Class<?>[] paramTypes, Object[] args) {
+=======
+                          Class<?>[] paramTypes, Object[] args) {
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         return call(target, methodName, paramTypes, args);
     }
 
@@ -388,7 +404,11 @@ final class FabricReflection {
      * Both are bare mojang names and will be redirected.
      */
     static Object callMigrated(Object target, String mc26Method, String legacyMethod,
+<<<<<<< HEAD
                                       Class<?>[] paramTypes, Object[] args) {
+=======
+                               Class<?>[] paramTypes, Object[] args) {
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         if (target == null) return null;
         Object r = call(target, mc26Method, paramTypes, args);
         if (r != null) return r;
@@ -428,7 +448,11 @@ final class FabricReflection {
     // Version-aware helpers
     // ==================================================================
 
+<<<<<<< HEAD
     /** Get player UUID â€?tries getUUID then getUuid. */
+=======
+    /** Get player UUID â€” tries getUUID then getUuid. */
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
     static Object callUuid(Object target) {
         if (target == null) return null;
         Object r = call(target, "getUUID", NO_PARAMS, NO_ARGS);
@@ -436,7 +460,11 @@ final class FabricReflection {
         return call(target, "getUuid", NO_PARAMS, NO_ARGS);
     }
 
+<<<<<<< HEAD
     /** Get world dimension ResourceKey â€?dimension() then getRegistryKey(). */
+=======
+    /** Get world dimension ResourceKey â€” dimension() then getRegistryKey(). */
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
     static Object callDimension(Object world) {
         if (world == null) return null;
         Object r = call(world, "dimension", NO_PARAMS, NO_ARGS);
@@ -656,8 +684,13 @@ final class FabricReflection {
      * one whose parameter types match {@code paramTypes} and optionally
      * whose return type is assignable to {@code returnType}.
      */
+<<<<<<< HEAD
     static Method scanMethod(Class<?> cls, Class<?>[] paramTypes, Class<?> returnType) {
         // 1. Declared (most specific â€?avoids duplicates from getMethods)
+=======
+    private static Method scanMethod(Class<?> cls, Class<?>[] paramTypes, Class<?> returnType) {
+        // 1. Declared (most specific â€” avoids duplicates from getMethods)
+>>>>>>> parent of 6548f47 (refactor: make FabricReflection methods public for cross-package access)
         for (Method candidate : cls.getDeclaredMethods()) {
             if (paramsMatch(candidate, paramTypes) && returnOk(candidate, returnType)) {
                 candidate.setAccessible(true);
