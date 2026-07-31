@@ -1,0 +1,33 @@
+# MinerTrack Mod Metadata for Forge
+# This file declares the mod to the Forge mod loader.
+# It lives at META-INF/mods.toml inside the JAR.
+
+modLoader = "javafml"
+loaderVersion = "[47,)"  # Forge 1.20.1+
+
+license = "MIT"
+
+[[mods]]
+modId = "minertrack"
+version = "${version}"
+displayName = "MinerTrack"
+# logoFile is optional — omit for now
+description = '''
+The Advanced Anti-Xray that you need.
+Have you ever dreamed of a powerful anti-xray?
+'''
+authors = "Author87668"
+
+[[dependencies.minertrack]]
+    modId = "forge"
+    mandatory = true
+    versionRange = "[47,)"
+    ordering = "NONE"
+    side = "SERVER"
+
+[[dependencies.minertrack]]
+    modId = "minecraft"
+    mandatory = true
+    versionRange = "[1.18,)"
+    ordering = "NONE"
+    side = "SERVER"
