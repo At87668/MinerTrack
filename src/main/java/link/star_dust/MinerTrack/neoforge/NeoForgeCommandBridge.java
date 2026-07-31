@@ -23,8 +23,6 @@ package link.star_dust.MinerTrack.neoforge;
 import link.star_dust.MinerTrack.common.CommandBridge;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -215,62 +213,58 @@ public class NeoForgeCommandBridge implements CommandBridge {
         return null;
     }
 
-    private static volatile List<Method> allCheckMethods;
+    // ==================================================================
+    // Permission checks via native NeoForge PermissionAPI
+    //
+    // NeoForge ships net.neoforged.neoforge.server.permission.PermissionAPI
+    // which integrates with LuckPerms or any permission plugin.
+    // Called reflectively to avoid compile-time coupling.
+    // Fallback: vanilla op-level check via PlayerList.isOp().
+    // ==================================================================
 
-    private static List<Method> findAllCheckMethods() {
-        if (allCheckMethods != null) return allCheckMethods;
-        List<Method> result = new ArrayList<>();
+    static boolean checkNeoForgePermission(Object player, String node) {
         try {
-            Class<?> permsCls = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
-            for (Method m : permsCls.getMethods()) {
-                if (m.getName().equals("check") && m.getParameterCount() == 3) {
-                    Class<?>[] pts = m.getParameterTypes();
-                    if (pts[1] == String.class && (pts[2] == int.class || pts[2] == Integer.class)) result.add(m);
-                }
+            Class<?> apiCls = Class.forName("net.neoforged.neoforge.server.permission.PermissionAPI");
+            java.lang.reflect.Method m = apiCls.getMethod("getPermission",
+                Class.forName("net.minecraft.server.level.ServerPlayer"), String.class);
+            Object tristate = m.invoke(null, player, node);
+            if (tristate != null) {
+                String ts = tristate.toString();
+                if ("TRUE".equals(ts)) return true;
+                if ("FALSE".equals(ts)) return false;
             }
-            for (Method m : permsCls.getDeclaredMethods()) {
-                if (m.getName().equals("check") && m.getParameterCount() == 3) {
-                    Class<?>[] pts = m.getParameterTypes();
-                    if (pts[1] == String.class && (pts[2] == int.class || pts[2] == Integer.class)) {
-                        boolean dup = false;
-                        for (Method existing : result) { if (existing.equals(m)) { dup = true; break; } }
-                        if (!dup) result.add(m);
-                    }
-                }
-            }
-        } catch (Throwable t) { result = java.util.Collections.emptyList(); }
-        allCheckMethods = result;
-        return result;
-    }
-
-    static boolean checkLPPermission(Object source, String node, int defaultOpLevel) {
-        for (Method m : findAllCheckMethods()) {
-            Class<?> sourceType = m.getParameterTypes()[0];
-            if (!sourceType.isInstance(source)) continue;
-            try { Object result = m.invoke(null, source, node, defaultOpLevel); return result instanceof Boolean && (Boolean) result; }
-            catch (Throwable t) { return false; }
-        }
-        return false;
+        } catch (Throwable t) { /* PermissionAPI not present */ }
+        return isPlayerOperator(player);
     }
 
     @Override public boolean hasPermission(String node) {
         if (source == null) return false;
-        if (checkLPPermission(source, node, 2)) return true;
+        UUID playerId = extractPlayerUuid(source);
+        if (playerId != null) {
+            Object player = resolvePlayer(playerId);
+            if (player != null) return checkNeoForgePermission(player, node);
+        }
         return checkVanillaOpLevel(source, 2);
     }
 
     @Override public boolean hasPermissionForPlayer(UUID playerId, String node) {
         try {
+            Object player = resolvePlayer(playerId);
+            if (player == null) return false;
+            return checkNeoForgePermission(player, node);
+        } catch (Throwable t) { return false; }
+    }
+
+    private Object resolvePlayer(UUID playerId) {
+        try {
             Object server = NeoForgeReflection.getServer();
-            if (server == null) return false;
+            if (server == null) return null;
             Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-            if (pm == null) return false;
-            Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) return false;
-            if (checkLPPermission(player, node, 2)) return true;
-            return isPlayerOperator(player);
-        } catch (Throwable t) { return false; }
+            if (pm == null) return null;
+            return NeoForgeReflection.call(pm, "getPlayer",
+                new Class<?>[]{UUID.class}, new Object[]{playerId});
+        } catch (Throwable t) { return null; }
     }
 
     static boolean isPlayerOperator(Object player) {
