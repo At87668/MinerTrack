@@ -21,7 +21,6 @@
 package link.star_dust.MinerTrack.neoforge;
 
 import link.star_dust.MinerTrack.common.CommandBridge;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -45,32 +44,32 @@ public class NeoForgeCommandBridge implements CommandBridge {
     }
 
     private static Object createText(String message) {
-        return FabricReflection.createText(message);
+        return NeoForgeReflection.createText(message);
     }
 
     @Override public void dispatchCommand(String command) {
         try {
             if (source == null) return;
-            Object server = FabricReflection.callAny(source, "getServer",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object server = NeoForgeReflection.callAny(source, "getServer",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (server == null) return;
-            Object cmdManager = FabricReflection.callAny(server, "getCommands",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object cmdManager = NeoForgeReflection.callAny(server, "getCommands",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (cmdManager == null)
-                cmdManager = FabricReflection.callAny(server, "getCommandManager",
-                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                cmdManager = NeoForgeReflection.callAny(server, "getCommandManager",
+                    NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (cmdManager == null) return;
-            Class<?> cssCls = FabricReflection.forName("net.minecraft.commands.CommandSourceStack");
+            Class<?> cssCls = NeoForgeReflection.forName("net.minecraft.commands.CommandSourceStack");
             if (cssCls == null) return;
             try {
-                FabricReflection.callAny(cmdManager, "performPrefixedCommand",
+                NeoForgeReflection.callAny(cmdManager, "performPrefixedCommand",
                     new Class<?>[]{cssCls, String.class}, new Object[]{source, command});
             } catch (Throwable t1) {
                 try {
-                    FabricReflection.callAny(cmdManager, "performCommand",
+                    NeoForgeReflection.callAny(cmdManager, "performCommand",
                         new Class<?>[]{cssCls, String.class}, new Object[]{source, command});
                 } catch (Throwable t2) {
-                    FabricReflection.callAny(cmdManager, "executeWithPrefix",
+                    NeoForgeReflection.callAny(cmdManager, "executeWithPrefix",
                         new Class<?>[]{cssCls, String.class}, new Object[]{source, command});
                 }
             }
@@ -79,21 +78,21 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     @Override public boolean isPlayer() {
         try {
-            Object r = FabricReflection.callAny(source, "isPlayer",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object r = NeoForgeReflection.callAny(source, "isPlayer",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (r instanceof Boolean && (Boolean) r) return true;
         } catch (Throwable t) {}
         try {
-            Object entity = FabricReflection.callAny(source, "getEntity",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object entity = NeoForgeReflection.callAny(source, "getEntity",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (entity != null) {
-                Class<?> serverPlayer = FabricReflection.forName("net.minecraft.server.level.ServerPlayer");
+                Class<?> serverPlayer = NeoForgeReflection.forName("net.minecraft.server.level.ServerPlayer");
                 if (serverPlayer != null && serverPlayer.isInstance(entity)) return true;
             }
         } catch (Throwable t) {}
         try {
-            Object r = FabricReflection.callAny(source, "isExecutedByPlayer",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object r = NeoForgeReflection.callAny(source, "isExecutedByPlayer",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) { return false; }
     }
@@ -124,56 +123,56 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     private static boolean sendFeedback(Object target, Object text, boolean isSuccess) {
         if (text == null || target == null) return false;
-        Class<?> textCls = FabricReflection.resolveTextComponentClass();
+        Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
         if (textCls == null) return false;
         Class<?> targetCls = target.getClass();
         if (isSuccess) {
-            boolean oldDebug = FabricReflection.DEBUG_REFLECTION;
-            FabricReflection.DEBUG_REFLECTION = false;
+            boolean oldDebug = NeoForgeReflection.DEBUG_REFLECTION;
+            NeoForgeReflection.DEBUG_REFLECTION = false;
             try {
                 try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                    Method m = NeoForgeReflection.findMethod(targetCls, "sendSuccess",
                         new Class<?>[]{Supplier.class, boolean.class});
                     if (m != null) { final Object t = text; m.invoke(target, (Supplier<?>) () -> t, false); return true; }
                 } catch (Throwable t) {}
                 try {
-                    Method m = FabricReflection.findMethod(targetCls, "sendSuccess",
+                    Method m = NeoForgeReflection.findMethod(targetCls, "sendSuccess",
                         new Class<?>[]{textCls, boolean.class});
                     if (m != null) { m.invoke(target, text, false); return true; }
                 } catch (Throwable t) {}
-            } finally { FabricReflection.DEBUG_REFLECTION = oldDebug; }
+            } finally { NeoForgeReflection.DEBUG_REFLECTION = oldDebug; }
         }
         if (!isSuccess) {
             try {
-                Method m = FabricReflection.findMethod(targetCls, "sendFailure", new Class<?>[]{textCls});
+                Method m = NeoForgeReflection.findMethod(targetCls, "sendFailure", new Class<?>[]{textCls});
                 if (m != null) { m.invoke(target, text); return true; }
             } catch (Throwable t) {}
         }
-        try { Method m = FabricReflection.findMethod(targetCls, "sendSystemMessage", new Class<?>[]{textCls}); if (m != null) { m.invoke(target, text); return true; } } catch (Throwable t) {}
-        try { Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, UUID.class}); if (m != null) { m.invoke(target, text, UUID.randomUUID()); return true; } } catch (Throwable t) {}
-        try { Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, boolean.class}); if (m != null) { m.invoke(target, text, false); return true; } } catch (Throwable t) {}
-        try { Method m = FabricReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls}); if (m != null) { m.invoke(target, text); return true; } } catch (Throwable t) {}
+        try { Method m = NeoForgeReflection.findMethod(targetCls, "sendSystemMessage", new Class<?>[]{textCls}); if (m != null) { m.invoke(target, text); return true; } } catch (Throwable t) {}
+        try { Method m = NeoForgeReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, UUID.class}); if (m != null) { m.invoke(target, text, UUID.randomUUID()); return true; } } catch (Throwable t) {}
+        try { Method m = NeoForgeReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, boolean.class}); if (m != null) { m.invoke(target, text, false); return true; } } catch (Throwable t) {}
+        try { Method m = NeoForgeReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls}); if (m != null) { m.invoke(target, text); return true; } } catch (Throwable t) {}
         return false;
     }
 
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
-            Object server = FabricReflection.getServer();
+            Object server = NeoForgeReflection.getServer();
             if (server == null) return;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (pm == null) return;
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return;
             Object text = createText(message);
             if (text == null) return;
-            Class<?> textCls = FabricReflection.resolveTextComponentClass();
+            Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
             if (textCls == null) return;
-            try { FabricReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
+            try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
             catch (Throwable t1) {
-                try { FabricReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); }
+                try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); }
                 catch (Throwable t2) {
-                    try { FabricReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, boolean.class}, new Object[]{text, false}); }
+                    try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, boolean.class}, new Object[]{text, false}); }
                     catch (Throwable t3) {}
                 }
             }
@@ -182,15 +181,15 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     @Override public void sendMessageToConsole(String message) {
         try {
-            Object server = FabricReflection.getServer();
+            Object server = NeoForgeReflection.getServer();
             if (server == null) return;
             Object text = createText(message);
             if (text == null) return;
-            Class<?> textCls = FabricReflection.resolveTextComponentClass();
+            Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
             if (textCls == null) return;
-            try { FabricReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls}, new Object[]{text}); }
+            try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls}, new Object[]{text}); }
             catch (Throwable t1) {
-                try { FabricReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
+                try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
                 catch (Throwable t2) {}
             }
         } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
@@ -210,8 +209,8 @@ public class NeoForgeCommandBridge implements CommandBridge {
     private static UUID extractPlayerUuid(Object css) {
         if (css == null) return null;
         for (String methodName : new String[]{"getPlayer", "getEntity"}) {
-            Object entity = FabricReflection.callAny(css, methodName, FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (entity != null) { Object uid = FabricReflection.callUuid(entity); if (uid instanceof UUID) return (UUID) uid; }
+            Object entity = NeoForgeReflection.callAny(css, methodName, NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (entity != null) { Object uid = NeoForgeReflection.callUuid(entity); if (uid instanceof UUID) return (UUID) uid; }
         }
         return null;
     }
@@ -262,12 +261,12 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     @Override public boolean hasPermissionForPlayer(UUID playerId, String node) {
         try {
-            Object server = FabricReflection.getServer();
+            Object server = NeoForgeReflection.getServer();
             if (server == null) return false;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (pm == null) return false;
-            Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
+            Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
             if (player == null) return false;
             if (checkLPPermission(player, node, 2)) return true;
             return isPlayerOperator(player);
@@ -276,15 +275,15 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     static boolean isPlayerOperator(Object player) {
         try {
-            Object server = FabricReflection.getServer();
+            Object server = NeoForgeReflection.getServer();
             if (server == null) return false;
-            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (pm == null) return false;
-            Object profile = FabricReflection.callAny(player, "getGameProfile",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object profile = NeoForgeReflection.callAny(player, "getGameProfile",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (profile == null) return false;
-            Object result = FabricReflection.callAny(pm, "isOp",
+            Object result = NeoForgeReflection.callAny(pm, "isOp",
                 new Class<?>[]{profile.getClass()}, new Object[]{profile});
             return result instanceof Boolean && (Boolean) result;
         } catch (Throwable t) { return false; }
@@ -292,15 +291,15 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     private boolean checkVanillaOpLevel(Object source, int requiredLevel) {
         try {
-            Object server = FabricReflection.getServer();
+            Object server = NeoForgeReflection.getServer();
             if (server == null) return false;
             if (isPlayer()) {
                 UUID id = extractPlayerUuid(source);
                 if (id != null) {
-                    Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                        FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                    Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                        NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     if (pm != null) {
-                        Object player = FabricReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{id});
+                        Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{id});
                         if (player != null) return isPlayerOperator(player);
                     }
                 }
