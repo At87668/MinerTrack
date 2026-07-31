@@ -102,7 +102,7 @@ processResources {
     // contain the literal string "${version}", which Fabric's
     // loader rejects with the "Could not parse version number
     // component '${version}'" warning logged at startup.
-    filesMatching(['**/plugin.yml', '**/fabric.mod.json']) {
+    filesMatching(['**/plugin.yml', '**/fabric.mod.json', '**/mods.toml', '**/neoforge.mods.toml']) {
         expand(version: project.version.toString())
     }
 }
