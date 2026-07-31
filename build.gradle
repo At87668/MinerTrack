@@ -157,6 +157,10 @@ shadowJar {
     // "Modules X and org.slf4j export package org.slf4j" at boot.
     exclude 'org/slf4j/**'
     exclude 'META-INF/maven/**'
+    // Stub annotations for @Mod — compile-time only; the server provides
+    // the real net.minecraftforge.fml.common.Mod / net.neoforged.fml.common.Mod.
+    exclude 'net/minecraftforge/**'
+    exclude 'net/neoforged/**'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set('')
 }
