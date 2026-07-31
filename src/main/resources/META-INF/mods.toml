@@ -10,7 +10,6 @@ license = "MIT"
 [[mods]]
 modId = "minertrack"
 version = "${version}"
-modGroup = link.star_dust.MinerTrack.forge.ForgePlatform
 displayName = "MinerTrack"
 # logoFile is optional — omit for now
 description = '''

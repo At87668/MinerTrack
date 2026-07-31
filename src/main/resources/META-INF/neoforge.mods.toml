@@ -9,7 +9,6 @@ license = "MIT"
 
 [[mods]]
 modId = "minertrack"
-modGroup = link.star_dust.MinerTrack.neoforge.NeoForgePlatform
 version = "${version}"
 displayName = "MinerTrack"
 description = '''The Advanced Anti-Xray that you need. Have you ever dreamed of a powerful anti-xray?'''
