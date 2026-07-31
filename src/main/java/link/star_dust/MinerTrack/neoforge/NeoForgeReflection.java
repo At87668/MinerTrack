@@ -271,7 +271,6 @@ final class NeoForgeReflection {
         if (eventBus == null) return;
         try {
             Class<?> consumerCls = java.util.function.Consumer.class;
-            Method addListener = eventBus.getClass().getMethod("addListener", consumerCls);
             Object proxy = Proxy.newProxyInstance(consumerCls.getClassLoader(), new Class<?>[]{consumerCls}, (proxyObj, method, args) -> {
                 if ("accept".equals(method.getName()) && args != null && args.length == 1) { handler.accept(args[0]); }
                 else if ("equals".equals(method.getName())) { return proxyObj == args[0]; }
@@ -279,7 +278,22 @@ final class NeoForgeReflection {
                 else if ("toString".equals(method.getName())) { return "NeoForgeEventListener$Proxy"; }
                 return null;
             });
-            addListener.invoke(eventBus, proxy);
+            // IEventBus.addListener(EventPriority.NORMAL, false, Class<T>, Consumer<T>)
+            try {
+                Class<?> priorityCls = Class.forName("net.neoforged.bus.api.EventPriority");
+                Object normal = priorityCls.getField("NORMAL").get(null);
+                Method addListenerExplicit = eventBus.getClass().getMethod("addListener",
+                    priorityCls, boolean.class, Class.class, consumerCls);
+                addListenerExplicit.invoke(eventBus, normal, false, eventClass, proxy);
+                return;
+            } catch (Throwable t) { /* fall through to generic overload */ }
+            // Fallback: IEventBus.addListener(Consumer<T>)
+            try {
+                Method addListener = eventBus.getClass().getMethod("addListener", consumerCls);
+                addListener.invoke(eventBus, proxy);
+            } catch (Throwable t) {
+                if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage());
+            }
         } catch (Throwable t) { if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage()); }
     }
 
