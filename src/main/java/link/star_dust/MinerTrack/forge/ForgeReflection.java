@@ -20,8 +20,6 @@
 
 package link.star_dust.MinerTrack.forge;
 
-import link.star_dust.MinerTrack.fabric.FabricReflection;
-
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -31,15 +29,11 @@ import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Lightweight reflection helpers for accessing Forge internals.
+ * Self-contained reflection helpers for accessing Forge internals.
  *
- * <p>Delegates to {@link FabricReflection} for Minecraft-internal access
- * (class loading, method/field resolution, text component creation, etc.).
- * Adds Forge-specific helpers for mod container, event bus, and config path
- * access that differ from Fabric's APIs.
- *
- * <p>Forge uses SRG/MCP names at runtime. Minecraft class/method access
- * through FabricReflection handles mapping resolution transparently.
+ * <p>Forge 1.18+ uses Mojang names at runtime for both class and method names.
+ * No intermediary/SRG fallback needed unlike Fabric. This module is fully
+ * independent â€?zero dependency on {@code link.star_dust.MinerTrack.fabric}.
  */
 final class ForgeReflection {
 
@@ -48,53 +42,194 @@ final class ForgeReflection {
 
     private ForgeReflection() {}
 
-    static void setDebugReflection(boolean on) { DEBUG_REFLECTION = on; FabricReflection.setDebugReflection(on); }
-
-    static void setCachedServer(Object server) { cachedServer = server; FabricReflection.setCachedServer(server); }
-    static Object getServer() { return FabricReflection.getServer(); }
-
-    /** Clear the debug cache. Delegates to the adapter. */
-    public static void clearDebugCache() {
-        // This is a no-op here; callers use ForgeAdapter.clearDebugCache()
-    }
+    static void setDebugReflection(boolean on) { DEBUG_REFLECTION = on; }
+    static void setCachedServer(Object server) { cachedServer = server; }
+    static Object getServer() { return cachedServer; }
 
     private static void log(String msg) { System.out.println("[MinerTrack:ForgeReflection] " + msg); }
 
-    // Sentinel & caches
+    // -- sentinel & caches --
     private static final Object NOT_FOUND = new Object();
+    private static final ConcurrentHashMap<String, Object> classCache = new ConcurrentHashMap<>(64);
+    private static final ConcurrentHashMap<MethodKey, Object> methodCache = new ConcurrentHashMap<>(128);
+    private static final ConcurrentHashMap<StaticMethodKey, Object> staticMethodCache = new ConcurrentHashMap<>(64);
+    private static final ConcurrentHashMap<FieldKey, Object> fieldCache = new ConcurrentHashMap<>(64);
 
     private static final class MethodKey {
         final Class<?> cls; final String name; final Class<?>[] paramTypes;
-        MethodKey(Class<?> cls, String name, Class<?>[] paramTypes) {
-            this.cls = cls; this.name = name; this.paramTypes = paramTypes;
-        }
-        @Override public boolean equals(Object o) {
-            if (!(o instanceof MethodKey)) return false;
-            MethodKey k = (MethodKey) o;
-            return cls == k.cls && name.equals(k.name) && Arrays.equals(paramTypes, k.paramTypes);
-        }
-        @Override public int hashCode() {
-            return cls.hashCode() * 31 + name.hashCode() + Arrays.hashCode(paramTypes);
-        }
+        MethodKey(Class<?> cls, String name, Class<?>[] paramTypes) { this.cls = cls; this.name = name; this.paramTypes = paramTypes; }
+        @Override public boolean equals(Object o) { if (!(o instanceof MethodKey)) return false; MethodKey k = (MethodKey) o; return cls == k.cls && name.equals(k.name) && Arrays.equals(paramTypes, k.paramTypes); }
+        @Override public int hashCode() { return cls.hashCode() * 31 + name.hashCode() + Arrays.hashCode(paramTypes); }
+    }
+    private static final class StaticMethodKey {
+        final String className; final String methodName; final Class<?>[] paramTypes;
+        StaticMethodKey(String className, String methodName, Class<?>[] paramTypes) { this.className = className; this.methodName = methodName; this.paramTypes = paramTypes; }
+        @Override public boolean equals(Object o) { if (!(o instanceof StaticMethodKey)) return false; StaticMethodKey k = (StaticMethodKey) o; return className.equals(k.className) && methodName.equals(k.methodName) && Arrays.equals(paramTypes, k.paramTypes); }
+        @Override public int hashCode() { return className.hashCode() * 31 + methodName.hashCode() + Arrays.hashCode(paramTypes); }
+    }
+    private static final class FieldKey {
+        final Class<?> cls; final String name;
+        FieldKey(Class<?> cls, String name) { this.cls = cls; this.name = name; }
+        @Override public boolean equals(Object o) { if (!(o instanceof FieldKey)) return false; FieldKey k = (FieldKey) o; return cls == k.cls && name.equals(k.name); }
+        @Override public int hashCode() { return cls.hashCode() * 31 + name.hashCode(); }
     }
 
-    private static final ConcurrentHashMap<MethodKey, Object> methodCache = new ConcurrentHashMap<>(128);
-
-    @SuppressWarnings("unchecked")
-    private static <T> T unwrap(Object cached) {
-        return (cached == NOT_FOUND) ? null : (T) cached;
-    }
+    @SuppressWarnings("unchecked") private static <T> T unwrap(Object cached) { return (cached == NOT_FOUND) ? null : (T) cached; }
 
     static final Class<?>[] NO_PARAMS = new Class<?>[0];
     static final Object[]   NO_ARGS  = new Object[0];
 
     // ==================================================================
-    // Forge-specific class loading
+    // Class loading (Forge: Mojang names work directly at runtime)
     // ==================================================================
 
+    static Class<?> forName(String className) {
+        if (className == null) return null;
+        Object cached = classCache.get(className);
+        if (cached != null) return unwrap(cached);
+        try { Class<?> cls = Class.forName(className); classCache.put(className, cls); return cls; }
+        catch (ClassNotFoundException e) { if (DEBUG_REFLECTION) log("CLS-MISS " + className); classCache.put(className, NOT_FOUND); return null; }
+    }
+
     static Class<?> forgeClass(String name) {
-        try { return Class.forName(name); }
-        catch (ClassNotFoundException e) { return null; }
+        try { return Class.forName(name); } catch (ClassNotFoundException e) { return null; }
+    }
+
+    static Object newInstance(String className, Class<?>[] paramTypes, Object[] args) {
+        Class<?> cls = forName(className); if (cls == null) return null;
+        try { Constructor<?> c = cls.getDeclaredConstructor(paramTypes); c.setAccessible(true); return c.newInstance(args); }
+        catch (Throwable t) { return null; }
+    }
+
+    // ==================================================================
+    // Method invocation â€?instance
+    // ==================================================================
+
+    static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
+        if (target == null) return null;
+        Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
+        if (m == null) return null;
+        try { return m.invoke(target, args); } catch (Throwable t) { return null; }
+    }
+
+    static Object callAny(Object target, String methodName, Class<?>[] paramTypes, Object[] args) { return call(target, methodName, paramTypes, args); }
+
+    static Object callMigrated(Object target, String mc26Method, String legacyMethod, Class<?>[] paramTypes, Object[] args) {
+        if (target == null) return null;
+        Object r = call(target, mc26Method, paramTypes, args); if (r != null) return r;
+        return call(target, legacyMethod, paramTypes, args);
+    }
+
+    static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) { return findMethodImpl(cls, name, paramTypes); }
+
+    static void invokeBySigOrThrow(Object target, Class<?>[] paramTypes, Object[] args) {
+        if (target == null) throw new IllegalArgumentException("target is null");
+        Method m = scanMethod(target.getClass(), paramTypes, null);
+        if (m == null) throw new RuntimeException(new NoSuchMethodException(target.getClass().getName() + ".(*sig " + paramTypes.length + " params)"));
+        try { m.invoke(target, args); } catch (IllegalAccessException | InvocationTargetException e) { throw new RuntimeException(e); }
+    }
+
+    static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args, Class<?> returnType) {
+        if (target == null) return null;
+        Method m = scanMethod(target.getClass(), paramTypes, returnType);
+        if (m == null) return null;
+        try { return m.invoke(target, args); } catch (Throwable t) { return null; }
+    }
+
+    // ==================================================================
+    // Method invocation â€?static
+    // ==================================================================
+
+    static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
+        StaticMethodKey key = new StaticMethodKey(className, methodName, paramTypes);
+        Object cached = staticMethodCache.get(key);
+        if (cached != null) { Method m = unwrap(cached); if (m == null) return null; try { return m.invoke(null, args); } catch (Throwable t) { return null; } }
+        Class<?> cls = forName(className);
+        if (cls == null) { staticMethodCache.put(key, NOT_FOUND); return null; }
+        try { Method m = cls.getDeclaredMethod(methodName, paramTypes); m.setAccessible(true); Object r = m.invoke(null, args); staticMethodCache.put(key, m); return r; }
+        catch (NoSuchMethodException e) { try { Method m = cls.getMethod(methodName, paramTypes); Object r = m.invoke(null, args); staticMethodCache.put(key, m); return r; } catch (Throwable t2) {} }
+        catch (Throwable e) { staticMethodCache.put(key, NOT_FOUND); return null; }
+        for (Method candidate : cls.getDeclaredMethods()) {
+            if (!java.lang.reflect.Modifier.isStatic(candidate.getModifiers())) continue;
+            if (candidate.getParameterCount() != paramTypes.length) continue;
+            boolean match = true; for (int i = 0; i < paramTypes.length; i++) { if (!candidate.getParameterTypes()[i].isAssignableFrom(paramTypes[i])) { match = false; break; } }
+            if (match) { try { candidate.setAccessible(true); Object r = candidate.invoke(null, args); staticMethodCache.put(key, candidate); return r; } catch (Throwable t) {} }
+        }
+        staticMethodCache.put(key, NOT_FOUND); return null;
+    }
+
+    // ==================================================================
+    // Field access
+    // ==================================================================
+
+    @SuppressWarnings("unchecked")
+    static <T> T getField(Object target, String fieldName) {
+        try {
+            Class<?> cls = (target instanceof Class) ? (Class<?>) target : target.getClass();
+            Field f = findField(cls, fieldName); if (f == null) return null;
+            f.setAccessible(true); Object owner = (target instanceof Class) ? null : target;
+            return (T) f.get(owner);
+        } catch (Throwable t) { return null; }
+    }
+
+    // ==================================================================
+    // Text/Component
+    // ==================================================================
+
+    private static volatile Class<?> cachedTextClass; private static volatile boolean cachedTextClassResolved;
+
+    static Class<?> resolveTextComponentClass() {
+        if (cachedTextClassResolved) return cachedTextClass;
+        cachedTextClass = forName("net.minecraft.network.chat.Component");
+        cachedTextClassResolved = true; return cachedTextClass;
+    }
+
+    static Object createText(String message) {
+        if (message == null) return null;
+        Object r = callStatic("net.minecraft.network.chat.Component", "literal", new Class<?>[]{String.class}, new Object[]{message});
+        if (r != null) return r;
+        Class<?> tcCls = forName("net.minecraft.network.chat.TextComponent");
+        if (tcCls != null) { try { Constructor<?> ctor = tcCls.getDeclaredConstructor(String.class); ctor.setAccessible(true); return ctor.newInstance(message); } catch (Throwable t) {} }
+        return null;
+    }
+
+    // ==================================================================
+    // Version-aware helpers
+    // ==================================================================
+
+    static Object callUuid(Object target) {
+        if (target == null) return null;
+        Object r = call(target, "getUUID", NO_PARAMS, NO_ARGS); if (r != null) return r;
+        return call(target, "getUuid", NO_PARAMS, NO_ARGS);
+    }
+
+    static Object callDimension(Object world) {
+        if (world == null) return null;
+        Object r = call(world, "dimension", NO_PARAMS, NO_ARGS); if (r != null) return r;
+        return call(world, "getRegistryKey", NO_PARAMS, NO_ARGS);
+    }
+
+    static String readString(Object source) {
+        if (source == null) return null;
+        if (source instanceof String) return (String) source;
+        Object s = call(source, "getString", NO_PARAMS, NO_ARGS); if (s instanceof String) return (String) s;
+        String str = source.toString();
+        if (str.startsWith("literal{") && str.endsWith("}")) return str.substring("literal{".length(), str.length() - 1);
+        if (str.startsWith("literal(") && str.endsWith(")")) return str.substring("literal(".length(), str.length() - 1);
+        return str;
+    }
+
+    static String getBlockId(Object block) {
+        if (block == null) return null;
+        String s = block.toString(); int brace = s.indexOf('{'), close = s.indexOf('}');
+        if (brace >= 0 && close > brace) return s.substring(brace + 1, close);
+        Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
+        if (holder != null) { try { Object key = holder.getClass().getMethod("getKey").invoke(holder); if (key != null) { Object loc = call(key, "getValue", NO_PARAMS, NO_ARGS); if (loc != null) return readString(loc); } } catch (Throwable t) {} }
+        Class<?> bir = forName("net.minecraft.core.registries.BuiltInRegistries");
+        if (bir != null) { Object reg = getField(bir, "BLOCK"); if (reg != null) { Object id = call(reg, "getKey", new Class<?>[]{Object.class}, new Object[]{block}); if (id != null) return readString(id); } }
+        Class<?> regCls = forName("net.minecraft.core.Registry");
+        if (regCls != null) { Object reg = getField(regCls, "BLOCK"); if (reg != null) { Object id = call(reg, "getKey", new Class<?>[]{Object.class}, new Object[]{block}); if (id != null) return readString(id); } }
+        return null;
     }
 
     // ==================================================================
@@ -102,212 +237,114 @@ final class ForgeReflection {
     // ==================================================================
 
     static java.nio.file.Path getConfigDir() {
-        try {
-            Class<?> fmlPaths = forgeClass("net.minecraftforge.fml.loading.FMLPaths");
-            if (fmlPaths == null) return java.nio.file.Path.of("config");
-            Field f = fmlPaths.getField("CONFIGDIR");
-            Object configDirPath = f.get(null);
-            if (configDirPath instanceof java.nio.file.Path) return (java.nio.file.Path) configDirPath;
-            return java.nio.file.Path.of("config");
-        } catch (Throwable t) {
-            return java.nio.file.Path.of("config");
-        }
+        try { Class<?> fmlPaths = forgeClass("net.minecraftforge.fml.loading.FMLPaths"); if (fmlPaths == null) return java.nio.file.Path.of("config"); Field f = fmlPaths.getField("CONFIGDIR"); Object v = f.get(null); return v instanceof java.nio.file.Path ? (java.nio.file.Path) v : java.nio.file.Path.of("config"); }
+        catch (Throwable t) { return java.nio.file.Path.of("config"); }
     }
-
-    // ==================================================================
-    // Forge mod version
-    // ==================================================================
 
     static String getModVersion(String modId) {
         try {
-            Class<?> modListCls = forgeClass("net.minecraftforge.fml.ModList");
-            if (modListCls == null) return "unknown";
-            Method getMethod = modListCls.getMethod("get");
-            Object modList = getMethod.invoke(null);
-            Method getContainer = modListCls.getMethod("getModContainerById", String.class);
-            Object container = getContainer.invoke(modList, modId);
+            Class<?> modListCls = forgeClass("net.minecraftforge.fml.ModList"); if (modListCls == null) return "unknown";
+            Method getMethod = modListCls.getMethod("get"); Object modList = getMethod.invoke(null);
+            Method getContainer = modListCls.getMethod("getModContainerById", String.class); Object container = getContainer.invoke(modList, modId);
             if (container == null) return "unknown";
-            // java.util.Optional â€” call get()
-            Method optGet = container.getClass().getMethod("get");
-            Object actualContainer = optGet.invoke(container);
-            Method getModInfo = actualContainer.getClass().getMethod("getModInfo");
-            Object modInfo = getModInfo.invoke(actualContainer);
-            Method getVersion = modInfo.getClass().getMethod("getVersion");
-            Object version = getVersion.invoke(modInfo);
-            return version != null ? version.toString() : "unknown";
-        } catch (Throwable t) {
-            return "unknown";
-        }
+            Method optGet = container.getClass().getMethod("get"); Object c = optGet.invoke(container);
+            Method getModInfo = c.getClass().getMethod("getModInfo"); Object mi = getModInfo.invoke(c);
+            Method getVersion = mi.getClass().getMethod("getVersion"); Object v = getVersion.invoke(mi);
+            return v != null ? v.toString() : "unknown";
+        } catch (Throwable t) { return "unknown"; }
     }
 
     // ==================================================================
     // Forge event bus
     // ==================================================================
 
-    /**
-     * Get the Forge mod event bus (for mod-specific lifecycle events).
-     * Returns {@code FMLJavaModLoadingContext.get().getModEventBus()}.
-     */
-    static Object getModEventBus() {
-        try {
-            Class<?> ctxCls = forgeClass("net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext");
-            if (ctxCls == null) return null;
-            Method getCtx = ctxCls.getMethod("get");
-            Object ctx = getCtx.invoke(null);
-            Method getBus = ctxCls.getMethod("getModEventBus");
-            return getBus.invoke(ctx);
-        } catch (Throwable t) {
-            return null;
-        }
-    }
-
-    /**
-     * Get the Forge main event bus (MinecraftForge.EVENT_BUS).
-     */
     static Object getMainEventBus() {
-        try {
-            Class<?> mcForge = forgeClass("net.minecraftforge.common.MinecraftForge");
-            if (mcForge == null) return null;
-            Field ebField = mcForge.getField("EVENT_BUS");
-            return ebField.get(null);
-        } catch (Throwable t) {
-            return null;
-        }
+        try { Class<?> mcForge = forgeClass("net.minecraftforge.common.MinecraftForge"); if (mcForge == null) return null; Field eb = mcForge.getField("EVENT_BUS"); return eb.get(null); }
+        catch (Throwable t) { return null; }
     }
 
-    /**
-     * Register a generic event listener on the given Forge event bus.
-     * Uses Java dynamic proxy to implement the Consumer interface.
-     */
     @SuppressWarnings("rawtypes")
-    static void registerEventListener(Object eventBus, Class<?> eventClass,
-                                       java.util.function.Consumer<Object> handler) {
-        if (eventBus == null || eventClass == null) return;
+    static void registerEventListener(Object eventBus, Class<?> eventClass, java.util.function.Consumer<Object> handler) {
+        if (eventBus == null) return;
         try {
-            // IEventBus.addListener(Consumer<T>)
             Class<?> consumerCls = java.util.function.Consumer.class;
-            Method addListener = eventBus.getClass().getMethod("addListener",
-                consumerCls);
-
-            Object proxy = Proxy.newProxyInstance(
-                consumerCls.getClassLoader(),
-                new Class<?>[]{consumerCls},
-                (proxyObj, method, args) -> {
-                    if ("accept".equals(method.getName()) && args != null && args.length == 1) {
-                        handler.accept(args[0]);
-                    } else if ("equals".equals(method.getName())) {
-                        return proxyObj == args[0];
-                    } else if ("hashCode".equals(method.getName())) {
-                        return System.identityHashCode(proxyObj);
-                    } else if ("toString".equals(method.getName())) {
-                        return "ForgeEventListener$Proxy";
-                    }
-                    return null;
-                });
-
+            Method addListener = eventBus.getClass().getMethod("addListener", consumerCls);
+            Object proxy = Proxy.newProxyInstance(consumerCls.getClassLoader(), new Class<?>[]{consumerCls}, (proxyObj, method, args) -> {
+                if ("accept".equals(method.getName()) && args != null && args.length == 1) { handler.accept(args[0]); }
+                else if ("equals".equals(method.getName())) { return proxyObj == args[0]; }
+                else if ("hashCode".equals(method.getName())) { return System.identityHashCode(proxyObj); }
+                else if ("toString".equals(method.getName())) { return "ForgeEventListener$Proxy"; }
+                return null;
+            });
             addListener.invoke(eventBus, proxy);
-        } catch (Throwable t) {
-            if (DEBUG_REFLECTION) log("Failed to register listener for " + eventClass.getName()
-                + ": " + t.getMessage());
-        }
+        } catch (Throwable t) { if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage()); }
     }
 
     // ==================================================================
-    // Delegate to FabricReflection for Minecraft internals
+    // Internal method/field lookup
     // ==================================================================
 
-    /** Load a Minecraft class â€” delegates to FabricReflection. */
-    static Class<?> forName(String namedClassName) {
-        return FabricReflection.forName(namedClassName);
+    private static Method findMethodImpl(Class<?> cls, String name, Class<?>[] paramTypes) {
+        if (cls == null || name == null) return null;
+        MethodKey key = new MethodKey(cls, name, paramTypes);
+        Object cached = methodCache.get(key); if (cached != null) return unwrap(cached);
+        Method m = tryMethod(cls, name, paramTypes);
+        if (m != null) { methodCache.put(key, m); return m; }
+        m = scanMethodNamed(cls, name, paramTypes);
+        if (m != null) { methodCache.put(key, m); return m; }
+        m = scanMethod(cls, paramTypes, null);
+        if (m != null) { methodCache.put(key, m); return m; }
+        Class<?> sup = cls.getSuperclass();
+        if (sup != null && sup != Object.class) { m = findMethodImpl(sup, name, paramTypes); if (m != null) { methodCache.put(key, m); return m; } }
+        if (DEBUG_REFLECTION) log("M-MISS " + cls.getName() + "." + name);
+        methodCache.put(key, NOT_FOUND); return null;
     }
 
-    /** Create an instance via reflection. */
-    static Object newInstance(String className, Class<?>[] paramTypes, Object[] args) {
-        try {
-            Class<?> cls = forName(className);
-            if (cls == null) return null;
-            Constructor<?> ctor = cls.getDeclaredConstructor(paramTypes);
-            ctor.setAccessible(true);
-            return ctor.newInstance(args);
-        } catch (Throwable t) { return null; }
+    private static Method tryMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
+        try { Method m = cls.getDeclaredMethod(name, paramTypes); m.setAccessible(true); return m; } catch (NoSuchMethodException e) {}
+        try { Method m = cls.getMethod(name, paramTypes); m.setAccessible(true); return m; } catch (NoSuchMethodException e) {}
+        return null;
     }
 
-    /** Call an instance method on the target object. */
-    static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
-        return FabricReflection.call(target, methodName, paramTypes, args);
+    private static Method scanMethodNamed(Class<?> cls, String name, Class<?>[] paramTypes) {
+        if (name == null) return null;
+        for (Method c : cls.getDeclaredMethods()) { if (c.getName().equals(name) && ps(c, paramTypes) && ro(c, null)) { c.setAccessible(true); return c; } }
+        for (Method c : cls.getMethods()) { if (c.getDeclaringClass() == Object.class) continue; if (c.getName().equals(name) && ps(c, paramTypes) && ro(c, null)) { c.setAccessible(true); return c; } }
+        return null;
     }
 
-    static Object callAny(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
-        return FabricReflection.callAny(target, methodName, paramTypes, args);
-    }
-
-    static Object callMigrated(Object target, String mc26Method, String legacyMethod,
-                               Class<?>[] paramTypes, Object[] args) {
-        return FabricReflection.callMigrated(target, mc26Method, legacyMethod, paramTypes, args);
-    }
-
-    /** Get a field value from an object. */
-    static Object getField(Object target, String fieldName) {
-        return FabricReflection.getField(target, fieldName);
-    }
-
-    /** Get a static field value from a class. */
-    static Object getField(Class<?> cls, String fieldName) {
-        return FabricReflection.getField(cls, fieldName);
-    }
-
-    /** Find a method on a class (with parent class walking). */
-    static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) {
-        return FabricReflection.findMethod(cls, name, paramTypes);
-    }
-
-    /** Create a Text/Component from a plain string. */
-    static Object createText(String message) {
-        return FabricReflection.createText(message);
-    }
-
-    /** Resolve the Text Component class. */
-    static Class<?> resolveTextComponentClass() {
-        return FabricReflection.resolveTextComponentClass();
-    }
-
-    /** Get the block ID string from a Block object. */
-    static String getBlockId(Object block) {
-        return FabricReflection.getBlockId(block);
-    }
-
-    /** Find a method by parameter signature only (no method name matching). */
     static Method scanMethod(Class<?> cls, Class<?>[] paramTypes, Class<?> returnType) {
-        return FabricReflection.scanMethod(cls, paramTypes, returnType);
+        for (Method c : cls.getDeclaredMethods()) { if (ps(c, paramTypes) && ro(c, returnType)) { c.setAccessible(true); return c; } }
+        for (Method c : cls.getMethods()) { if (c.getDeclaringClass() == Object.class) continue; if (ps(c, paramTypes) && ro(c, returnType)) { c.setAccessible(true); return c; } }
+        return null;
     }
 
-    /** Call a method by parameter signature and return type. */
-    static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args, Class<?> returnType) {
-        return FabricReflection.callBySig(target, paramTypes, args, returnType);
+    private static boolean ps(Method m, Class<?>[] pts) {
+        Class<?>[] a = m.getParameterTypes(); if (a.length != pts.length) return false;
+        for (int i = 0; i < a.length; i++) { if (!a[i].isAssignableFrom(pts[i])) return false; }
+        return true;
     }
 
-    /** Invoke by signature or throw. */
-    static void invokeBySigOrThrow(Object target, Class<?>[] paramTypes, Object[] args) {
-        FabricReflection.invokeBySigOrThrow(target, paramTypes, args);
+    private static boolean ro(Method m, Class<?> rt) {
+        if (rt == null) return true;
+        Class<?> r = m.getReturnType();
+        if (rt == void.class) return r == void.class; if (r == void.class) return false;
+        if (rt.isPrimitive()) return r == rt;
+        if (r.isPrimitive()) { if (rt == Integer.class) return r == int.class; if (rt == Boolean.class) return r == boolean.class; if (rt == Long.class) return r == long.class; if (rt == Double.class) return r == double.class; if (rt == Float.class) return r == float.class; return false; }
+        return rt.isAssignableFrom(r);
     }
 
-    /** Read a UUID from an entity/player. */
-    static Object callUuid(Object entity) {
-        return FabricReflection.callUuid(entity);
+    private static Field findField(Class<?> cls, String name) {
+        if (cls == null || name == null) return null;
+        FieldKey key = new FieldKey(cls, name); Object cached = fieldCache.get(key); if (cached != null) return unwrap(cached);
+        Field f = tryField(cls, name); if (f != null) { fieldCache.put(key, f); return f; }
+        Class<?> sup = cls.getSuperclass(); if (sup != null && sup != Object.class) { f = findField(sup, name); if (f != null) { fieldCache.put(key, f); return f; } }
+        fieldCache.put(key, NOT_FOUND); return null;
     }
 
-    /** Read a string from a Component/Text object. */
-    static String readString(Object component) {
-        return FabricReflection.readString(component);
-    }
-
-    /** Call getDimension / dimension() on a Level/World object. */
-    static Object callDimension(Object world) {
-        return FabricReflection.callDimension(world);
-    }
-
-    /** Call a static method. */
-    static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
-        return FabricReflection.callStatic(className, methodName, paramTypes, args);
+    private static Field tryField(Class<?> cls, String name) {
+        try { return cls.getDeclaredField(name); } catch (NoSuchFieldException e) {}
+        try { return cls.getField(name); } catch (NoSuchFieldException e) {}
+        return null;
     }
 }
