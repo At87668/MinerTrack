@@ -1,0 +1,29 @@
+# MinerTrack Mod Metadata for NeoForge
+# This file declares the mod to the NeoForge mod loader.
+# It lives at META-INF/neoforge.mods.toml inside the JAR.
+
+modLoader = "javafml"
+loaderVersion = "[1,)"  # NeoForge 20.2+
+
+license = "MIT"
+
+[[mods]]
+modId = "minertrack"
+version = "${version}"
+displayName = "MinerTrack"
+description = '''The Advanced Anti-Xray that you need. Have you ever dreamed of a powerful anti-xray?'''
+authors = "Author87668"
+
+[[dependencies.minertrack]]
+    modId = "neoforge"
+    mandatory = true
+    versionRange = "[1,)"
+    ordering = "NONE"
+    side = "SERVER"
+
+[[dependencies.minertrack]]
+    modId = "minecraft"
+    mandatory = true
+    versionRange = "[1.18,)"
+    ordering = "NONE"
+    side = "SERVER"
