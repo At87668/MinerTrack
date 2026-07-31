@@ -31,7 +31,7 @@ package link.star_dust.MinerTrack.neoforge;
  * here to avoid a compile-time dependency on the full NeoForge JAR.
  * The mod metadata in {@code META-INF/neoforge.mods.toml} declares the modid.</p>
  */
-// @net.neoforged.fml.common.Mod("minertrack") -- enable with NeoGradle
+@net.neoforged.fml.common.Mod("minertrack")
 public class NeoForgeMod {
 
     private final NeoForgePlatform platform = new NeoForgePlatform();
