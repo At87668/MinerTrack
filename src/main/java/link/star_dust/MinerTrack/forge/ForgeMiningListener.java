@@ -25,7 +25,6 @@ import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.util.UUID;
 
@@ -94,14 +93,14 @@ public class ForgeMiningListener {
 
     private boolean isClientWorld(Object world) {
         try {
-            Object r = FabricReflection.getField(world, "isClientSide");
+            Object r = ForgeReflection.getField(world, "isClientSide");
             return r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) { return false; }
     }
 
     private boolean isServerPlayer(Object player) {
         if (player == null) return false;
-        Class<?> serverPlayer = FabricReflection.forName("net.minecraft.server.level.ServerPlayer");
+        Class<?> serverPlayer = ForgeReflection.forName("net.minecraft.server.level.ServerPlayer");
         return serverPlayer != null && serverPlayer.isInstance(player);
     }
 
@@ -135,24 +134,24 @@ public class ForgeMiningListener {
 
     private static UUID readUuid(Object player) {
         try {
-            Object uuid = FabricReflection.callUuid(player);
+            Object uuid = ForgeReflection.callUuid(player);
             return uuid instanceof UUID ? (UUID) uuid : null;
         } catch (Throwable t) { return null; }
     }
 
     private static String readPlayerName(Object player) {
         try {
-            Object profile = FabricReflection.callAny(player, "getGameProfile",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object profile = ForgeReflection.callAny(player, "getGameProfile",
+                ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
             if (profile != null) {
                 String name = (String) profile.getClass().getMethod("getName").invoke(profile);
                 if (name != null && !name.isEmpty()) return name;
             }
         } catch (Throwable t) {
             try {
-                Object name = FabricReflection.callAny(player, "getName",
-                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                return FabricReflection.readString(name);
+                Object name = ForgeReflection.callAny(player, "getName",
+                    ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                return ForgeReflection.readString(name);
             } catch (Throwable t2) {}
         }
         return "";
@@ -160,7 +159,7 @@ public class ForgeMiningListener {
 
     private static String readDimensionId(Object world) {
         try {
-            Object registryKey = FabricReflection.callDimension(world);
+            Object registryKey = ForgeReflection.callDimension(world);
             if (registryKey == null) return null;
             String s = registryKey.toString();
             int start = s.indexOf('[');
@@ -170,9 +169,9 @@ public class ForgeMiningListener {
                 if (end > slash) return s.substring(slash + 3, end).trim();
                 return s.substring(slash + 3).trim();
             }
-            String value = FabricReflection.readString(
-                FabricReflection.callAny(registryKey, "getValue",
-                    FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS));
+            String value = ForgeReflection.readString(
+                ForgeReflection.callAny(registryKey, "getValue",
+                    ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS));
             return value;
         } catch (Throwable t) { return null; }
     }
@@ -207,10 +206,10 @@ public class ForgeMiningListener {
 
     private static String blockIdForState(Object state) {
         try {
-            Object block = FabricReflection.callAny(state, "getBlock",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object block = ForgeReflection.callAny(state, "getBlock",
+                ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
             if (block == null) return BlockId.AIR;
-            String id = FabricReflection.getBlockId(block);
+            String id = ForgeReflection.getBlockId(block);
             if (id != null && !id.isEmpty()) return id;
             String s = block.toString();
             int brace = s.indexOf('{');
