@@ -116,24 +116,24 @@ public class NeoForgeAdapter implements PluginAdapter {
 
     @Override public String getVersion() { return version; }
 
-    private Object minecraftServer() { return link.star_dust.MinerTrack.fabric.FabricReflection.getServer(); }
+    private Object minecraftServer() { return NeoForgeReflection.getServer(); }
 
     @Override
     public void info(String msg) {
         Object server = minecraftServer();
         if (server != null) {
             try {
-                Object text = link.star_dust.MinerTrack.fabric.FabricReflection.createText(msg);
+                Object text = NeoForgeReflection.createText(msg);
                 if (text == null) return;
-                Class<?> textCls = link.star_dust.MinerTrack.fabric.FabricReflection.resolveTextComponentClass();
+                Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
                 if (textCls == null) return;
                 try {
-                    java.lang.reflect.Method m = link.star_dust.MinerTrack.fabric.FabricReflection.findMethod(
+                    java.lang.reflect.Method m = NeoForgeReflection.findMethod(
                         server.getClass(), "sendSystemMessage", new Class<?>[]{textCls});
                     if (m != null) { m.invoke(server, text); return; }
                 } catch (Throwable t1) {}
                 try {
-                    java.lang.reflect.Method m = link.star_dust.MinerTrack.fabric.FabricReflection.findMethod(
+                    java.lang.reflect.Method m = NeoForgeReflection.findMethod(
                         server.getClass(), "sendSystemMessage", new Class<?>[]{textCls, UUID.class});
                     if (m != null) { m.invoke(server, text, UUID.randomUUID()); return; }
                 } catch (Throwable t1) {}
@@ -157,9 +157,9 @@ public class NeoForgeAdapter implements PluginAdapter {
         Object server = minecraftServer();
         if (server != null) {
             try {
-                Object text = link.star_dust.MinerTrack.fabric.FabricReflection.createText("[WARN] " + msg);
+                Object text = NeoForgeReflection.createText("[WARN] " + msg);
                 if (text == null) return;
-                Class<?> textCls = link.star_dust.MinerTrack.fabric.FabricReflection.resolveTextComponentClass();
+                Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
                 if (textCls == null) return;
                 java.lang.reflect.Method sendMessage = server.getClass().getMethod("sendMessage", textCls);
                 sendMessage.invoke(server, text);
@@ -218,12 +218,12 @@ public class NeoForgeAdapter implements PluginAdapter {
 
     @Override
     public Object getPlayer(UUID uuid) {
-        Object server = link.star_dust.MinerTrack.fabric.FabricReflection.getServer();
+        Object server = NeoForgeReflection.getServer();
         if (server == null) return null;
-        Object pm = link.star_dust.MinerTrack.fabric.FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+        Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
             new Class<?>[0], new Object[0]);
         if (pm == null) return null;
-        return link.star_dust.MinerTrack.fabric.FabricReflection.call(pm, "getPlayerByUUID",
+        return NeoForgeReflection.call(pm, "getPlayerByUUID",
             new Class<?>[]{UUID.class}, new Object[]{uuid});
     }
 
