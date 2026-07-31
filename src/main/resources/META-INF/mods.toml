@@ -3,13 +3,14 @@
 # It lives at META-INF/mods.toml inside the JAR.
 
 modLoader = "javafml"
-loaderVersion = "[47,)"  # Forge 1.20.1+
+loaderVersion = "[38,)"  # Forge 1.18+
 
 license = "MIT"
 
 [[mods]]
 modId = "minertrack"
 version = "${version}"
+modGroup = link.star_dust.MinerTrack.forge.ForgePlatform
 displayName = "MinerTrack"
 # logoFile is optional — omit for now
 description = '''
@@ -21,7 +22,7 @@ authors = "Author87668"
 [[dependencies.minertrack]]
     modId = "forge"
     mandatory = true
-    versionRange = "[47,)"
+    versionRange = "[38,)"
     ordering = "NONE"
     side = "SERVER"
 

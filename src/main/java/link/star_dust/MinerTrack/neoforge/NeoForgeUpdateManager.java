@@ -25,7 +25,6 @@ import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.LanguageBridge;
 import link.star_dust.MinerTrack.common.UpdateConfigSource;
 import link.star_dust.MinerTrack.core.update.UpdateManagerCore;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.util.List;
 
@@ -49,10 +48,10 @@ public class NeoForgeUpdateManager {
             UpdateManagerCore.CheckResult result = core.checkForUpdates();
             String rendered = core.renderResult(stubLang(), result);
             if (rendered == null || rendered.isEmpty()) return;
-            Object server = FabricReflection.getServer();
+            Object server = NeoForgeReflection.getServer();
             if (server != null) {
                 try {
-                    FabricReflection.call(server, "execute",
+                    NeoForgeReflection.call(server, "execute",
                         new Class<?>[]{Runnable.class},
                         new Object[]{(Runnable) () -> sender.sendMessage(rendered)});
                     return;
