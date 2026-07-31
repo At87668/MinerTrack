@@ -135,7 +135,7 @@ jar {
     // Bukkit's loader resolves Bukkit's own org/yaml/snakeyaml
     // first (Paper / Spigot bundle it) so the shadowed copy
     // is never used on the Bukkit path.
-    exclude 'META-INF/', 'LICENSE.txt', 'LICENSE', 'org/apache/', 'org/spigotmc/', 'org/bukkit/', 'com/', 'net/', 'mojang-translations/', 'javax/'
+    exclude 'META-INF/', 'LICENSE.txt', 'LICENSE', 'org/apache/', 'org/slf4j/', 'org/spigotmc/', 'org/bukkit/', 'com/', 'net/', 'mojang-translations/', 'javax/'
     exclude 'net/minecraft/'
     exclude 'net/fabricmc/'
     exclude 'me/lucko/'
@@ -152,6 +152,11 @@ test {
 shadowJar {
     relocate 'org.bstats', 'link.star_dust.bstats'
     relocate 'org.apache.httpcomponents', 'link.star_dust.httpcomponents'
+    // Do NOT bundle org/slf4j — the server (Forge, NeoForge, Fabric)
+    // provides its own slf4j. Bundling a duplicate causes JPMS
+    // "Modules X and org.slf4j export package org.slf4j" at boot.
+    exclude 'org/slf4j/**'
+    exclude 'META-INF/maven/**'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set('')
 }
