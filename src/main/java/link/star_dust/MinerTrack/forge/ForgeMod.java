@@ -31,7 +31,7 @@ package link.star_dust.MinerTrack.forge;
  * here to avoid a compile-time dependency on the full Forge universal JAR.
  * The mod metadata in {@code META-INF/mods.toml} declares the modid.</p>
  */
-// @net.minecraftforge.fml.common.Mod("minertrack") -- enable with ForgeGradle
+@net.minecraftforge.fml.common.Mod("minertrack")
 public class ForgeMod {
 
     private final ForgePlatform platform = new ForgePlatform();
@@ -42,12 +42,12 @@ public class ForgeMod {
         // must defer server-specific init to ServerStartingEvent.
         Object eventBus = ForgeReflection.getMainEventBus();
         if (eventBus != null) {
-            // ServerStartingEvent â†?call platform.onServerStarting()
+            // ServerStartingEvent ï¿½?call platform.onServerStarting()
             ForgeReflection.registerEventListener(eventBus,
                 ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStartingEvent"),
                 platform::onServerStarting);
 
-            // ServerStoppingEvent â†?call platform.onServerStopping()
+            // ServerStoppingEvent ï¿½?call platform.onServerStopping()
             ForgeReflection.registerEventListener(eventBus,
                 ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStoppingEvent"),
                 event -> platform.onServerStopping());
