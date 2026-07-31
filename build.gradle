@@ -12,7 +12,7 @@ sourceCompatibility = 17
 sourceSets {
     main {
         java {
-            srcDirs = ['src/main/java']
+            srcDirs = ['src/main/java', 'src/main/stub']
         }
         resources {
             srcDirs = ['src/main/resources']
@@ -51,6 +51,14 @@ repositories {
         name = 'Fabric Local (loader)'
         url = 'https://maven.fabricmc.net/'
     }
+    maven {
+        name = 'Forge'
+        url = 'https://maven.minecraftforge.net/'
+    }
+    maven {
+        name = 'NeoForge'
+        url = 'https://maven.neoforged.net/releases'
+    }
 }
 
 dependencies {
@@ -61,6 +69,10 @@ dependencies {
     // Fabric platform
     compileOnly 'net.fabricmc.fabric-api:fabric-api:0.77.0+1.18.2'
     compileOnly 'net.fabricmc:fabric-loader:0.14.22'
+    // Forge / NeoForge: @Mod annotation is provided by a compile-time stub
+    // (link/star_dust/MinerTrack/stub/) to avoid pulling in the full Forge/
+    // NeoForge JARs at compile time. At runtime the server provides the real
+    // classes.
     // Brigadier is bundled with Minecraft; explicit dep for direct type access
     compileOnly 'com.mojang:brigadier:1.0.18'
     implementation 'org.bstats:bstats-bukkit:3.0.0'
