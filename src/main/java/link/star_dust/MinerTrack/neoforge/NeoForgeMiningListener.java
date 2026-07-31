@@ -25,7 +25,6 @@ import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.util.UUID;
 
@@ -57,10 +56,10 @@ public class NeoForgeMiningListener {
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$BreakEvent"),
             rawEvent -> {
                 try {
-                    Object world = FabricReflection.callAny(rawEvent, "getLevel", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    Object player = FabricReflection.callAny(rawEvent, "getPlayer", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    Object pos = FabricReflection.callAny(rawEvent, "getPos", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    Object state = FabricReflection.callAny(rawEvent, "getState", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                    Object world = NeoForgeReflection.callAny(rawEvent, "getLevel", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object player = NeoForgeReflection.callAny(rawEvent, "getPlayer", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object state = NeoForgeReflection.callAny(rawEvent, "getState", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     if (isClientWorld(world)) return;
                     handleBlockBreak(player, pos, state, world);
                 } catch (Throwable t) {}
@@ -71,10 +70,10 @@ public class NeoForgeMiningListener {
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$EntityPlaceEvent"),
             rawEvent -> {
                 try {
-                    Object world = FabricReflection.callAny(rawEvent, "getLevel", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    Object entity = FabricReflection.callAny(rawEvent, "getEntity", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    Object pos = FabricReflection.callAny(rawEvent, "getPos", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    Object state = FabricReflection.callAny(rawEvent, "getPlacedBlock", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+                    Object world = NeoForgeReflection.callAny(rawEvent, "getLevel", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object entity = NeoForgeReflection.callAny(rawEvent, "getEntity", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object state = NeoForgeReflection.callAny(rawEvent, "getPlacedBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     if (isClientWorld(world)) return;
                     if (!isServerPlayer(entity)) return;
                     handleBlockPlace(entity, pos, state, world);
@@ -83,13 +82,13 @@ public class NeoForgeMiningListener {
     }
 
     private boolean isClientWorld(Object world) {
-        try { Object r = FabricReflection.getField(world, "isClientSide"); return r instanceof Boolean && (Boolean) r; }
+        try { Object r = NeoForgeReflection.getField(world, "isClientSide"); return r instanceof Boolean && (Boolean) r; }
         catch (Throwable t) { return false; }
     }
 
     private boolean isServerPlayer(Object player) {
         if (player == null) return false;
-        Class<?> serverPlayer = FabricReflection.forName("net.minecraft.server.level.ServerPlayer");
+        Class<?> serverPlayer = NeoForgeReflection.forName("net.minecraft.server.level.ServerPlayer");
         return serverPlayer != null && serverPlayer.isInstance(player);
     }
 
@@ -117,24 +116,24 @@ public class NeoForgeMiningListener {
         } catch (Throwable t) {}
     }
 
-    private static UUID readUuid(Object player) { try { Object uuid = FabricReflection.callUuid(player); return uuid instanceof UUID ? (UUID) uuid : null; } catch (Throwable t) { return null; } }
+    private static UUID readUuid(Object player) { try { Object uuid = NeoForgeReflection.callUuid(player); return uuid instanceof UUID ? (UUID) uuid : null; } catch (Throwable t) { return null; } }
 
     private static String readPlayerName(Object player) {
         try {
-            Object profile = FabricReflection.callAny(player, "getGameProfile", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object profile = NeoForgeReflection.callAny(player, "getGameProfile", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (profile != null) { String name = (String) profile.getClass().getMethod("getName").invoke(profile); if (name != null && !name.isEmpty()) return name; }
         } catch (Throwable t) {
-            try { Object name = FabricReflection.callAny(player, "getName", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS); return FabricReflection.readString(name); } catch (Throwable t2) {}
+            try { Object name = NeoForgeReflection.callAny(player, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); return NeoForgeReflection.readString(name); } catch (Throwable t2) {}
         }
         return "";
     }
 
     private static String readDimensionId(Object world) {
         try {
-            Object registryKey = FabricReflection.callDimension(world); if (registryKey == null) return null;
+            Object registryKey = NeoForgeReflection.callDimension(world); if (registryKey == null) return null;
             String s = registryKey.toString(); int start = s.indexOf('['), slash = s.indexOf(" / ");
             if (start >= 0 && slash > start) { int end = s.indexOf(']', slash); if (end > slash) return s.substring(slash + 3, end).trim(); return s.substring(slash + 3).trim(); }
-            return FabricReflection.readString(FabricReflection.callAny(registryKey, "getValue", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS));
+            return NeoForgeReflection.readString(NeoForgeReflection.callAny(registryKey, "getValue", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS));
         } catch (Throwable t) { return null; }
     }
 
@@ -155,9 +154,9 @@ public class NeoForgeMiningListener {
 
     private static String blockIdForState(Object state) {
         try {
-            Object block = FabricReflection.callAny(state, "getBlock", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            Object block = NeoForgeReflection.callAny(state, "getBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (block == null) return BlockId.AIR;
-            String id = FabricReflection.getBlockId(block); if (id != null && !id.isEmpty()) return id;
+            String id = NeoForgeReflection.getBlockId(block); if (id != null && !id.isEmpty()) return id;
             String s = block.toString(); int brace = s.indexOf('{'), close = s.indexOf('}'); if (brace >= 0 && close > brace) return s.substring(brace + 1, close);
             return BlockId.AIR;
         } catch (Throwable t) { return BlockId.AIR; }
