@@ -27,7 +27,6 @@ import link.star_dust.MinerTrack.common.DetectionBridge;
 import link.star_dust.MinerTrack.common.DimensionId;
 import link.star_dust.MinerTrack.common.YamlLoader;
 import link.star_dust.MinerTrack.core.config.GroupConfigLoader;
-import link.star_dust.MinerTrack.fabric.FabricReflection;
 
 import java.io.File;
 import java.util.List;
@@ -35,9 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * NeoForge DetectionBridge. Mirrors ForgeDetectionBridge.
- */
+/** NeoForge DetectionBridge. Mirrors ForgeDetectionBridge (uses net.neoforged.* at runtime). */
 public class NeoForgeDetectionBridge implements DetectionBridge {
     private static volatile NeoForgeDetectionBridge active;
     public static NeoForgeDetectionBridge getActive() { return active; }
@@ -51,115 +48,75 @@ public class NeoForgeDetectionBridge implements DetectionBridge {
     private CoreConfig coreConfig;
     private volatile boolean configLoaded = false;
 
-    public NeoForgeDetectionBridge(NeoForgeAdapter adapter, YamlLoader loader) {
-        this.adapter = adapter;
-        this.loader = loader;
-        active = this;
-    }
+    public NeoForgeDetectionBridge(NeoForgeAdapter adapter, YamlLoader loader) { this.adapter = adapter; this.loader = loader; active = this; }
 
     public void setMiningCore(link.star_dust.MinerTrack.core.detection.MiningCore miningCore) { this.miningCore = miningCore; }
 
-    public void loadGroupConfigs() {
-        synchronized (this) { this.coreConfig = GroupConfigLoader.load(new File(adapter.getDataFolder(), "Configuration"), loader, adapter); this.configLoaded = true; }
+    @Override public CoreConfig loadGroupConfigs() {
+        synchronized (this) {
+            File configDir = new File(adapter.getDataFolder(), "Configuration");
+            if (!configDir.exists()) configDir.mkdirs();
+            File mainConfigFile = new File(adapter.getDataFolder(), "config.yml");
+            link.star_dust.MinerTrack.common.CommonYaml mainConfig = this.loader.loadFile(mainConfigFile);
+            GroupConfigLoader gcl = new GroupConfigLoader(adapter, mainConfig, this.loader);
+            link.star_dust.MinerTrack.core.config.GroupConfigLoader.GroupLoadResult result = gcl.load();
+            CoreConfig cc = new CoreConfig();
+            cc.setMainConfig(mainConfig);
+            cc.setGroupConfigs(result.groupConfigs);
+            cc.setWorldToGroup(result.worldToGroup);
+            cc.setGroupWorldPatterns(result.groupWorldPatterns);
+            cc.setDefaultUnnamedGroupKey(result.defaultUnnamedGroupKey);
+            this.coreConfig = cc; this.configLoaded = true; return cc;
+        }
     }
-
-    private void ensureConfigLoaded() { if (!configLoaded) { synchronized (this) { if (!configLoaded) loadGroupConfigs(); } } }
+    @Override public CoreConfig getCoreConfig() { if (!configLoaded) loadGroupConfigs(); return coreConfig; }
+    @Override public void clearConfigCache() { configLoaded = false; }
+    private void ensureConfigLoaded() { if (!configLoaded) loadGroupConfigs(); }
 
     public void registerWorld(Object world) {
         if (world == null) return;
-        String dimId = dimensionIdForWorld(world);
-        if (dimId != null) dimensionToWorld.put(dimId, world);
+        String dimId = dimensionIdForWorld(world); if (dimId != null) dimensionToWorld.put(dimId, world);
     }
-
     public void unregisterWorld(Object world) {
-        if (world == null) return;
-        java.util.List<String> toRemove = new java.util.ArrayList<>();
-        for (Map.Entry<String, Object> e : dimensionToWorld.entrySet()) { if (e.getValue() == world) toRemove.add(e.getKey()); }
-        for (String k : toRemove) dimensionToWorld.remove(k);
+        if (world == null) return; java.util.List<String> rm = new java.util.ArrayList<>();
+        for (Map.Entry<String, Object> e : dimensionToWorld.entrySet()) { if (e.getValue() == world) rm.add(e.getKey()); }
+        for (String k : rm) dimensionToWorld.remove(k);
     }
-
     private String dimensionIdForWorld(Object world) {
         if (world == null) return null;
-        try {
-            Object registryKey = FabricReflection.callDimension(world);
-            if (registryKey == null) return null;
-            String s = registryKey.toString();
-            int start = s.indexOf('['), slash = s.indexOf(" / ");
-            if (start >= 0 && slash > start) { int end = s.indexOf(']', slash); if (end > slash) return s.substring(slash + 3, end).trim(); return s.substring(slash + 3).trim(); }
-            Object val = FabricReflection.callAny(registryKey, "getValue", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            return val == null ? null : FabricReflection.readString(val);
-        } catch (Throwable t) { return null; }
+        try { Object rk = NeoForgeReflection.callDimension(world); if (rk == null) return null; String s = rk.toString(); int start = s.indexOf('['), slash = s.indexOf(" / "); if (start >= 0 && slash > start) { int end = s.indexOf(']', slash); if (end > slash) return s.substring(slash + 3, end).trim(); return s.substring(slash + 3).trim(); } Object val = NeoForgeReflection.callAny(rk, "getValue", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); return val == null ? null : NeoForgeReflection.readString(val); }
+        catch (Throwable t) { return null; }
     }
 
-    @Override public String getBlockType(String world, int x, int y, int z) {
-        try {
-            Object w = resolveWorld(world); if (w == null) return BlockId.AIR;
-            Object pos = FabricReflection.newInstance("net.minecraft.core.BlockPos", new Class<?>[]{int.class, int.class, int.class}, new Object[]{x, y, z});
-            if (pos == null) return BlockId.AIR;
-            Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
-            if (state == null) return BlockId.AIR;
-            Object block = FabricReflection.callAny(state, "getBlock", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (block == null) return BlockId.AIR;
-            String id = FabricReflection.getBlockId(block); if (id != null && !id.isEmpty()) return id;
-            String s = block.toString(); int brace = s.indexOf('{'), close = s.indexOf('}'); if (brace >= 0 && close > brace) return s.substring(brace + 1, close);
-            return BlockId.AIR;
-        } catch (Exception e) { return BlockId.AIR; }
-    }
+    @Override public String getBlockType(String world, int x, int y, int z) { try { Object w = resolveWorld(world); if (w == null) return BlockId.AIR; Object pos = NeoForgeReflection.newInstance("net.minecraft.core.BlockPos", new Class<?>[]{int.class, int.class, int.class}, new Object[]{x, y, z}); if (pos == null) return BlockId.AIR; Object state = NeoForgeReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos}); if (state == null) return BlockId.AIR; Object block = NeoForgeReflection.callAny(state, "getBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (block == null) return BlockId.AIR; String id = NeoForgeReflection.getBlockId(block); if (id != null && !id.isEmpty()) return id; String s = block.toString(); int brace = s.indexOf('{'), close = s.indexOf('}'); if (brace >= 0 && close > brace) return s.substring(brace + 1, close); return BlockId.AIR; } catch (Exception e) { return BlockId.AIR; } }
+    @Override public boolean isPlayerPlacedBlock(UUID pid, CommonLocation loc) { Map<CommonLocation, Long> map = placedBlocks.get(pid); if (map == null) return false; Long ts = map.get(loc); if (ts == null) return false; int expire = getConfigForWorld(loc.world, "xray.trace_remove", 15) * 60 * 1000; if (System.currentTimeMillis() - ts > expire) { map.remove(loc); return false; } return true; }
+    @Override public String resolveDimensionId(String n) { return DimensionId.normalize(n); }
+    @Override public Object getConfig(String p) { ensureConfigLoaded(); return coreConfig.getMainConfig().get(p); }
+    @Override public int getConfigInt(String p, int d) { ensureConfigLoaded(); return coreConfig.getMainConfig().getInt(p, d); }
+    @Override public boolean getConfigBoolean(String p, boolean d) { ensureConfigLoaded(); return coreConfig.getMainConfig().getBoolean(p, d); }
+    @Override public double getConfigDouble(String p, double d) { ensureConfigLoaded(); return coreConfig.getMainConfig().getDouble(p, d); }
+    @Override public List<String> getConfigStringList(String p) { ensureConfigLoaded(); return coreConfig.getMainConfig().getStringList(p); }
+    @Override public int getConfigForWorld(String w, String p, int d) { ensureConfigLoaded(); return coreConfig.getIntForWorld(w, p, d); }
+    @Override public boolean getConfigForWorldBoolean(String w, String p, boolean d) { ensureConfigLoaded(); return coreConfig.getBooleanForWorld(w, p, d); }
+    @Override public List<String> getConfigForWorldStringList(String w, String p) { ensureConfigLoaded(); return coreConfig.getStringListForWorld(w, p); }
+    @Override public boolean isWorldDetectionEnabled(String w) { return getConfigForWorldBoolean(w, "xray.enable", true); }
+    @Override public int getWorldMaxHeight(String w) { return getConfigForWorld(w, "xray.max-height", 32); }
+    @Override public List<String> getRareOres(String w) { return getConfigForWorldStringList(w, "xray.rare-ores"); }
+    @Override public int getTraceRemoveTime(String w) { return getConfigForWorld(w, "xray.trace_remove", 15); }
+    @Override public int getArtificialAirRemoveTime(String w) { return getConfigForWorld(w, "xray.natural-detection.cave.artificial-air-remove-time", 30); }
+    @Override public boolean isArtificialAir(UUID pid, CommonLocation loc) { Map<CommonLocation, Long> m = brokenAir.get(pid); return m != null && m.containsKey(loc); }
+    @Override public boolean isWaterStill(String world, int x, int y, int z) { try { Object w = resolveWorld(world); if (w == null) return false; Object pos = NeoForgeReflection.newInstance("net.minecraft.core.BlockPos", new Class<?>[]{int.class, int.class, int.class}, new Object[]{x,y,z}); if (pos == null) return false; Object state = NeoForgeReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos}); if (state == null) return false; Object block = NeoForgeReflection.callAny(state, "getBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); Class<?> fbc = NeoForgeReflection.forName("net.minecraft.world.level.block.LiquidBlock"); if (block != null && fbc != null && fbc.isInstance(block)) { Object fs = NeoForgeReflection.callAny(w, "getFluidState", new Class<?>[]{pos.getClass()}, new Object[]{pos}); if (fs != null) { Object f = NeoForgeReflection.callAny(fs, "getType", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (f != null) { Object st = NeoForgeReflection.callAny(f, "getSource", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); return st != null && st == f; } } return true; } return false; } catch (Exception e) { return false; } }
 
-    @Override public boolean isPlayerPlacedBlock(UUID playerId, CommonLocation location) {
-        Map<CommonLocation, Long> map = placedBlocks.get(playerId); if (map == null) return false;
-        Long ts = map.get(location); if (ts == null) return false;
-        int expireMs = getConfigForWorld(location.world, "xray.trace_remove", 15) * 60 * 1000;
-        if (System.currentTimeMillis() - ts > expireMs) { map.remove(location); return false; }
-        return true;
-    }
+    public void trackPlacedBlock(UUID pid, CommonLocation loc) { placedBlocks.computeIfAbsent(pid, k -> new ConcurrentHashMap<>()).put(loc, System.currentTimeMillis()); }
+    public void trackBrokenAir(UUID pid, CommonLocation loc) { brokenAir.computeIfAbsent(pid, k -> new ConcurrentHashMap<>()).put(loc, System.currentTimeMillis()); }
 
-    @Override public String resolveDimensionId(String worldName) { return DimensionId.normalize(worldName); }
-    @Override public Object getConfig(String path) { ensureConfigLoaded(); return coreConfig.getMainConfig().get(path); }
-    @Override public int getConfigInt(String path, int def) { ensureConfigLoaded(); return coreConfig.getMainConfig().getInt(path, def); }
-    @Override public boolean getConfigBoolean(String path, boolean def) { ensureConfigLoaded(); return coreConfig.getMainConfig().getBoolean(path, def); }
-    @Override public double getConfigDouble(String path, double def) { ensureConfigLoaded(); return coreConfig.getMainConfig().getDouble(path, def); }
-    @Override public List<String> getConfigStringList(String path) { ensureConfigLoaded(); return coreConfig.getMainConfig().getStringList(path); }
-    @Override public int getConfigForWorld(String worldName, String path, int def) { ensureConfigLoaded(); return coreConfig.getIntForWorld(worldName, path, def); }
-    @Override public boolean getConfigForWorldBoolean(String worldName, String path, boolean def) { ensureConfigLoaded(); return coreConfig.getBooleanForWorld(worldName, path, def); }
-    @Override public List<String> getConfigForWorldStringList(String worldName, String path) { ensureConfigLoaded(); return coreConfig.getStringListForWorld(worldName, path); }
-    @Override public boolean isWorldDetectionEnabled(String worldName) { return getConfigForWorldBoolean(worldName, "xray.enable", true); }
-    @Override public int getWorldMaxHeight(String worldName) { return getConfigForWorld(worldName, "xray.max-height", 32); }
-    @Override public List<String> getRareOres(String worldName) { return getConfigForWorldStringList(worldName, "xray.rare-ores"); }
-    @Override public int getTraceRemoveTime(String worldName) { return getConfigForWorld(worldName, "xray.trace_remove", 15); }
-    @Override public int getArtificialAirRemoveTime(String worldName) { return getConfigForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", 30); }
-    @Override public boolean isArtificialAir(UUID playerId, CommonLocation location) { Map<CommonLocation, Long> map = brokenAir.get(playerId); return map != null && map.containsKey(location); }
+    @Override public void clearPlayerTracking(UUID playerId) { placedBlocks.remove(playerId); brokenAir.remove(playerId); }
 
-    @Override public boolean isWaterStill(String world, int x, int y, int z) {
-        try {
-            Object w = resolveWorld(world); if (w == null) return false;
-            Object pos = FabricReflection.newInstance("net.minecraft.core.BlockPos", new Class<?>[]{int.class, int.class, int.class}, new Object[]{x, y, z});
-            if (pos == null) return false;
-            Object state = FabricReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
-            if (state == null) return false;
-            Object block = FabricReflection.callAny(state, "getBlock", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            Class<?> fluidBlockCls = FabricReflection.forName("net.minecraft.world.level.block.LiquidBlock");
-            if (block != null && fluidBlockCls != null && fluidBlockCls.isInstance(block)) {
-                Object fluidState = FabricReflection.callAny(w, "getFluidState", new Class<?>[]{pos.getClass()}, new Object[]{pos});
-                if (fluidState != null) {
-                    Object fluid = FabricReflection.callAny(fluidState, "getType", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-                    if (fluid != null) { Object still = FabricReflection.callAny(fluid, "getSource", FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS); return still != null && still == fluid; }
-                }
-                return true;
-            }
-            return false;
-        } catch (Exception e) { return false; }
-    }
-
-    public void trackPlacedBlock(UUID playerId, CommonLocation location) {
-        placedBlocks.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>()).put(location, System.currentTimeMillis());
-    }
-
-    public void trackBrokenAir(UUID playerId, CommonLocation location) {
-        brokenAir.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>()).put(location, System.currentTimeMillis());
+    @Override public void clearPlayerPath(UUID playerId) {
+        link.star_dust.MinerTrack.core.detection.MiningCore mc = this.miningCore;
+        if (mc != null && mc.getState() != null) { try { mc.getState().clearPlayerPath(playerId); } catch (Throwable t) {} }
     }
 
     public java.util.Collection<Object> getRegisteredWorlds() { return dimensionToWorld.values(); }
-
-    private Object resolveWorld(String worldName) { return dimensionToWorld.get(worldName); }
+    private Object resolveWorld(String n) { return dimensionToWorld.get(n); }
 }
