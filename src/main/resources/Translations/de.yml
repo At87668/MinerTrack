@@ -1,0 +1,93 @@
+#### MinerTrack Anti-Xray Konfiguration - language.yml ##################################################
+#
+#     Hallo, willkommen bei MinerTrack Anti-Xray. Dies ist die language.yml, die
+#  verwendet wird, um die Anzeigesprache von Anti-Xray zu definieren. Hier können Sie
+#  festlegen, welche Nachrichten Anti-Xray anzeigt.
+#
+#  Nützliche Links:
+#  Update erhalten: https://modrinth.com/plugin/minertrack
+#  Quellcode ansehen: https://github.com/At87668/MinerTrack
+#  Problem melden: https://github.com/At87668/MinerTrack/issues
+#  Pull Request: https://github.com/At87668/MinerTrack/pulls
+#  Wiki besuchen: https://minertrack.pages.dev/wiki/
+#  Discord beitreten: https://discord.gg/MzTea2W9cb
+#  Projekt unterstützen: https://patreon.com/Author87668/join
+#
+#  Vielen Dank für die Verwendung von MinerTrack Anti-Xray! ❤
+#
+#####################################################################################
+
+# Hier können Sie das Nachrichtenpräfix definieren
+prefix: '&8[&9&lMiner&c&lTrack&8]&r '
+
+# Definieren Sie die Ankündigungsnachricht, nachdem ein Spieler wegen X-Ray-Nutzung gekickt wurde
+# Platzhalter: %player% %reason%
+kick-format: '&b%player% &7wurde vom Server gekickt, weil er angeblich X-Ray verwendet hat! &8(%reason%)'
+
+# Definieren Sie das Format für ausführliche Nachrichten
+# Platzhalter: %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+verbose-format: '&7%player% hat &fX-Ray &7Check &7nicht bestanden VL:%vl%&b(+%add_vl%) &7Block:&6%block_type%&ex%count%&7(Gang&ax%vein_count%&7) &7Welt: %world% Pos: X%pos_x% Y%pos_y% Z%pos_z%'
+
+# Definieren Sie das Log-Format
+# Platzhalter: %year% %month% %day% %hour% %minute% %second% %player% %vl% %add_vl% %block_type% %count% %vein_count% %world% %pos_x% %pos_y% %pos_z%
+log-format: '%year%-%month%-%day %hour%:%minute%:%second% | %player% hat X-Ray Check nicht bestanden VL:%vl%(+%add_vl%) Block:%block_type%x%count%(Gangx%vein_count%) Welt: %world% Pos: X%pos_x% Y%pos_y% Z%pos_z%'
+
+# Soll MinerTrack eine Nachricht senden, wenn ein Spieler gekickt wird?
+kick-broadcast: true
+
+help:
+  - "&8----[&9&lMiner&c&lTrack &6Hilfe&8]-----------"
+  - ""
+  - "&f/mtrack reload &7- Lädt die Konfigurationsdatei des Plugins neu"
+  - "&f/mtrack notify <Nachricht> &7- Sendet Warnungen an das Personal"
+  - "&f/mtrack verbose &7- Aktiviert den detaillierten Modus und sendet eine Benachrichtigung an Mitarbeiter mit aktiviertem detaillierten Modus, wenn sich die VL eines Spielers erhöht"
+  - "&f/mtrack check <Spieler> &7- Überprüft die Verletzungshistorie eines Spielers"
+  - "&f/mtrack reset <Spieler> &7- Setzt die Verletzungsdaten eines Spielers zurück"
+  - "&f/mtrack help &7- Zeigt die Plugin-Hilfe an"
+  - "&f/mtrack update &7- Prüft auf Updates"
+  - "&f/mtrack kick <Spieler> <Grund> &7- Kickt den Spieler mit einem angegebenen Grund"
+  - "&f/mtrack logs <Logname.log> &7- Zeigt eine MinerTrack-Logdatei an"
+  
+no-permission: "&cSie haben keine Berechtigung, diesen Befehl zu verwenden."
+
+usage-notify: "&cVerwendung: /mtrack notify <Nachricht>"
+usage-check: "&cVerwendung: /mtrack check <Spieler>"
+usage-reset: "&cVerwendung: /mtrack reset <Spieler>"
+usage-kick: "&cVerwendung: /mtrack kick <Spieler> <Grund>"
+usage-logs: "&cVerwendung: /mtrack logs <Logname.log>"
+
+# Platzhalter: {player}
+reset-success: "&aVerletzungsdaten von {player} erfolgreich zurückgesetzt."
+
+# Platzhalter: {player} {level}
+violation-level: "&eDas Verletzungslevel von {player} ist {level}."
+
+# Platzhalter: {player}
+player-not-found: "&cSpieler {player} nicht gefunden."
+
+config-reloaded: "&aKonfiguration und Sprache erfolgreich neu geladen."
+
+unknown-command: "&cUnbekannter Unterbefehl. Verwenden Sie /mtrack help für eine Liste der Befehle."
+
+verbose-enable: "&7Detaillierter Modus &aaktiviert&7!"
+verbose-disable: "&7Detaillierter Modus &cdeaktiviert&7!"
+
+# Platzhalter: {current_page} {max_page} {log_file} {next_page}
+log-viewer-lines-per-page: 10
+log-viewer-header: "&7---- &9&lMiner&c&lTrack &bLogs &7({current_page}/{max_page}) ----"
+log-viewer-logs-color: "&7"
+log-viewer-not-found: "&cLogdatei {log_file} nicht gefunden."
+log-viewer-not-log-file: "&cEs können nur Logdateien angezeigt werden."
+log-viewer-cant-read: "&cFehler beim Lesen der Logs."
+log-viewer-page-invalid: "&cSeitenzahl außerhalb des Bereichs (1 - {max_page})"
+log-viewer-page-nan: "&cSeitenzahl muss eine Zahl sein"
+log-viewer-next-page: "&6Verwenden Sie &a/mtrack logs Seite {next_page} &6um die nächste Seite anzuzeigen."
+log-viewer-empty: "&7Keine Log-Einträge zum Anzeigen."
+
+# Platzhalter: %latest_version%
+update:
+  alpha-available: '&cNeue Alpha-Version %latest_version% jetzt verfügbar!'
+  beta-available: '&eNeue Beta-Version %latest_version% jetzt verfügbar!'
+  stable-available: '&aNeue stabile Version %latest_version% jetzt verfügbar!'
+  using-latest: '&2Sie verwenden die neueste Version.'
+  check-failed: '&cFehler beim Überprüfen auf Updates.'
