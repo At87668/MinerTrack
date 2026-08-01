@@ -336,6 +336,10 @@ final class ForgeReflection {
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void registerEventListener(Object eventBus, Class<?> eventClass, java.util.function.Consumer<Object> handler) {
         if (eventBus == null) return;
+        // If the event class could not be resolved, there is nothing to
+        // register. Callers that probe multiple candidate class names will
+        // only pass a non-null class here.
+        if (eventClass == null) return;
         try {
             // Forge's IEventBus.addListener(Consumer<T>) resolves the event type
             // from the Consumer's generic signature via TypeResolver. A dynamic
@@ -350,16 +354,12 @@ final class ForgeReflection {
             Class<?> priorityCls = Class.forName("net.minecraftforge.eventbus.api.EventPriority");
             Object normal = priorityCls.getField("NORMAL").get(null);
             Class<?> consumerCls = java.util.function.Consumer.class;
-            if (eventClass != null) {
-                Method al = findAddListener(eventBus.getClass(), 4);
-                if (al != null) {
-                    al.invoke(eventBus, normal, false, eventClass, handler);
-                    return;
-                }
-                log("4-arg addListener not found on " + eventBus.getClass().getName());
-            } else {
-                log("eventClass is null for " + eventBus.getClass().getName());
+            Method al = findAddListener(eventBus.getClass(), 4);
+            if (al != null) {
+                al.invoke(eventBus, normal, false, eventClass, handler);
+                return;
             }
+            log("4-arg addListener not found on " + eventBus.getClass().getName());
             // Fallback: 2-arg addListener(Consumer<T>) — only works if the
             // consumer's generic signature is resolvable. Use a concrete
             // Consumer<eventClass> subclass so TypeResolver can read it.
