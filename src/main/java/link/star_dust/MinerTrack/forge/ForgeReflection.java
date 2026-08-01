@@ -138,8 +138,12 @@ final class ForgeReflection {
             probes.add("net.minecraftforge.event.server.ServerStartingEvent");
             probes.add("net.minecraftforge.event.server.ServerStoppingEvent");
             probes.add("net.minecraftforge.event.RegisterCommandsEvent");
+            probes.add("net.minecraftforge.event.level.BlockEvent");
             probes.add("net.minecraftforge.event.level.BlockEvent$BreakEvent");
             probes.add("net.minecraftforge.event.level.BlockEvent$EntityPlaceEvent");
+            probes.add("net.minecraftforge.event.world.BlockEvent");
+            probes.add("net.minecraftforge.event.world.BlockEvent$BreakEvent");
+            probes.add("net.minecraftforge.event.world.BlockEvent$EntityPlaceEvent");
             probes.add("net.minecraftforge.event.TickEvent$ServerTickEvent");
             probes.add("net.minecraftforge.server.permission.PermissionAPI");
             // Minecraft classes
