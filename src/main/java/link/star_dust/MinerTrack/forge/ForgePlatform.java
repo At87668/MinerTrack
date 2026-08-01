@@ -53,6 +53,15 @@ public class ForgePlatform {
     private ForgeMiningListener miningListener;
 
     public void onServerStarting(Object event) {
+        // Cache the MinecraftServer from the ServerStartingEvent so that
+        // ForgeReflection.getServer() returns a non-null value. Many permission
+        // and player-lookup paths depend on it.
+        if (event != null) {
+            Object server = ForgeReflection.callAny(event, "getServer",
+                ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (server != null) ForgeReflection.setCachedServer(server);
+        }
+
         adapter = new ForgeAdapter();
 
         violationManager = new ForgeViolationManager(adapter);
