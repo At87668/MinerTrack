@@ -82,6 +82,7 @@ public class NeoForgeMiningListener {
     }
 
     private boolean isClientWorld(Object world) {
+        try { Object r = NeoForgeReflection.callAny(world, "isClientSide", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (r instanceof Boolean) return (Boolean) r; } catch (Throwable t) {}
         try { Object r = NeoForgeReflection.getField(world, "isClientSide"); return r instanceof Boolean && (Boolean) r; }
         catch (Throwable t) { return false; }
     }

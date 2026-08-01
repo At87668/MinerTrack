@@ -92,6 +92,13 @@ public class ForgeMiningListener {
     }
 
     private boolean isClientWorld(Object world) {
+        // isClientSide is a METHOD on 1.18.2 (Searge m_5776_) and a FIELD on
+        // 1.20.6+ (Mojang). Try method call first, then field access.
+        try {
+            Object r = ForgeReflection.callAny(world, "isClientSide",
+                ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (r instanceof Boolean) return (Boolean) r;
+        } catch (Throwable t) { /* fall through to field */ }
         try {
             Object r = ForgeReflection.getField(world, "isClientSide");
             return r instanceof Boolean && (Boolean) r;
