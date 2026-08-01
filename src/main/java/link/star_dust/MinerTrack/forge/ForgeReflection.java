@@ -26,7 +26,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -219,15 +218,48 @@ final class ForgeReflection {
 
     static Object getMainEventBus() { try { Class<?> mcForge = forgeClass("net.minecraftforge.common.MinecraftForge"); if (mcForge == null) return null; Field eb = mcForge.getField("EVENT_BUS"); return eb.get(null); } catch (Throwable t) { return null; } }
 
-    @SuppressWarnings("rawtypes")
+    @SuppressWarnings({"rawtypes", "unchecked"})
     static void registerEventListener(Object eventBus, Class<?> eventClass, java.util.function.Consumer<Object> handler) {
         if (eventBus == null) return;
         try {
+            // Forge's IEventBus.addListener(Consumer<T>) resolves the event type
+            // from the Consumer's generic signature via TypeResolver. A dynamic
+            // Proxy<Consumer> (or a raw Consumer) has NO generic signature, so
+            // Forge fails with "Failed to resolve handler for ...".
+            //
+            // Fix: use the 4-arg overload
+            //   addListener(EventPriority, boolean, Class<T>, Consumer<T>)
+            // which takes the event type EXPLICITLY and never calls TypeResolver.
+            // This is exactly what the API docs recommend when the generic type
+            // cannot be resolved.
+            Class<?> priorityCls = Class.forName("net.minecraftforge.eventbus.api.EventPriority");
+            Object normal = priorityCls.getField("NORMAL").get(null);
             Class<?> consumerCls = java.util.function.Consumer.class;
-            Object proxy = Proxy.newProxyInstance(consumerCls.getClassLoader(), new Class<?>[]{consumerCls}, (proxyObj, method, args) -> { if ("accept".equals(method.getName()) && args != null && args.length == 1) { handler.accept(args[0]); } else if ("equals".equals(method.getName())) { return proxyObj == args[0]; } else if ("hashCode".equals(method.getName())) { return System.identityHashCode(proxyObj); } else if ("toString".equals(method.getName())) { return "ForgeEventListener$Proxy"; } return null; });
-            try { Class<?> priorityCls = Class.forName("net.minecraftforge.eventbus.api.EventPriority"); Object normal = priorityCls.getField("NORMAL").get(null); Method al = eventBus.getClass().getMethod("addListener", priorityCls, boolean.class, Class.class, consumerCls); al.invoke(eventBus, normal, false, eventClass, proxy); return; } catch (Throwable t) {}
-            try { Method al = eventBus.getClass().getMethod("addListener", consumerCls); al.invoke(eventBus, proxy); } catch (Throwable t) { if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage()); }
+            try {
+                Method al = eventBus.getClass().getMethod("addListener", priorityCls, boolean.class, Class.class, consumerCls);
+                al.invoke(eventBus, normal, false, eventClass, handler);
+                return;
+            } catch (Throwable t) {
+                if (DEBUG_REFLECTION) log("4-arg addListener failed: " + t.getMessage());
+            }
+            // Fallback: 2-arg addListener(Consumer<T>) — only works if the
+            // consumer's generic signature is resolvable. Use a concrete
+            // Consumer<eventClass> subclass so TypeResolver can read it.
+            Object typed = makeConsumer(eventClass, handler);
+            Method al2 = eventBus.getClass().getMethod("addListener", consumerCls);
+            al2.invoke(eventBus, typed);
         } catch (Throwable t) { if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage()); }
+    }
+
+    /**
+     * Build a concrete {@code Consumer<eventClass>} whose generic signature is
+     * present in bytecode so Forge's TypeResolver can resolve the event type.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static <T> java.util.function.Consumer<T> makeConsumer(Class<T> eventClass, java.util.function.Consumer<Object> handler) {
+        return new java.util.function.Consumer<T>() {
+            @Override public void accept(T e) { handler.accept(e); }
+        };
     }
 
     // ==================================================================
