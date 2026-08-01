@@ -235,12 +235,15 @@ final class ForgeReflection {
             Class<?> priorityCls = Class.forName("net.minecraftforge.eventbus.api.EventPriority");
             Object normal = priorityCls.getField("NORMAL").get(null);
             Class<?> consumerCls = java.util.function.Consumer.class;
-            try {
-                Method al = eventBus.getClass().getMethod("addListener", priorityCls, boolean.class, Class.class, consumerCls);
-                al.invoke(eventBus, normal, false, eventClass, handler);
-                return;
-            } catch (Throwable t) {
-                if (DEBUG_REFLECTION) log("4-arg addListener failed: " + t.getMessage());
+            if (eventClass != null) {
+                Method al = findAddListener(eventBus.getClass(), 4);
+                if (al != null) {
+                    al.invoke(eventBus, normal, false, eventClass, handler);
+                    return;
+                }
+                log("4-arg addListener not found on " + eventBus.getClass().getName());
+            } else {
+                log("eventClass is null for " + eventBus.getClass().getName());
             }
             // Fallback: 2-arg addListener(Consumer<T>) — only works if the
             // consumer's generic signature is resolvable. Use a concrete
@@ -248,7 +251,27 @@ final class ForgeReflection {
             Object typed = makeConsumer(eventClass, handler);
             Method al2 = eventBus.getClass().getMethod("addListener", consumerCls);
             al2.invoke(eventBus, typed);
-        } catch (Throwable t) { if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage()); }
+        } catch (Throwable t) { log("Failed to register listener: " + t); }
+    }
+
+    /**
+     * Find an {@code addListener} method on the bus class with the given number
+     * of parameters. For the 4-arg overload we additionally require the 3rd
+     * parameter to be a {@link Class} and the 4th to be a {@link Consumer}.
+     * Scanning by name/count is more robust than {@code getMethod} against
+     * generic-erasure signature variations across Forge versions.
+     */
+    private static Method findAddListener(Class<?> busClass, int paramCount) {
+        for (Method m : busClass.getMethods()) {
+            if (!"addListener".equals(m.getName())) continue;
+            if (m.getParameterCount() != paramCount) continue;
+            if (paramCount == 4) {
+                Class<?>[] pts = m.getParameterTypes();
+                if (pts[2] != Class.class || pts[3] != java.util.function.Consumer.class) continue;
+            }
+            return m;
+        }
+        return null;
     }
 
     /**
