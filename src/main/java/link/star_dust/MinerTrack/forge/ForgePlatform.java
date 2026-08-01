@@ -84,9 +84,6 @@ public class ForgePlatform {
 
         commandExecutor = new ForgeCommandExecutor(adapter, languageBridge, violationManager, updateManager, detectionBridge);
 
-        // Register commands via Forge's RegisterCommandsEvent
-        registerForgeCommands();
-
         // Register server stopping handler
         registerServerStopping();
 
@@ -96,6 +93,11 @@ public class ForgePlatform {
     }
 
     private void registerForgeCommands() {
+        // RegisterCommandsEvent fires during MinecraftServer construction, which
+        // happens BEFORE ServerStartingEvent. So this listener must be registered
+        // early (from the ForgeMod constructor), not from onServerStarting.
+        // The commandExecutor is initialized later in onServerStarting; the
+        // listener reads it lazily so it is ready by the time the event fires.
         ForgeReflection.registerEventListener(
             ForgeReflection.getMainEventBus(),
             ForgeReflection.forgeClass("net.minecraftforge.event.RegisterCommandsEvent"),
@@ -114,6 +116,16 @@ public class ForgePlatform {
                     adapter.warning("Failed to register Forge commands: " + t.getMessage());
                 }
             });
+    }
+
+    /**
+     * Register the RegisterCommandsEvent listener early (from the ForgeMod
+     * constructor). Must be called before the MinecraftServer is constructed,
+     * because RegisterCommandsEvent fires during server construction — before
+     * ServerStartingEvent.
+     */
+    public void registerCommandsEarly() {
+        registerForgeCommands();
     }
 
     private void registerServerStopping() {
