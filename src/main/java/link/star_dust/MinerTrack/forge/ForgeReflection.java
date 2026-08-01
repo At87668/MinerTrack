@@ -117,77 +117,91 @@ final class ForgeReflection {
     }
 
     /**
-     * Diagnostic: scan the current runtime classpath for all
-     * {@code net.minecraftforge.*} and {@code net.minecraft.*} classes and write
-     * them to {@code class.txt} in the working directory.
+     * Diagnostic: probe the runtime for key Forge/Minecraft classes and write
+     * the results to {@code class.txt} in the working directory.
      *
-     * <p>Useful for diagnosing why {@link #forgeClass(String)} returns null for
-     * a class that should exist (e.g. classloader isolation or a wrong class
-     * name). Call this from the Forge platform at runtime and inspect the
-     * generated {@code class.txt}.</p>
+     * <p>Forge uses ModLauncher, so classes are NOT on the standard
+     * {@code java.class.path}. Instead of scanning the classpath (which yields
+     * nothing), this probes a curated list of classes through multiple
+     * classloaders and records which ones load successfully. This directly
+     * mirrors what {@link #forgeClass(String)} does and reveals whether the
+     * failure is a classloader issue or a wrong class name.</p>
      */
     static void dumpClasses() {
         try {
-            java.util.TreeSet<String> classes = new java.util.TreeSet<>();
-            String classpath = System.getProperty("java.class.path", "");
-            for (String entry : classpath.split(java.io.File.pathSeparator)) {
-                if (entry.isEmpty()) continue;
-                java.io.File f = new java.io.File(entry);
-                if (f.isDirectory()) scanDir(f, f, classes);
-                else if (f.isFile() && f.getName().endsWith(".jar")) scanJar(f, classes);
-            }
-            // Also scan the thread context classloader's URLs (covers Forge's
-            // mod-launcher classpath which may not be in java.class.path).
+            java.util.List<String> probes = new java.util.ArrayList<>();
+            // Forge event bus / event classes
+            probes.add("net.minecraftforge.eventbus.api.IEventBus");
+            probes.add("net.minecraftforge.eventbus.api.EventPriority");
+            probes.add("net.minecraftforge.eventbus.EventBus");
+            probes.add("net.minecraftforge.common.MinecraftForge");
+            probes.add("net.minecraftforge.event.server.ServerStartingEvent");
+            probes.add("net.minecraftforge.event.server.ServerStoppingEvent");
+            probes.add("net.minecraftforge.event.RegisterCommandsEvent");
+            probes.add("net.minecraftforge.event.level.BlockEvent$BreakEvent");
+            probes.add("net.minecraftforge.event.level.BlockEvent$EntityPlaceEvent");
+            probes.add("net.minecraftforge.event.TickEvent$ServerTickEvent");
+            probes.add("net.minecraftforge.server.permission.PermissionAPI");
+            // Minecraft classes
+            probes.add("net.minecraft.server.MinecraftServer");
+            probes.add("net.minecraft.server.level.ServerPlayer");
+            probes.add("net.minecraft.server.players.PlayerList");
+            probes.add("net.minecraft.world.level.Level");
+            probes.add("net.minecraft.world.level.block.state.BlockState");
+            probes.add("net.minecraft.core.BlockPos");
+            probes.add("net.minecraft.network.chat.Component");
+            probes.add("net.minecraft.commands.CommandSourceStack");
+
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add("=== Classloader probe ===");
+            lines.add("java.class.path=" + System.getProperty("java.class.path", ""));
             ClassLoader ctx = Thread.currentThread().getContextClassLoader();
-            if (ctx instanceof java.net.URLClassLoader) {
-                for (java.net.URL url : ((java.net.URLClassLoader) ctx).getURLs()) {
-                    java.io.File f = new java.io.File(url.getPath());
-                    if (f.isDirectory()) scanDir(f, f, classes);
-                    else if (f.isFile() && f.getName().endsWith(".jar")) scanJar(f, classes);
-                }
+            lines.add("contextClassLoader=" + (ctx == null ? "null" : ctx.toString()));
+            Object bus = getMainEventBus();
+            lines.add("mainEventBus=" + (bus == null ? "null" : bus.getClass().getName()));
+            lines.add("");
+            lines.add("=== Probe results (class -> loadable?) ===");
+            for (String name : probes) {
+                lines.add(name + " -> " + probeClass(name));
             }
-            java.util.List<String> filtered = new java.util.ArrayList<>();
-            for (String c : classes) {
-                if (c.startsWith("net.minecraftforge.") || c.startsWith("net.minecraft.")) {
-                    filtered.add(c);
-                }
+            lines.add("");
+            lines.add("=== Classloader hierarchy ===");
+            ClassLoader cl = ForgeReflection.class.getClassLoader();
+            int depth = 0;
+            while (cl != null && depth < 20) {
+                lines.add("  [" + depth + "] " + cl.toString());
+                cl = cl.getParent();
+                depth++;
             }
+
             java.nio.file.Path out = java.nio.file.Paths.get("class.txt");
             try (java.io.BufferedWriter w = java.nio.file.Files.newBufferedWriter(out, java.nio.charset.StandardCharsets.UTF_8)) {
-                for (String c : filtered) { w.write(c); w.newLine(); }
+                for (String line : lines) { w.write(line); w.newLine(); }
             }
-            log("dumpClasses: wrote " + filtered.size() + " classes to " + out.toAbsolutePath());
+            log("dumpClasses: wrote " + lines.size() + " lines to " + out.toAbsolutePath());
         } catch (Throwable t) {
             log("dumpClasses failed: " + t);
         }
     }
 
-    private static void scanDir(java.io.File root, java.io.File dir, java.util.TreeSet<String> classes) {
-        java.io.File[] files = dir.listFiles();
-        if (files == null) return;
-        for (java.io.File f : files) {
-            if (f.isDirectory()) scanDir(root, f, classes);
-            else if (f.getName().endsWith(".class")) {
-                String rel = root.toURI().relativize(f.toURI()).getPath();
-                String cls = rel.replace('/', '.').replace('\\', '.');
-                if (cls.endsWith(".class")) cls = cls.substring(0, cls.length() - ".class".length());
-                classes.add(cls);
+    /** Returns a short description of whether the class can be loaded. */
+    private static String probeClass(String name) {
+        // 1. Caller classloader
+        try { Class.forName(name); return "OK(caller)"; } catch (Throwable t) {}
+        // 2. Context classloader
+        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+        if (ctx != null) {
+            try { Class.forName(name, false, ctx); return "OK(context)"; } catch (Throwable t) {}
+        }
+        // 3. Bus classloader
+        Object bus = getMainEventBus();
+        if (bus != null) {
+            ClassLoader bl = bus.getClass().getClassLoader();
+            if (bl != null) {
+                try { Class.forName(name, false, bl); return "OK(bus)"; } catch (Throwable t) {}
             }
         }
-    }
-
-    private static void scanJar(java.io.File jarFile, java.util.TreeSet<String> classes) {
-        try (java.util.jar.JarFile jar = new java.util.jar.JarFile(jarFile)) {
-            java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                java.util.jar.JarEntry e = entries.nextElement();
-                String name = e.getName();
-                if (name.endsWith(".class")) {
-                    String cls = name.replace('/', '.').substring(0, name.length() - ".class".length());
-                    classes.add(cls);
-                }
-            }
-        } catch (java.io.IOException ignored) { }
+        return "MISS";
     }
 
     static Object newInstance(String className, Class<?>[] paramTypes, Object[] args) {
