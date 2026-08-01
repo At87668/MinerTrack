@@ -318,6 +318,7 @@ public class ForgeCommandBridge implements CommandBridge {
 
     @Override
     public boolean hasPermission(String node) {
+        System.out.println("[MinerTrack:Forge] hasPermission node=" + node + " source=" + (source == null ? "null" : source.getClass().getName()) + " isPlayer=" + isPlayer());
         if (source == null) return false;
         // Try native permission on underlying player entity
         UUID playerId = extractPlayerUuid(source);
@@ -325,7 +326,9 @@ public class ForgeCommandBridge implements CommandBridge {
             Object player = resolvePlayer(playerId);
             if (player != null) return checkForgePermission(player, node);
         }
-        return checkVanillaOpLevel(source, 2);
+        boolean op = checkVanillaOpLevel(source, 2);
+        System.out.println("[MinerTrack:Forge] hasPermission " + node + " -> op=" + op);
+        return op;
     }
 
     @Override
