@@ -44,29 +44,106 @@ final class ForgeReflectionConstants {
     // ==================================================================
     // Resolution helpers
     //
-    // Mirrors FabricReflectionConstants.im()/ifd(). On Forge the runtime
-    // names ARE the mojang/named names (no intermediary/SRG remapping),
-    // so these return the named name unchanged. The descriptor and
-    // fallback parameters are kept to preserve the exact Fabric signature
-    // and to allow future MCP-mapped fallbacks (e.g. method_XXXX) to be
-    // plugged in without changing call sites.
+    // Forge 1.18.2 uses <b>Searge</b> names at runtime (e.g. m_6846_ for
+    // getPlayerList, net.minecraft.src.C_4977_ for MinecraftServer).
+    // These helpers resolve a mojang/named name to its Searge runtime form
+    // via the SEARGE_METHOD / SEARGE_FIELD tables below. The descriptor
+    // parameter is kept to preserve the exact Fabric signature.
     // ==================================================================
 
     private static String im(String namedOwner, String named,
                              String desc, String interFallback) {
-        // Forge uses Mojang names at runtime — return the named name.
-        // (A future MCP-mapped Forge build could consult a resolver here.)
-        return named;
+        String s = SEARGE_METHOD.get(named);
+        return s != null ? s : named;
     }
 
     /** Same as {@link #im} but for fields. */
     private static String ifd(String namedOwner, String named,
                               String desc, String interFallback) {
-        return named;
+        String s = SEARGE_FIELD.get(named);
+        return s != null ? s : named;
     }
 
     // ==================================================================
-    // CLASS NAMES  (mojang/named — these ARE the runtime names on Forge)
+    // Searge method-name table (1.18.2)
+    // mojang/named method name → Searge runtime name
+    // ==================================================================
+
+    private static final java.util.Map<String,String> SEARGE_METHOD = new java.util.HashMap<>();
+    static {
+        // MinecraftServer
+        putSM("getPlayerList",             "m_6846_");
+        putSM("getAllLevels",              "m_129785_");
+        putSM("getCommands",               "m_129892_");
+        putSM("createCommandSourceStack",  "m_129893_");
+        putSM("getTickCount",              "m_129921_");
+        putSM("getLevel",                  "m_129880_");
+        putSM("sendSystemMessage",         "m_6352_");
+        putSM("getProfilePermissions",     "m_129944_");
+        // Entity
+        putSM("getName",                   "m_7755_");
+        putSM("getUUID",                   "m_142081_");
+        putSM("getX",                      "m_20185_");
+        putSM("getY",                      "m_20186_");
+        putSM("getZ",                      "m_20189_");
+        putSM("setPosRaw",                 "m_20343_");
+        // Player
+        putSM("getGameProfile",            "m_36316_");
+        putSM("displayClientMessage",      "m_5661_");
+        // Level
+        putSM("getBlockState",             "m_8055_");
+        putSM("getFluidState",             "m_6425_");
+        putSM("dimension",                 "m_46472_");
+        putSM("isClientSide",              "m_5776_");
+        // PlayerList
+        putSM("getPlayer",                 "m_11259_");
+        putSM("getPlayerByName",           "m_11255_");
+        putSM("getPlayers",                "m_11314_");
+        putSM("isOp",                      "m_11303_");
+        putSM("broadcastMessage",          "m_11264_");
+        // BlockState
+        putSM("getBlock",                  "m_60734_");
+        // FluidState / Fluid
+        putSM("getType",                   "m_76152_");
+        putSM("getSource",                 "m_5613_");
+        // ServerGamePacketListenerImpl
+        putSM("disconnect",                "m_9942_");
+        // Commands
+        putSM("performCommand",            "m_82117_");
+        // Component
+        putSM("literal",                   "m_130763_");
+        // CommandSourceStack
+        putSM("getServer",                 "m_81377_");
+        putSM("getEntity",                 "m_81373_");
+        putSM("sendSuccess",               "m_81354_");
+        putSM("sendFailure",               "m_81352_");
+        putSM("withSuppressedOutput",      "m_81324_");
+        putSM("hasPermission",             "m_6761_");
+        // Block
+        putSM("builtInRegistryHolder",     "m_204297_");
+    }
+
+    private static void putSM(String mojangName, String searge) { SEARGE_METHOD.put(mojangName, searge); }
+
+    // ==================================================================
+    // Searge field-name table (1.18.2)
+    // mojang/named field name → Searge runtime name
+    // ==================================================================
+
+    private static final java.util.Map<String,String> SEARGE_FIELD = new java.util.HashMap<>();
+    static {
+        putSF("LIGHTNING_BOLT",            "f_20465_");
+        putSF("BLOCK",                     "f_122824_");
+        putSF("CHAT",                      "f_130601_");
+        putSF("SYSTEM",                    "f_130602_");
+        putSF("isClientSide",              "m_5776_");
+        putSF("connection",                "f_8906_");
+    }
+
+    private static void putSF(String mojangName, String searge) { SEARGE_FIELD.put(mojangName, searge); }
+
+    // ==================================================================
+    // CLASS NAMES  (mojang/named → Searge runtime names on Forge 1.18.2)
     // ==================================================================
 
     static final String CLS_MINECRAFT_SERVER         = "net.minecraft.server.MinecraftServer";
@@ -317,32 +394,33 @@ final class ForgeReflectionConstants {
 
     private static final java.util.Map<String,String> NAMED_TO_RUNTIME = new java.util.HashMap<>();
     static {
-        NAMED_TO_RUNTIME.put("net.minecraft.server.MinecraftServer",              "net.minecraft.server.MinecraftServer");
-        NAMED_TO_RUNTIME.put("net.minecraft.server.level.ServerPlayer",           "net.minecraft.server.level.ServerPlayer");
-        NAMED_TO_RUNTIME.put("net.minecraft.server.level.ServerLevel",            "net.minecraft.server.level.ServerLevel");
-        NAMED_TO_RUNTIME.put("net.minecraft.server.players.PlayerList",           "net.minecraft.server.players.PlayerList");
-        NAMED_TO_RUNTIME.put("net.minecraft.commands.CommandSourceStack",         "net.minecraft.commands.CommandSourceStack");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.LightningBolt",          "net.minecraft.world.entity.LightningBolt");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.EntityType",             "net.minecraft.world.entity.EntityType");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.Entity",                 "net.minecraft.world.entity.Entity");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.player.Player",          "net.minecraft.world.entity.player.Player");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.Level",                   "net.minecraft.world.level.Level");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Block",             "net.minecraft.world.level.block.Block");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Blocks",            "net.minecraft.world.level.block.Blocks");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.state.BlockState",  "net.minecraft.world.level.block.state.BlockState");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.LiquidBlock",       "net.minecraft.world.level.block.LiquidBlock");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.Fluids",         "net.minecraft.world.level.material.Fluids");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.Fluid",          "net.minecraft.world.level.material.Fluid");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.FlowableFluid",  "net.minecraft.world.level.material.FlowableFluid");
-        NAMED_TO_RUNTIME.put("net.minecraft.core.BlockPos",                       "net.minecraft.core.BlockPos");
-        NAMED_TO_RUNTIME.put("net.minecraft.core.Registry",                       "net.minecraft.core.Registry");
-        NAMED_TO_RUNTIME.put("net.minecraft.core.registries.BuiltInRegistries",   "net.minecraft.core.registries.BuiltInRegistries");
-        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.Component",              "net.minecraft.network.chat.Component");
-        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.ChatType",               "net.minecraft.network.chat.ChatType");
-        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.MutableComponent",       "net.minecraft.network.chat.MutableComponent");
-        NAMED_TO_RUNTIME.put("net.minecraft.world.phys.Vec3",                     "net.minecraft.world.phys.Vec3");
-        NAMED_TO_RUNTIME.put("net.minecraft.server.network.ServerGamePacketListenerImpl", "net.minecraft.server.network.ServerGamePacketListenerImpl");
-        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.network.chat.TextComponent");
+        // Forge 1.18.2 Searge class names (net.minecraft.src.C_*)
+        NAMED_TO_RUNTIME.put("net.minecraft.server.MinecraftServer",              "net.minecraft.src.C_4977_");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.level.ServerPlayer",           "net.minecraft.src.C_13_");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.level.ServerLevel",            "net.minecraft.src.C_12_");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.players.PlayerList",           "net.minecraft.src.C_14_");
+        NAMED_TO_RUNTIME.put("net.minecraft.commands.CommandSourceStack",         "net.minecraft.src.C_2969_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.LightningBolt",          "net.minecraft.src.C_1538_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.EntityType",             "net.minecraft.src.C_1299_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.Entity",                 "net.minecraft.src.C_507_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.player.Player",          "net.minecraft.src.C_1141_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.Level",                   "net.minecraft.src.C_318_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Block",             "net.minecraft.src.C_2063_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Blocks",            "net.minecraft.src.C_2062_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.state.BlockState",  "net.minecraft.src.C_2064_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.LiquidBlock",       "net.minecraft.src.C_2404_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.Fluids",         "net.minecraft.src.C_3612_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.Fluid",          "net.minecraft.src.C_3611_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.FlowableFluid",  "net.minecraft.src.C_3609_");
+        NAMED_TO_RUNTIME.put("net.minecraft.core.BlockPos",                       "net.minecraft.src.C_4675_");
+        NAMED_TO_RUNTIME.put("net.minecraft.core.Registry",                       "net.minecraft.src.C_2378_");
+        NAMED_TO_RUNTIME.put("net.minecraft.core.registries.BuiltInRegistries",   "net.minecraft.src.C_7922_");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.Component",              "net.minecraft.src.C_4996_");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.ChatType",               "net.minecraft.src.C_4992_");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.MutableComponent",       "net.minecraft.src.C_5250_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.phys.Vec3",                     "net.minecraft.src.C_243_");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.network.ServerGamePacketListenerImpl", "net.minecraft.src.C_3244_");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.src.C_2585_");
     }
 
     /** Return the runtime class name for a mojang/named class name, or null. */
