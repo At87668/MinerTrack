@@ -143,6 +143,8 @@ public class ForgeCommandBridge implements CommandBridge {
         Class<?> textCls = ForgeReflection.resolveTextComponentClass();
         if (textCls == null) return false;
         Class<?> targetCls = target.getClass();
+        System.out.println("[MinerTrack:Forge] fabricSendFeedback target=" + targetCls.getName()
+            + " text=" + text.getClass().getName() + " isSuccess=" + isSuccess);
 
         if (isSuccess) {
             boolean oldDebug = ForgeReflection.DEBUG_REFLECTION;
@@ -154,17 +156,19 @@ public class ForgeCommandBridge implements CommandBridge {
                     if (m != null) {
                         final Object t = text;
                         m.invoke(target, (Supplier<?>) () -> t, false);
+                        System.out.println("[MinerTrack:Forge] sendSuccess(Supplier,boolean) invoked");
                         return true;
                     }
-                } catch (Throwable t) {}
+                } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendSuccess(Supplier) err: " + t); }
                 try {
                     Method m = ForgeReflection.findMethod(targetCls, "sendSuccess",
                         new Class<?>[]{textCls, boolean.class});
                     if (m != null) {
                         m.invoke(target, text, false);
+                        System.out.println("[MinerTrack:Forge] sendSuccess(Component,boolean) invoked");
                         return true;
                     }
-                } catch (Throwable t) {}
+                } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendSuccess(Component) err: " + t); }
             } finally {
                 ForgeReflection.DEBUG_REFLECTION = oldDebug;
             }
@@ -175,30 +179,32 @@ public class ForgeCommandBridge implements CommandBridge {
                     new Class<?>[]{textCls});
                 if (m != null) {
                     m.invoke(target, text);
+                    System.out.println("[MinerTrack:Forge] sendFailure invoked");
                     return true;
                 }
-            } catch (Throwable t) {}
+            } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendFailure err: " + t); }
         }
         try {
             Method m = ForgeReflection.findMethod(targetCls, "sendSystemMessage",
                 new Class<?>[]{textCls});
-            if (m != null) { m.invoke(target, text); return true; }
-        } catch (Throwable t) {}
+            if (m != null) { m.invoke(target, text); System.out.println("[MinerTrack:Forge] sendSystemMessage invoked"); return true; }
+        } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendSystemMessage err: " + t); }
         try {
             Method m = ForgeReflection.findMethod(targetCls, "sendMessage",
                 new Class<?>[]{textCls, UUID.class});
-            if (m != null) { m.invoke(target, text, UUID.randomUUID()); return true; }
-        } catch (Throwable t) {}
+            if (m != null) { m.invoke(target, text, UUID.randomUUID()); System.out.println("[MinerTrack:Forge] sendMessage(Component,UUID) invoked"); return true; }
+        } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendMessage(Component,UUID) err: " + t); }
         try {
             Method m = ForgeReflection.findMethod(targetCls, "sendMessage",
                 new Class<?>[]{textCls, boolean.class});
-            if (m != null) { m.invoke(target, text, false); return true; }
-        } catch (Throwable t) {}
+            if (m != null) { m.invoke(target, text, false); System.out.println("[MinerTrack:Forge] sendMessage(Component,boolean) invoked"); return true; }
+        } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendMessage(Component,boolean) err: " + t); }
         try {
             Method m = ForgeReflection.findMethod(targetCls, "sendMessage",
                 new Class<?>[]{textCls});
-            if (m != null) { m.invoke(target, text); return true; }
-        } catch (Throwable t) {}
+            if (m != null) { m.invoke(target, text); System.out.println("[MinerTrack:Forge] sendMessage(Component) invoked"); return true; }
+        } catch (Throwable t) { System.out.println("[MinerTrack:Forge] sendMessage(Component) err: " + t); }
+        System.out.println("[MinerTrack:Forge] fabricSendFeedback: no method matched");
         return false;
     }
 
