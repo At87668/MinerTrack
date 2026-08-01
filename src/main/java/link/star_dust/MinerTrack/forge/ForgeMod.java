@@ -46,6 +46,11 @@ public class ForgeMod {
         // must defer server-specific init to ServerStartingEvent.
         Object eventBus = ForgeReflection.getMainEventBus();
         if (eventBus != null) {
+            // RegisterCommandsEvent fires during MinecraftServer construction,
+            // which happens BEFORE ServerStartingEvent. Register its listener
+            // now (in the mod constructor) so commands are registered in time.
+            platform.registerCommandsEarly();
+
             // ServerStartingEvent -> call platform.onServerStarting()
             ForgeReflection.registerEventListener(eventBus,
                 ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStartingEvent"),
