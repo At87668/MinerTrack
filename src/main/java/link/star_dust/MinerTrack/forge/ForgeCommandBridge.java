@@ -109,6 +109,7 @@ public class ForgeCommandBridge implements CommandBridge {
 
     @Override
     public void sendMessage(String message) {
+        System.out.println("[MinerTrack:Forge] sendMessage called, source=" + (source == null ? "null" : source.getClass().getName()) + " msg=" + message);
         if (source == null) { System.out.println("[MinerTrack] " + message); return; }
         Object text = createText(message);
         if (text == null) { System.out.println("[MinerTrack] " + message); return; }
@@ -118,6 +119,7 @@ public class ForgeCommandBridge implements CommandBridge {
 
     @Override
     public void sendSuccess(String message) {
+        System.out.println("[MinerTrack:Forge] sendSuccess called, source=" + (source == null ? "null" : source.getClass().getName()) + " msg=" + message);
         if (source == null) { System.out.println("[MinerTrack] " + message); return; }
         Object text = createText(message);
         if (text == null) { System.out.println("[MinerTrack] " + message); return; }
@@ -127,6 +129,7 @@ public class ForgeCommandBridge implements CommandBridge {
 
     @Override
     public void sendFailure(String message) {
+        System.out.println("[MinerTrack:Forge] sendFailure called, source=" + (source == null ? "null" : source.getClass().getName()) + " msg=" + message);
         if (source == null) { System.out.println("[MinerTrack] " + message); return; }
         Object text = createText(message);
         if (text == null) { System.out.println("[MinerTrack] " + message); return; }
