@@ -54,9 +54,13 @@ public class ForgeMiningListener {
 
         // BlockEvent.BreakEvent: fires after a block is broken by a player.
         // Event is not cancellable for mining listeners (addListener without priority).
-        ForgeReflection.registerEventListener(eventBus,
-            ForgeReflection.forgeClass("net.minecraftforge.event.level.BlockEvent$BreakEvent"),
-            rawEvent -> {
+        // The package differs across Forge versions: `level` (1.19.3+) vs
+        // `world` (1.18.2 / Mohist). Try both.
+        Class<?> breakEvent = firstLoadable(
+            "net.minecraftforge.event.level.BlockEvent$BreakEvent",
+            "net.minecraftforge.event.world.BlockEvent$BreakEvent");
+        if (breakEvent != null) {
+            ForgeReflection.registerEventListener(eventBus, breakEvent, rawEvent -> {
                 try {
                     Object world = ForgeReflection.callAny(rawEvent, "getLevel",
                         ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
@@ -70,11 +74,14 @@ public class ForgeMiningListener {
                     handleBlockBreak(player, pos, state, world);
                 } catch (Throwable t) {}
             });
+        }
 
         // BlockEvent.EntityPlaceEvent: fires when a player places a block.
-        ForgeReflection.registerEventListener(eventBus,
-            ForgeReflection.forgeClass("net.minecraftforge.event.level.BlockEvent$EntityPlaceEvent"),
-            rawEvent -> {
+        Class<?> placeEvent = firstLoadable(
+            "net.minecraftforge.event.level.BlockEvent$EntityPlaceEvent",
+            "net.minecraftforge.event.world.BlockEvent$EntityPlaceEvent");
+        if (placeEvent != null) {
+            ForgeReflection.registerEventListener(eventBus, placeEvent, rawEvent -> {
                 try {
                     Object world = ForgeReflection.callAny(rawEvent, "getLevel",
                         ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
@@ -89,6 +96,16 @@ public class ForgeMiningListener {
                     handleBlockPlace(entity, pos, state, world);
                 } catch (Throwable t) {}
             });
+        }
+    }
+
+    /** Returns the first class name that can be loaded, or null if none. */
+    private static Class<?> firstLoadable(String... names) {
+        for (String n : names) {
+            Class<?> c = ForgeReflection.forgeClass(n);
+            if (c != null) return c;
+        }
+        return null;
     }
 
     private boolean isClientWorld(Object world) {
