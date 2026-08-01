@@ -40,6 +40,23 @@ final class NeoForgeReflectionConstants {
     static final Object[]   NO_VALS = new Object[0];
 
     // ==================================================================
+    // Resolution helpers
+    // Mirrors FabricReflectionConstants.im()/ifd(). NeoForge uses Mojang
+    // names at runtime, so these return the named name unchanged. The
+    // descriptor and fallback params preserve the exact Fabric signature.
+    // ==================================================================
+
+    private static String im(String namedOwner, String named,
+                             String desc, String interFallback) {
+        return named;
+    }
+
+    private static String ifd(String namedOwner, String named,
+                              String desc, String interFallback) {
+        return named;
+    }
+
+    // ==================================================================
     // CLASS NAMES
     // ==================================================================
 
@@ -74,65 +91,65 @@ final class NeoForgeReflectionConstants {
     // METHOD NAMES
     // ==================================================================
 
-    static final String M_GET_PLAYER_LIST             = "getPlayerList";
-    static final String M_GET_ALL_LEVELS              = "getAllLevels";
-    static final String M_GET_COMMANDS                = "getCommands";
-    static final String M_CREATE_COMMAND_SOURCE_STACK = "createCommandSourceStack";
-    static final String M_GET_TICK_COUNT              = "getTickCount";
-    static final String M_GET_LEVEL                   = "getLevel";
-    static final String M_SEND_SYSTEM_MSG_SRV         = "sendSystemMessage";
+    static final String M_GET_PLAYER_LIST             = im("net.minecraft.server.MinecraftServer", "getPlayerList",          "()Lnet/minecraft/server/players/PlayerList;",                  "method_3760");
+    static final String M_GET_ALL_LEVELS              = im("net.minecraft.server.MinecraftServer", "getAllLevels",           "()Ljava/lang/Iterable;",                                       "method_3738");
+    static final String M_GET_COMMANDS                = im("net.minecraft.server.MinecraftServer", "getCommands",           "()Lnet/minecraft/commands/Commands;",                          "method_3734");
+    static final String M_CREATE_COMMAND_SOURCE_STACK = im("net.minecraft.server.MinecraftServer", "createCommandSourceStack", "()Lnet/minecraft/commands/CommandSourceStack;",       "method_3739");
+    static final String M_GET_TICK_COUNT              = im("net.minecraft.server.MinecraftServer", "getTickCount",          "()I",                                                          "method_3780");
+    static final String M_GET_LEVEL                   = im("net.minecraft.server.MinecraftServer", "getLevel",              "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/server/level/ServerLevel;", "method_3847");
+    static final String M_SEND_SYSTEM_MSG_SRV         = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;)V",                     "method_9203");
 
-    static final String M_GET_NAME                    = "getName";
-    static final String M_GET_UUID                    = "getUUID";
-    static final String M_GET_X                       = "getX";
-    static final String M_GET_Y                       = "getY";
-    static final String M_GET_Z                       = "getZ";
-    static final String M_GET_GAME_PROFILE            = "getGameProfile";
-    static final String M_SEND_MSG_PLR_CMP            = "displayClientMessage";
-    static final String M_LEVEL                       = "level";
+    static final String M_GET_NAME                    = im("net.minecraft.world.entity.Entity", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "method_5477");
+    static final String M_GET_UUID                    = im("net.minecraft.world.entity.Entity", "getUUID",             "()Ljava/util/UUID;",                                           "method_5667");
+    static final String M_GET_X                       = im("net.minecraft.world.entity.Entity",       "getX",                "()D",                                                          "method_23317");
+    static final String M_GET_Y                       = im("net.minecraft.world.entity.Entity",       "getY",                "()D",                                                          "method_23318");
+    static final String M_GET_Z                       = im("net.minecraft.world.entity.Entity",       "getZ",                "()D",                                                          "method_23321");
+    static final String M_GET_GAME_PROFILE            = im("net.minecraft.world.entity.player.Player", "getGameProfile",      "()Lcom/mojang/authlib/GameProfile;",                           "method_7334");
+    static final String M_SEND_MSG_PLR_CMP            = im("net.minecraft.server.level.ServerPlayer", "displayClientMessage",         "(Lnet/minecraft/network/chat/Component;Z)V",                     "method_7353");
+    static final String M_LEVEL                       = im("net.minecraft.server.level.ServerPlayer", "level",               "()Lnet/minecraft/world/level/Level;",                           null);
 
-    static final String M_GET_BLOCK_STATE             = "getBlockState";
-    static final String M_DIMENSION                   = "dimension";
+    static final String M_GET_BLOCK_STATE             = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", "method_8320");
+    static final String M_DIMENSION                   = im("net.minecraft.world.level.Level",        "dimension",            "()Lnet/minecraft/resources/ResourceKey;",                                           "method_27983");
 
-    static final String M_GET_PLAYER_UUID             = "getPlayer";
-    static final String M_GET_PLAYER_BY_NAME          = "getPlayerByName";
-    static final String M_GET_PLAYERS                 = "getPlayers";
-    static final String M_IS_OP                       = "isOp";
-    static final String M_BROADCAST_SYSTEM_MSG        = "broadcastSystemMessage";
-    static final String M_BROADCAST_MSG               = "broadcastMessage";
-    static final String M_BROADCAST                   = "broadcast";
+    static final String M_GET_PLAYER_UUID             = im("net.minecraft.server.players.PlayerList","getPlayer",            "(Ljava/util/UUID;)Lnet/minecraft/server/level/ServerPlayer;",   "method_14602");
+    static final String M_GET_PLAYER_BY_NAME          = im("net.minecraft.server.players.PlayerList","getPlayerByName",      "(Ljava/lang/String;)Lnet/minecraft/server/level/ServerPlayer;", "method_14566");
+    static final String M_GET_PLAYERS                 = im("net.minecraft.server.players.PlayerList","getPlayers",           "()Ljava/util/List;",                                           "method_14571");
+    static final String M_IS_OP                       = im("net.minecraft.server.players.PlayerList","isOp",                 "(Lcom/mojang/authlib/GameProfile;)Z",                          "method_14569");
+    static final String M_BROADCAST_SYSTEM_MSG        = im("net.minecraft.server.players.PlayerList","broadcastSystemMessage","(Lnet/minecraft/network/chat/Component;Z)V",                   "method_43514");
+    static final String M_BROADCAST_MSG               = im("net.minecraft.server.players.PlayerList","broadcastMessage",     "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/ChatType;Ljava/util/UUID;)V", "method_14616");
+    static final String M_BROADCAST                   = im("net.minecraft.server.players.PlayerList","broadcast",            "(Lnet/minecraft/network/chat/Component;Ljava/util/function/Function;Z)V",            "method_43512");
 
-    static final String M_SET_POS                     = "setPosRaw";
-    static final String M_GET_BLOCK                   = "getBlock";
-    static final String M_GET_FLUID_STATE             = "getFluidState";
-    static final String M_GET_FLUID                   = "getType";
-    static final String M_GET_STILL                   = "getSource";
-    static final String M_DISCONNECT                  = "disconnect";
-    static final String M_PERFORM_COMMAND             = "performCommand";
-    static final String M_PERFORM_PREFIXED_CMD        = "performPrefixedCommand";
-    static final String M_COMPONENT_LITERAL           = "literal";
+    static final String M_SET_POS                     = im("net.minecraft.world.entity.Entity",       "setPosRaw",               "(DDD)V",                                                       "method_23327");
+    static final String M_GET_BLOCK                   = im("net.minecraft.world.level.block.state.BlockState", "getBlock",    "()Lnet/minecraft/world/level/block/Block;",                    "method_26204");
+    static final String M_GET_FLUID_STATE             = im("net.minecraft.world.level.Level", "getFluidState", "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/material/FluidState;",           "method_8316");
+    static final String M_GET_FLUID                   = im("net.minecraft.world.level.material.FluidState", "getType",       "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15772");
+    static final String M_GET_STILL                   = im("net.minecraft.world.level.material.FlowingFluid", "getSource",     "()Lnet/minecraft/world/level/material/Fluid;",                 "method_15751");
+    static final String M_DISCONNECT                  = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "method_14367");
+    static final String M_PERFORM_COMMAND             = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "method_9249");
+    static final String M_PERFORM_PREFIXED_CMD        = im("net.minecraft.commands.Commands",           "performPrefixedCommand","(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  null);
+    static final String M_COMPONENT_LITERAL           = im("net.minecraft.network.chat.Component",     "literal",              "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", null);
 
-    static final String M_GET_SERVER                  = "getServer";
-    static final String M_IS_PLAYER                   = "isPlayer";
-    static final String M_GET_PLAYER                  = "getPlayer";
-    static final String M_GET_ENTITY                  = "getEntity";
-    static final String M_SEND_SUCCESS_CSS            = "sendSuccess";
-    static final String M_SEND_FAILURE_CSS            = "sendFailure";
-    static final String M_WITH_SUPPRESSED_OUTPUT      = "withSuppressedOutput";
-    static final String M_HAS_PERMISSION              = "hasPermission";
-    static final String M_BUILT_IN_REGISTRY_HOLDER    = "builtInRegistryHolder";
+    static final String M_GET_SERVER                  = im("net.minecraft.commands.CommandSourceStack", "getServer",           "()Lnet/minecraft/server/MinecraftServer;",                                  "method_9211");
+    static final String M_IS_PLAYER                   = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "method_43737");
+    static final String M_GET_PLAYER                  = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_44023");
+    static final String M_GET_ENTITY                  = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "method_9228");
+    static final String M_SEND_SUCCESS_CSS            = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "method_9226");
+    static final String M_SEND_FAILURE_CSS            = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9213");
+    static final String M_WITH_SUPPRESSED_OUTPUT      = im("net.minecraft.commands.CommandSourceStack", "withSuppressedOutput","()Lnet/minecraft/commands/CommandSourceStack;",                            "method_9217");
+    static final String M_HAS_PERMISSION              = im("net.minecraft.commands.CommandSourceStack", "hasPermission",       "(I)Z",                                                                     "method_9259");
+    static final String M_BUILT_IN_REGISTRY_HOLDER    = im("net.minecraft.world.level.block.Block",     "builtInRegistryHolder","()Lnet/minecraft/core/Holder;",                                          "method_20516");
 
     // ==================================================================
     // FIELD NAMES
     // ==================================================================
 
-    static final String F_ENTITY_TYPE_LIGHTNING       = "LIGHTNING_BOLT";
-    static final String F_BUILTIN_BLOCK               = "BLOCK";
-    static final String F_REGISTRY_BLOCK              = "BLOCK";
-    static final String F_CHAT_TYPE_CHAT              = "CHAT";
-    static final String F_CHAT_TYPE_SYSTEM            = "SYSTEM";
-    static final String F_IS_CLIENT_SIDE              = "isClientSide";
-    static final String F_CONNECTION                  = "connection";
+    static final String F_ENTITY_TYPE_LIGHTNING       = ifd("net.minecraft.world.entity.EntityType",   "LIGHTNING_BOLT", "Lnet/minecraft/world/entity/EntityType;", "field_6112");
+    static final String F_BUILTIN_BLOCK               = ifd("net.minecraft.core.registries.BuiltInRegistries", "BLOCK", "Lnet/minecraft/core/DefaultedRegistry;",  "field_41175");
+    static final String F_REGISTRY_BLOCK              = ifd("net.minecraft.core.Registry",             "BLOCK",          "Lnet/minecraft/core/DefaultedRegistry;",  null);
+    static final String F_CHAT_TYPE_CHAT              = ifd("net.minecraft.network.chat.ChatType",     "CHAT",           "Lnet/minecraft/network/chat/ChatType;",   "field_11737");
+    static final String F_CHAT_TYPE_SYSTEM            = ifd("net.minecraft.network.chat.ChatType",     "SYSTEM",         "Lnet/minecraft/network/chat/ChatType;",   null);
+    static final String F_IS_CLIENT_SIDE              = ifd("net.minecraft.world.level.Level",        "isClientSide",    "Z",                                       "field_9236");
+    static final String F_CONNECTION                  = ifd("net.minecraft.server.level.ServerPlayer", "connection",     "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;", "field_13987");
 
     // ==================================================================
     // Runtime method name redirector
