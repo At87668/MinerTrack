@@ -20,6 +20,8 @@
 
 package link.star_dust.MinerTrack.fabric;
 
+import link.star_dust.MinerTrack.core.FastReflection;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -169,11 +171,7 @@ final class FabricReflection {
         if (target == null) return null;
         Method m = scanMethod(target.getClass(), paramTypes, returnType);
         if (m == null) return null;
-        try {
-            return m.invoke(target, args);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            return null;
-        }
+        return FastReflection.invoke(m, target, args);
     }
 
     // ==================================================================
@@ -283,8 +281,7 @@ final class FabricReflection {
         if (cached != null) {
             Method m = unwrap(cached);
             if (m == null) return null;
-            try { return m.invoke(null, args); }
-            catch (IllegalAccessException | InvocationTargetException e) { return null; }
+            return FastReflection.invokeStatic(m, args);
         }
 
         Class<?> cls = forName(className);
@@ -296,17 +293,17 @@ final class FabricReflection {
         try {
             Method m = cls.getDeclaredMethod(r, paramTypes);
             m.setAccessible(true);
-            Object result = m.invoke(null, args);
+            Object result = FastReflection.invokeStatic(m, args);
             staticMethodCache.put(key, m);
             return result;
         } catch (NoSuchMethodException e) {
             try {
                 Method m = cls.getMethod(r, paramTypes);
-                Object result = m.invoke(null, args);
+                Object result = FastReflection.invokeStatic(m, args);
                 staticMethodCache.put(key, m);
                 return result;
             } catch (Throwable t2) { /* fall through */ }
-        } catch (IllegalAccessException | InvocationTargetException e) {
+        } catch (Throwable e) {
             staticMethodCache.put(key, NOT_FOUND);
             return null;
         }
@@ -316,22 +313,22 @@ final class FabricReflection {
             try {
                 found = cls.getDeclaredMethod(methodName, paramTypes);
                 found.setAccessible(true);
-                Object result = found.invoke(null, args);
+                Object result = FastReflection.invokeStatic(found, args);
                 staticMethodCache.put(key, found);
                 return result;
             } catch (NoSuchMethodException ignored) {
-            } catch (IllegalAccessException | InvocationTargetException e) {
+            } catch (Throwable e) {
                 staticMethodCache.put(key, NOT_FOUND);
                 return null;
             }
             try {
                 found = cls.getMethod(methodName, paramTypes);
                 found.setAccessible(true);
-                Object result = found.invoke(null, args);
+                Object result = FastReflection.invokeStatic(found, args);
                 staticMethodCache.put(key, found);
                 return result;
             } catch (NoSuchMethodException ignored) {
-            } catch (IllegalAccessException | InvocationTargetException e) {
+            } catch (Throwable e) {
                 staticMethodCache.put(key, NOT_FOUND);
                 return null;
             }
@@ -349,7 +346,7 @@ final class FabricReflection {
             if (match) {
                 try {
                     candidate.setAccessible(true);
-                    Object result = candidate.invoke(null, args);
+                    Object result = FastReflection.invokeStatic(candidate, args);
                     staticMethodCache.put(key, candidate);
                     return result;
                 } catch (Throwable ignored) {}
@@ -373,8 +370,7 @@ final class FabricReflection {
         if (target == null) return null;
         Method m = findMethodImpl(target.getClass(), methodName, paramTypes);
         if (m == null) return null;
-        try { return m.invoke(target, args); }
-        catch (IllegalAccessException | InvocationTargetException e) { return null; }
+        return FastReflection.invoke(m, target, args);
     }
 
     /** Alias for {@link #call}. */
@@ -414,14 +410,12 @@ final class FabricReflection {
 
     @SuppressWarnings("unchecked")
     static <T> T getField(Object target, String fieldName) {
-        try {
-            Class<?> cls = (target instanceof Class) ? (Class<?>) target : target.getClass();
-            Field f = findField(cls, fieldName);
-            if (f == null) return null;
-            f.setAccessible(true);
-            Object owner = (target instanceof Class) ? null : target;
-            return (T) f.get(owner);
-        } catch (IllegalAccessException e) { return null; }
+        Class<?> cls = (target instanceof Class) ? (Class<?>) target : target.getClass();
+        Field f = findField(cls, fieldName);
+        if (f == null) return null;
+        f.setAccessible(true);
+        Object owner = (target instanceof Class) ? null : target;
+        return (T) FastReflection.get(f, owner);
     }
 
     // ==================================================================
@@ -489,7 +483,8 @@ final class FabricReflection {
         Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS);
         if (holder != null) {
             try {
-                Object key = holder.getClass().getMethod("getKey").invoke(holder);
+                Method getKey = holder.getClass().getMethod("getKey");
+                Object key = FastReflection.invoke(getKey, holder, NO_ARGS);
                 if (key != null) {
                     Object loc = callResourceKeyValue(key);
                     if (loc != null) return readString(loc);
@@ -531,13 +526,11 @@ final class FabricReflection {
         if (regsCls == null) return null;
         for (Method m : regsCls.getDeclaredMethods()) {
             if (m.getParameterCount() == 1 && m.getReturnType() != void.class) {
-                try {
-                    Object id = m.invoke(null, block);
-                    if (id != null) {
-                        String s = readString(id);
-                        if (s != null && s.contains(":")) return s;
-                    }
-                } catch (Throwable ignored) {}
+                Object id = FastReflection.invokeStatic(m, new Object[]{block});
+                if (id != null) {
+                    String s = readString(id);
+                    if (s != null && s.contains(":")) return s;
+                }
             }
         }
         return null;

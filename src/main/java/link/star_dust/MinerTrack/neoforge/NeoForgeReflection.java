@@ -20,6 +20,8 @@
 
 package link.star_dust.MinerTrack.neoforge;
 
+import link.star_dust.MinerTrack.core.FastReflection;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -91,24 +93,24 @@ final class NeoForgeReflection {
     // Method invocation
     // ==================================================================
 
-    public static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) { if (target == null) return null; Method m = findMethodImpl(target.getClass(), methodName, paramTypes); if (m == null) return null; try { return m.invoke(target, args); } catch (Throwable t) { return null; } }
+    public static Object call(Object target, String methodName, Class<?>[] paramTypes, Object[] args) { if (target == null) return null; Method m = findMethodImpl(target.getClass(), methodName, paramTypes); if (m == null) return null; return FastReflection.invoke(m, target, args); }
     public static Object callAny(Object target, String methodName, Class<?>[] paramTypes, Object[] args) { return call(target, methodName, paramTypes, args); }
     public static Object callMigrated(Object target, String mc26Method, String legacyMethod, Class<?>[] paramTypes, Object[] args) { if (target == null) return null; Object r = call(target, mc26Method, paramTypes, args); if (r != null) return r; return call(target, legacyMethod, paramTypes, args); }
     public static Method findMethod(Class<?> cls, String name, Class<?>[] paramTypes) { return findMethodImpl(cls, name, paramTypes); }
     public static void invokeBySigOrThrow(Object target, Class<?>[] paramTypes, Object[] args) { if (target == null) throw new IllegalArgumentException("target is null"); Method m = scanMethod(target.getClass(), paramTypes, null); if (m == null) throw new RuntimeException(new NoSuchMethodException(target.getClass().getName() + ".(*sig " + paramTypes.length + " params)")); try { m.invoke(target, args); } catch (IllegalAccessException | InvocationTargetException e) { throw new RuntimeException(e); } }
-    public static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args, Class<?> returnType) { if (target == null) return null; Method m = scanMethod(target.getClass(), paramTypes, returnType); if (m == null) return null; try { return m.invoke(target, args); } catch (Throwable t) { return null; } }
+    public static Object callBySig(Object target, Class<?>[] paramTypes, Object[] args, Class<?> returnType) { if (target == null) return null; Method m = scanMethod(target.getClass(), paramTypes, returnType); if (m == null) return null; return FastReflection.invoke(m, target, args); }
 
     // ==================================================================
     // Static method invocation
     // ==================================================================
 
     public static Object callStatic(String className, String methodName, Class<?>[] paramTypes, Object[] args) {
-        StaticMethodKey key = new StaticMethodKey(className, methodName, paramTypes); Object cached = staticMethodCache.get(key); if (cached != null) { Method m = unwrap(cached); if (m == null) return null; try { return m.invoke(null, args); } catch (Throwable t) { return null; } }
+        StaticMethodKey key = new StaticMethodKey(className, methodName, paramTypes); Object cached = staticMethodCache.get(key); if (cached != null) { Method m = unwrap(cached); if (m == null) return null; return FastReflection.invokeStatic(m, args); }
         Class<?> cls = forName(className); if (cls == null) { staticMethodCache.put(key, NOT_FOUND); return null; }
         String r = NeoForgeReflectionConstants.redirectMethod(methodName);
-        try { Method m = cls.getDeclaredMethod(r, paramTypes); m.setAccessible(true); Object res = m.invoke(null, args); staticMethodCache.put(key, m); return res; } catch (NoSuchMethodException e) { try { Method m = cls.getMethod(r, paramTypes); m.setAccessible(true); Object res = m.invoke(null, args); staticMethodCache.put(key, m); return res; } catch (Throwable t2) {} } catch (Throwable e) { staticMethodCache.put(key, NOT_FOUND); return null; }
-        if (!r.equals(methodName)) { try { Method m = cls.getDeclaredMethod(methodName, paramTypes); m.setAccessible(true); Object res = m.invoke(null, args); staticMethodCache.put(key, m); return res; } catch (Throwable t) {} try { Method m = cls.getMethod(methodName, paramTypes); m.setAccessible(true); Object res = m.invoke(null, args); staticMethodCache.put(key, m); return res; } catch (Throwable t) {} }
-        for (Method candidate : cls.getDeclaredMethods()) { if (!java.lang.reflect.Modifier.isStatic(candidate.getModifiers()) || candidate.getParameterCount() != paramTypes.length) continue; boolean match = true; for (int i = 0; i < paramTypes.length; i++) { if (!candidate.getParameterTypes()[i].isAssignableFrom(paramTypes[i])) { match = false; break; } } if (match) { try { candidate.setAccessible(true); Object res = candidate.invoke(null, args); staticMethodCache.put(key, candidate); return res; } catch (Throwable t) {} } }
+        try { Method m = cls.getDeclaredMethod(r, paramTypes); m.setAccessible(true); Object res = FastReflection.invokeStatic(m, args); staticMethodCache.put(key, m); return res; } catch (NoSuchMethodException e) { try { Method m = cls.getMethod(r, paramTypes); m.setAccessible(true); Object res = FastReflection.invokeStatic(m, args); staticMethodCache.put(key, m); return res; } catch (Throwable t2) {} } catch (Throwable e) { staticMethodCache.put(key, NOT_FOUND); return null; }
+        if (!r.equals(methodName)) { try { Method m = cls.getDeclaredMethod(methodName, paramTypes); m.setAccessible(true); Object res = FastReflection.invokeStatic(m, args); staticMethodCache.put(key, m); return res; } catch (Throwable t) {} try { Method m = cls.getMethod(methodName, paramTypes); m.setAccessible(true); Object res = FastReflection.invokeStatic(m, args); staticMethodCache.put(key, m); return res; } catch (Throwable t) {} }
+        for (Method candidate : cls.getDeclaredMethods()) { if (!java.lang.reflect.Modifier.isStatic(candidate.getModifiers()) || candidate.getParameterCount() != paramTypes.length) continue; boolean match = true; for (int i = 0; i < paramTypes.length; i++) { if (!candidate.getParameterTypes()[i].isAssignableFrom(paramTypes[i])) { match = false; break; } } if (match) { try { candidate.setAccessible(true); Object res = FastReflection.invokeStatic(candidate, args); staticMethodCache.put(key, candidate); return res; } catch (Throwable t) {} } }
         if (DEBUG_REFLECTION) log("STATIC-MISS " + className + "." + methodName + " (resolved=" + r + ")"); staticMethodCache.put(key, NOT_FOUND); return null;
     }
 
@@ -116,7 +118,7 @@ final class NeoForgeReflection {
     // Field access
     // ==================================================================
 
-    @SuppressWarnings("unchecked") public static <T> T getField(Object target, String fieldName) { try { Class<?> cls = (target instanceof Class) ? (Class<?>) target : target.getClass(); Field f = findField(cls, fieldName); if (f == null) return null; f.setAccessible(true); Object owner = (target instanceof Class) ? null : target; return (T) f.get(owner); } catch (Throwable t) { return null; } }
+    @SuppressWarnings("unchecked") public static <T> T getField(Object target, String fieldName) { Class<?> cls = (target instanceof Class) ? (Class<?>) target : target.getClass(); Field f = findField(cls, fieldName); if (f == null) return null; f.setAccessible(true); Object owner = (target instanceof Class) ? null : target; return (T) FastReflection.get(f, owner); }
 
     // ==================================================================
     // Text/Component
@@ -133,7 +135,7 @@ final class NeoForgeReflection {
     public static Object callUuid(Object target) { if (target == null) return null; Object r = call(target, "getUUID", NO_PARAMS, NO_ARGS); if (r != null) return r; return call(target, "getUuid", NO_PARAMS, NO_ARGS); }
     public static Object callDimension(Object world) { if (world == null) return null; Object r = call(world, "dimension", NO_PARAMS, NO_ARGS); if (r != null) return r; return call(world, "getRegistryKey", NO_PARAMS, NO_ARGS); }
     public static String readString(Object source) { if (source == null) return null; if (source instanceof String) return (String) source; Object s = call(source, "getString", NO_PARAMS, NO_ARGS); if (s instanceof String) return (String) s; String str = source.toString(); if (str.startsWith("literal{") && str.endsWith("}")) return str.substring("literal{".length(), str.length() - 1); if (str.startsWith("literal(") && str.endsWith(")")) return str.substring("literal(".length(), str.length() - 1); return str; }
-    public static String getBlockId(Object block) { if (block == null) return null; String s = block.toString(); int brace = s.indexOf('{'), close = s.indexOf('}'); if (brace >= 0 && close > brace) return s.substring(brace + 1, close); Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS); if (holder != null) { try { Object key = holder.getClass().getMethod("getKey").invoke(holder); if (key != null) { Object loc = call(key, "getValue", NO_PARAMS, NO_ARGS); if (loc != null) return readString(loc); } } catch (Throwable t) {} } Class<?> bir = forName(NeoForgeReflectionConstants.CLS_BUILT_IN_REGISTRIES); if (bir != null) { Object reg = getField(bir, NeoForgeReflectionConstants.F_BUILTIN_BLOCK); if (reg != null) { Object id = call(reg, "getKey", new Class<?>[]{Object.class}, new Object[]{block}); if (id != null) return readString(id); } } Class<?> regCls = forName(NeoForgeReflectionConstants.CLS_REGISTRY); if (regCls != null) { Object reg = getField(regCls, NeoForgeReflectionConstants.F_REGISTRY_BLOCK); if (reg != null) { Object id = call(reg, "getKey", new Class<?>[]{Object.class}, new Object[]{block}); if (id != null) return readString(id); } } return null; }
+    public static String getBlockId(Object block) { if (block == null) return null; String s = block.toString(); int brace = s.indexOf('{'), close = s.indexOf('}'); if (brace >= 0 && close > brace) return s.substring(brace + 1, close); Object holder = call(block, "builtInRegistryHolder", NO_PARAMS, NO_ARGS); if (holder != null) { try { Method getKey = holder.getClass().getMethod("getKey"); Object key = FastReflection.invoke(getKey, holder, NO_ARGS); if (key != null) { Object loc = call(key, "getValue", NO_PARAMS, NO_ARGS); if (loc != null) return readString(loc); } } catch (Throwable t) {} } Class<?> bir = forName(NeoForgeReflectionConstants.CLS_BUILT_IN_REGISTRIES); if (bir != null) { Object reg = getField(bir, NeoForgeReflectionConstants.F_BUILTIN_BLOCK); if (reg != null) { Object id = call(reg, "getKey", new Class<?>[]{Object.class}, new Object[]{block}); if (id != null) return readString(id); } } Class<?> regCls = forName(NeoForgeReflectionConstants.CLS_REGISTRY); if (regCls != null) { Object reg = getField(regCls, NeoForgeReflectionConstants.F_REGISTRY_BLOCK); if (reg != null) { Object id = call(reg, "getKey", new Class<?>[]{Object.class}, new Object[]{block}); if (id != null) return readString(id); } } return null; }
 
     // ==================================================================
     // NeoForge-specific
