@@ -82,9 +82,35 @@ final class NeoForgeReflection {
         if (DEBUG_REFLECTION) log("CLS-MISS " + className);
         classCache.put(className, NOT_FOUND); return null;
     }
-    private static Class<?> tryLoad(String name) { if (name == null) return null; try { return Class.forName(name); } catch (ClassNotFoundException e) { return null; } }
+    private static Class<?> tryLoad(String name) {
+        if (name == null) return null;
+        try { return Class.forName(name); } catch (ClassNotFoundException e) {}
+        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+        if (ctx != null) { try { return Class.forName(name, false, ctx); } catch (Throwable t) {} }
+        return null;
+    }
 
-    static Class<?> neoClass(String name) { try { return Class.forName(name); } catch (ClassNotFoundException e) { return null; } }
+    static Class<?> neoClass(String name) {
+        if (name == null) return null;
+        // Try multiple classloaders. In NeoForge's mod-loading environment the
+        // caller's classloader may not see NeoForge's own classes, so fall back
+        // to the thread context classloader and the classloader that loaded the
+        // NeoForge event bus (which is guaranteed to see NeoForge classes).
+        Class<?> cls = tryLoad(name);
+        if (cls != null) return cls;
+        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+        if (ctx != null) { cls = tryLoadWith(ctx, name); if (cls != null) return cls; }
+        Object bus = getMainEventBus();
+        if (bus != null) {
+            ClassLoader bl = bus.getClass().getClassLoader();
+            if (bl != null) { cls = tryLoadWith(bl, name); if (cls != null) return cls; }
+        }
+        return null;
+    }
+
+    private static Class<?> tryLoadWith(ClassLoader cl, String name) {
+        try { return Class.forName(name, false, cl); } catch (Throwable t) { return null; }
+    }
 
     static Object newInstance(String className, Class<?>[] paramTypes, Object[] args) { Class<?> cls = forName(className); if (cls == null) return null; try { Constructor<?> c = cls.getDeclaredConstructor(paramTypes); c.setAccessible(true); return c.newInstance(args); } catch (Throwable t) { return null; } }
 
