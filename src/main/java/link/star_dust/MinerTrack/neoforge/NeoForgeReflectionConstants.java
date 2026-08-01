@@ -215,4 +215,41 @@ final class NeoForgeReflectionConstants {
     private static void putF(String mojangName, String resolved) { FIELD_REDIRECT.put(mojangName, resolved); }
 
     static String redirectField(String bareName) { String r = FIELD_REDIRECT.get(bareName); return r != null ? r : bareName; }
+
+    // ==================================================================
+    // Class-name fallback (mojang/named → runtime name)
+    // Mirrors FabricReflectionConstants.NAMED_TO_INTER.
+    // ==================================================================
+
+    private static final java.util.Map<String,String> NAMED_TO_RUNTIME = new java.util.HashMap<>();
+    static {
+        NAMED_TO_RUNTIME.put("net.minecraft.server.MinecraftServer",              "net.minecraft.server.MinecraftServer");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.level.ServerPlayer",           "net.minecraft.server.level.ServerPlayer");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.level.ServerLevel",            "net.minecraft.server.level.ServerLevel");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.players.PlayerList",           "net.minecraft.server.players.PlayerList");
+        NAMED_TO_RUNTIME.put("net.minecraft.commands.CommandSourceStack",         "net.minecraft.commands.CommandSourceStack");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.LightningBolt",          "net.minecraft.world.entity.LightningBolt");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.EntityType",             "net.minecraft.world.entity.EntityType");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.Entity",                 "net.minecraft.world.entity.Entity");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.player.Player",          "net.minecraft.world.entity.player.Player");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.Level",                   "net.minecraft.world.level.Level");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Block",             "net.minecraft.world.level.block.Block");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Blocks",            "net.minecraft.world.level.block.Blocks");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.state.BlockState",  "net.minecraft.world.level.block.state.BlockState");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.LiquidBlock",       "net.minecraft.world.level.block.LiquidBlock");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.Fluids",         "net.minecraft.world.level.material.Fluids");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.Fluid",          "net.minecraft.world.level.material.Fluid");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.level.material.FlowableFluid",  "net.minecraft.world.level.material.FlowableFluid");
+        NAMED_TO_RUNTIME.put("net.minecraft.core.BlockPos",                       "net.minecraft.core.BlockPos");
+        NAMED_TO_RUNTIME.put("net.minecraft.core.Registry",                       "net.minecraft.core.Registry");
+        NAMED_TO_RUNTIME.put("net.minecraft.core.registries.BuiltInRegistries",   "net.minecraft.core.registries.BuiltInRegistries");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.Component",              "net.minecraft.network.chat.Component");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.ChatType",               "net.minecraft.network.chat.ChatType");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.MutableComponent",       "net.minecraft.network.chat.MutableComponent");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.phys.Vec3",                     "net.minecraft.world.phys.Vec3");
+        NAMED_TO_RUNTIME.put("net.minecraft.server.network.ServerGamePacketListenerImpl", "net.minecraft.server.network.ServerGamePacketListenerImpl");
+        NAMED_TO_RUNTIME.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.network.chat.TextComponent");
+    }
+
+    static String toRuntimeClass(String named) { return NAMED_TO_RUNTIME.get(named); }
 }

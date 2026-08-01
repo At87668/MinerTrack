@@ -71,8 +71,23 @@ final class ForgeReflection {
         if (className == null) return null;
         Object cached = classCache.get(className);
         if (cached != null) return unwrap(cached);
-        try { Class<?> cls = Class.forName(className); classCache.put(className, cls); return cls; }
-        catch (ClassNotFoundException e) { if (DEBUG_REFLECTION) log("CLS-MISS " + className); classCache.put(className, NOT_FOUND); return null; }
+        // 1. Try the mojang/named name directly (runtime name on Mojang-mapped Forge)
+        Class<?> cls = tryLoad(className);
+        if (cls != null) { classCache.put(className, cls); return cls; }
+        // 2. Fall back to the runtime class name from the constants table
+        //    (mirrors FabricReflectionConstants.toIntermediaryClass)
+        String alt = ForgeReflectionConstants.toRuntimeClass(className);
+        if (alt != null && !alt.equals(className)) {
+            cls = tryLoad(alt);
+            if (cls != null) { classCache.put(className, cls); return cls; }
+        }
+        if (DEBUG_REFLECTION) log("CLS-MISS " + className);
+        classCache.put(className, NOT_FOUND); return null;
+    }
+
+    private static Class<?> tryLoad(String name) {
+        if (name == null) return null;
+        try { return Class.forName(name); } catch (ClassNotFoundException e) { return null; }
     }
 
     static Class<?> forgeClass(String name) { try { return Class.forName(name); } catch (ClassNotFoundException e) { return null; } }
