@@ -44,15 +44,33 @@ final class ForgeReflectionConstants {
     // ==================================================================
     // Resolution helpers
     //
-    // Forge 1.18.2 uses <b>Searge</b> names at runtime (e.g. m_6846_ for
-    // getPlayerList, net.minecraft.src.C_4977_ for MinecraftServer).
-    // These helpers resolve a mojang/named name to its Searge runtime form
-    // via the SEARGE_METHOD / SEARGE_FIELD tables below. The descriptor
-    // parameter is kept to preserve the exact Fabric signature.
+    // Forge mapping evolution (see project timeline):
+    //   - 1.16.5–1.20.4: runtime uses SRG/Searge names (m_XXXX_, f_XXXX_,
+    //     net.minecraft.src.C_XXX_). Dev-time Mojang names are remapped
+    //     back to SRG at load.
+    //   - 1.20.6+: runtime uses Mojang names directly (no SRG remap).
+    //
+    // These helpers detect the runtime namespace once and resolve a
+    // mojang/named name to its correct runtime form: Searge on 1.18.2
+    // (via SEARGE_METHOD / SEARGE_FIELD), Mojang on 1.20.6+ (identity).
     // ==================================================================
+
+    /** True when the runtime uses Mojang names (Forge 1.20.6+ / NeoForge 20.2+). */
+    private static final boolean IS_MOJANG_RUNTIME;
+    static {
+        boolean mojang = false;
+        try {
+            // On SRG-mapped Forge (1.18.2) the mojang class name fails to load;
+            // on Mojang-mapped Forge (1.20.6+) it resolves directly.
+            Class.forName("net.minecraft.world.level.Level");
+            mojang = true;
+        } catch (ClassNotFoundException ignored) {}
+        IS_MOJANG_RUNTIME = mojang;
+    }
 
     private static String im(String namedOwner, String named,
                              String desc, String interFallback) {
+        if (IS_MOJANG_RUNTIME) return named;
         String s = SEARGE_METHOD.get(named);
         return s != null ? s : named;
     }
@@ -60,6 +78,7 @@ final class ForgeReflectionConstants {
     /** Same as {@link #im} but for fields. */
     private static String ifd(String namedOwner, String named,
                               String desc, String interFallback) {
+        if (IS_MOJANG_RUNTIME) return named;
         String s = SEARGE_FIELD.get(named);
         return s != null ? s : named;
     }
@@ -423,6 +442,14 @@ final class ForgeReflectionConstants {
         NAMED_TO_RUNTIME.put("net.minecraft.network.chat.TextComponent",          "net.minecraft.src.C_2585_");
     }
 
-    /** Return the runtime class name for a mojang/named class name, or null. */
-    static String toRuntimeClass(String named) { return NAMED_TO_RUNTIME.get(named); }
+    /**
+     * Return the runtime class name for a mojang/named class name.
+     * On SRG-mapped Forge (1.18.2) this returns the Searge name
+     * (net.minecraft.src.C_*); on Mojang-mapped Forge (1.20.6+) it
+     * returns the mojang name unchanged.
+     */
+    static String toRuntimeClass(String named) {
+        if (IS_MOJANG_RUNTIME) return named;
+        return NAMED_TO_RUNTIME.get(named);
+    }
 }
