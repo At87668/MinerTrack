@@ -195,8 +195,8 @@ final class ForgeReflectionConstants {
 
     // -- CommandSourceStack ----------------------------------------------
     static final String M_GET_SERVER                  = im("net.minecraft.commands.CommandSourceStack", "getServer",           "()Lnet/minecraft/server/MinecraftServer;",                                  "m_81377_");
-    static final String M_IS_PLAYER                   = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      null);
-    static final String M_GET_PLAYER                  = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               null);
+    static final String M_IS_PLAYER                   = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "m_230897_");
+    static final String M_GET_PLAYER                  = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "m_230896_");
     static final String M_GET_ENTITY                  = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "m_81373_");
     static final String M_SEND_SUCCESS_CSS            = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "m_81354_");
     static final String M_SEND_FAILURE_CSS            = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "m_81352_");
@@ -288,7 +288,7 @@ final class ForgeReflectionConstants {
         // CommandSourceStack
         putM("getServer",           M_GET_SERVER);
         putM("isPlayer",            M_IS_PLAYER);
-        putM("getPlayer",           M_GET_PLAYER_UUID); // PlayerList.getPlayer(UUID) — see getPlayerByUUID
+        putM("getPlayer",           M_GET_PLAYER);
         putM("getEntity",           M_GET_ENTITY);
         putM("withSuppressedOutput", M_WITH_SUPPRESSED_OUTPUT);
         putM("hasPermission",       M_HAS_PERMISSION);
