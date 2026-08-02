@@ -64,7 +64,7 @@ public class ForgeCommandExecutor {
         try { Object srv = ForgeReflection.callAny(source, "getServer", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (srv != null) { Object pm = ForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm != null) { Object p = ForgeReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name}); if (p != null) return p; } } } catch (Throwable t) {}
         return playerByName(name);
     }
-    private static Object playerByName(String name) { Object srv = server(); if (srv == null) { System.out.println("[MinerTrack:Forge] playerByName: server null"); return null; } Object pm = ForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) { System.out.println("[MinerTrack:Forge] playerByName: pm null"); return null; } Object p = ForgeReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name}); System.out.println("[MinerTrack:Forge] playerByName(" + name + ") pm=" + pm.getClass().getName() + " -> " + (p == null ? "null" : p.getClass().getName())); return p; }
+    private static Object playerByName(String name) { Object srv = server(); if (srv == null) return null; Object pm = ForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) return null; return ForgeReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name}); }
 
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
         private final Object commandSource;
