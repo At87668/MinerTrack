@@ -120,11 +120,6 @@ public class ForgePlatform {
                         registerCommand(d, "minertrack");
                         registerCommand(d, "mt");
                         registerCommand(d, "mtrack");
-                        StringBuilder sb = new StringBuilder();
-                        for (Object n : d.getRoot().getChildren()) {
-                            sb.append(n.toString()).append(" ");
-                        }
-                        System.out.println("[MinerTrack:Forge] registered commands, roots=" + sb);
                     }
                 } catch (Throwable t) {
                     adapter.warning("Failed to register Forge commands: " + t.getMessage());
