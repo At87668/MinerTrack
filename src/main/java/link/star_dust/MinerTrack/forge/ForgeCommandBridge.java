@@ -272,8 +272,10 @@ public class ForgeCommandBridge implements CommandBridge {
         for (String methodName : new String[]{"getPlayer", "getEntity"}) {
             Object entity = ForgeReflection.callAny(css, methodName,
                 ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            System.out.println("[MinerTrack:Forge] extractPlayerUuid " + methodName + " on " + css.getClass().getName() + " -> " + (entity == null ? "null" : entity.getClass().getName()));
             if (entity != null) {
                 Object uid = ForgeReflection.callUuid(entity);
+                System.out.println("[MinerTrack:Forge] extractPlayerUuid callUuid -> " + (uid == null ? "null" : uid));
                 if (uid instanceof UUID) return (UUID) uid;
             }
         }
