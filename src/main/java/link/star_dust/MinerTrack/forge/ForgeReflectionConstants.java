@@ -56,10 +56,15 @@ final class ForgeReflectionConstants {
     // ==================================================================
 
     // ==================================================================
-    // Lazy runtime-namespace detection. Mohist / hybrid servers may load
-    // this class before Forge's classloader is fully set up, so a eager
-    // static check (Class.forName("net.minecraft.world.level.Level"))
-    // can erroneously report MISS even when Mojang names work later.
+    // Lazy runtime-namespace detection for Mohist/hybrid servers.
+    //
+    // On Mohist 1.18.2 the TransformingClassLoader can load Mojang CLASS
+    // names, but the METHODS remain SRG/Searge. Simply checking whether a
+    // Mojang class loads gives a FALSE POSITIVE. We additionally verify
+    // that a Mojang METHOD name is present on the loaded class:
+    // "net.minecraft.world.level.Level.getBlockState" (no args).
+    // If the class loads but the method is missing, we are on an SRG
+    // runtime despite the class being reachable.
     // ==================================================================
     private static volatile Boolean isMojangRuntime; // null = not checked yet
 
@@ -71,9 +76,14 @@ final class ForgeReflectionConstants {
             if (v != null) return v;
             boolean mojang = false;
             try {
-                Class.forName("net.minecraft.world.level.Level");
+                Class<?> level = Class.forName("net.minecraft.world.level.Level");
+                // The class loaded — now verify a Mojang method name works.
+                level.getDeclaredMethod("getBlockState");
                 mojang = true;
-            } catch (ClassNotFoundException ignored) {}
+            } catch (ClassNotFoundException ignored) {
+            } catch (NoSuchMethodException ignored) {
+                // Class loaded but method NOT found → SRG runtime
+            }
             isMojangRuntime = mojang;
             return mojang;
         }
