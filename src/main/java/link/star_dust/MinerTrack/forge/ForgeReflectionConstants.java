@@ -55,22 +55,33 @@ final class ForgeReflectionConstants {
     // (via SEARGE_METHOD / SEARGE_FIELD), Mojang on 1.20.6+ (identity).
     // ==================================================================
 
-    /** True when the runtime uses Mojang names (Forge 1.20.6+ / NeoForge 20.2+). */
-    private static final boolean IS_MOJANG_RUNTIME;
-    static {
-        boolean mojang = false;
-        try {
-            // On SRG-mapped Forge (1.18.2) the mojang class name fails to load;
-            // on Mojang-mapped Forge (1.20.6+) it resolves directly.
-            Class.forName("net.minecraft.world.level.Level");
-            mojang = true;
-        } catch (ClassNotFoundException ignored) {}
-        IS_MOJANG_RUNTIME = mojang;
+    // ==================================================================
+    // Lazy runtime-namespace detection. Mohist / hybrid servers may load
+    // this class before Forge's classloader is fully set up, so a eager
+    // static check (Class.forName("net.minecraft.world.level.Level"))
+    // can erroneously report MISS even when Mojang names work later.
+    // ==================================================================
+    private static volatile Boolean isMojangRuntime; // null = not checked yet
+
+    private static boolean isMojangRuntime() {
+        Boolean v = isMojangRuntime;
+        if (v != null) return v;
+        synchronized (ForgeReflectionConstants.class) {
+            v = isMojangRuntime;
+            if (v != null) return v;
+            boolean mojang = false;
+            try {
+                Class.forName("net.minecraft.world.level.Level");
+                mojang = true;
+            } catch (ClassNotFoundException ignored) {}
+            isMojangRuntime = mojang;
+            return mojang;
+        }
     }
 
     private static String im(String namedOwner, String named,
                              String desc, String interFallback) {
-        if (IS_MOJANG_RUNTIME) return named;
+        if (isMojangRuntime()) return named;
         String s = SEARGE_METHOD.get(named);
         return s != null ? s : named;
     }
@@ -78,7 +89,7 @@ final class ForgeReflectionConstants {
     /** Same as {@link #im} but for fields. */
     private static String ifd(String namedOwner, String named,
                               String desc, String interFallback) {
-        if (IS_MOJANG_RUNTIME) return named;
+        if (isMojangRuntime()) return named;
         String s = SEARGE_FIELD.get(named);
         return s != null ? s : named;
     }
@@ -449,7 +460,7 @@ final class ForgeReflectionConstants {
      * returns the mojang name unchanged.
      */
     static String toRuntimeClass(String named) {
-        if (IS_MOJANG_RUNTIME) return named;
+        if (isMojangRuntime()) return named;
         return NAMED_TO_RUNTIME.get(named);
     }
 }
