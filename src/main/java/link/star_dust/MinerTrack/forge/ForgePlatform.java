@@ -169,7 +169,6 @@ public class ForgePlatform {
 
         arg.suggests((SuggestionProvider) (ctx, builder) -> {
             String greedy = builder.getInput();
-            System.out.println("[MinerTrack:Forge] suggests greedy=" + greedy);
             int spaceIdx = greedy.indexOf(' ');
             if (spaceIdx < 0) {
                 List<String> completions = commandExecutor.onTabComplete(
@@ -179,10 +178,8 @@ public class ForgePlatform {
             }
             String argsStr = greedy.substring(spaceIdx + 1);
             String[] fullArgs = parseArgs(argsStr);
-            System.out.println("[MinerTrack:Forge] suggests fullArgs=" + java.util.Arrays.toString(fullArgs));
             List<String> completions = commandExecutor.onTabComplete(
                 ctx.getSource(), fullArgs);
-            System.out.println("[MinerTrack:Forge] suggests completions=" + completions);
 
             if (completions != null && fullArgs.length >= 1) {
                 StringBuilder prefix = new StringBuilder();
