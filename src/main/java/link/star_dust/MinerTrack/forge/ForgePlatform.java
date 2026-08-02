@@ -163,13 +163,8 @@ public class ForgePlatform {
         arg.executes((Command) ctx -> {
             String greedy = StringArgumentType.getString(ctx, "args");
             Object source = ctx.getSource();
-            if (commandExecutor == null) {
-                System.out.println("[MinerTrack:Forge] commandExecutor is null for /" + name);
-                return 0;
-            }
-            boolean ok = commandExecutor.onCommand(source, parseArgs(greedy));
-            System.out.println("[MinerTrack:Forge] /" + name + " executed, ok=" + ok);
-            return ok ? 1 : 0;
+            if (commandExecutor == null) return 0;
+            return commandExecutor.onCommand(source, parseArgs(greedy)) ? 1 : 0;
         });
 
         arg.suggests((SuggestionProvider) (ctx, builder) -> {
@@ -207,13 +202,8 @@ public class ForgePlatform {
 
         literal.executes((Command) ctx -> {
             Object source = ctx.getSource();
-            if (commandExecutor == null) {
-                System.out.println("[MinerTrack:Forge] commandExecutor is null for /" + name);
-                return 0;
-            }
-            boolean ok = commandExecutor.onCommand(source, new String[0]);
-            System.out.println("[MinerTrack:Forge] /" + name + " executed, ok=" + ok);
-            return ok ? 1 : 0;
+            if (commandExecutor == null) return 0;
+            return commandExecutor.onCommand(source, new String[0]) ? 1 : 0;
         });
 
         dispatcher.register(literal);
