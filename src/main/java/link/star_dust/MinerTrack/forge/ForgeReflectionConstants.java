@@ -288,7 +288,7 @@ final class ForgeReflectionConstants {
         // CommandSourceStack
         putM("getServer",           M_GET_SERVER);
         putM("isPlayer",            M_IS_PLAYER);
-        putM("getPlayer",           M_GET_PLAYER);
+        putM("getPlayer",           M_GET_PLAYER_UUID); // PlayerList.getPlayer(UUID) — see getPlayerByUUID
         putM("getEntity",           M_GET_ENTITY);
         putM("withSuppressedOutput", M_WITH_SUPPRESSED_OUTPUT);
         putM("hasPermission",       M_HAS_PERMISSION);
