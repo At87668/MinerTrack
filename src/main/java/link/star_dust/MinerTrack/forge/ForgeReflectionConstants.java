@@ -52,7 +52,7 @@ final class ForgeReflectionConstants {
     //
     // These helpers detect the runtime namespace once and resolve a
     // mojang/named name to its correct runtime form: Searge on 1.18.2
-    // (via SEARGE_METHOD / SEARGE_FIELD), Mojang on 1.20.6+ (identity).
+    // (via the per-constant Searge fallback), Mojang on 1.20.6+ (identity).
     // ==================================================================
 
     // ==================================================================
@@ -92,96 +92,18 @@ final class ForgeReflectionConstants {
 
     private static String im(String namedOwner, String named,
                              String desc, String interFallback) {
+        // On Mojang runtimes (Forge 1.20.6+) the named name IS the runtime name.
+        // On SRG runtimes (Forge 1.18.2) use the Searge fallback.
         if (isMojangRuntime()) return named;
-        String s = SEARGE_METHOD.get(named);
-        return s != null ? s : named;
+        return interFallback != null ? interFallback : named;
     }
 
     /** Same as {@link #im} but for fields. */
     private static String ifd(String namedOwner, String named,
                               String desc, String interFallback) {
         if (isMojangRuntime()) return named;
-        String s = SEARGE_FIELD.get(named);
-        return s != null ? s : named;
+        return interFallback != null ? interFallback : named;
     }
-
-    // ==================================================================
-    // Searge method-name table (1.18.2)
-    // mojang/named method name → Searge runtime name
-    // ==================================================================
-
-    private static final java.util.Map<String,String> SEARGE_METHOD = new java.util.HashMap<>();
-    static {
-        // MinecraftServer
-        putSM("getPlayerList",             "m_6846_");
-        putSM("getAllLevels",              "m_129785_");
-        putSM("getCommands",               "m_129892_");
-        putSM("createCommandSourceStack",  "m_129893_");
-        putSM("getTickCount",              "m_129921_");
-        putSM("getLevel",                  "m_129880_");
-        putSM("sendSystemMessage",         "m_6352_");
-        putSM("getProfilePermissions",     "m_129944_");
-        // Entity
-        putSM("getName",                   "m_7755_");
-        putSM("getUUID",                   "m_142081_");
-        putSM("getX",                      "m_20185_");
-        putSM("getY",                      "m_20186_");
-        putSM("getZ",                      "m_20189_");
-        putSM("setPosRaw",                 "m_20343_");
-        // Player
-        putSM("getGameProfile",            "m_36316_");
-        putSM("displayClientMessage",      "m_5661_");
-        // Level
-        putSM("getBlockState",             "m_8055_");
-        putSM("getFluidState",             "m_6425_");
-        putSM("dimension",                 "m_46472_");
-        putSM("isClientSide",              "m_5776_");
-        // PlayerList
-        putSM("getPlayer",                 "m_11259_");
-        putSM("getPlayerByName",           "m_11255_");
-        putSM("getPlayers",                "m_11314_");
-        putSM("isOp",                      "m_11303_");
-        putSM("broadcastMessage",          "m_11264_");
-        // BlockState
-        putSM("getBlock",                  "m_60734_");
-        // FluidState / Fluid
-        putSM("getType",                   "m_76152_");
-        putSM("getSource",                 "m_5613_");
-        // ServerGamePacketListenerImpl
-        putSM("disconnect",                "m_9942_");
-        // Commands
-        putSM("performCommand",            "m_82117_");
-        // Component
-        putSM("literal",                   "m_130763_");
-        // CommandSourceStack
-        putSM("getServer",                 "m_81377_");
-        putSM("getEntity",                 "m_81373_");
-        putSM("sendSuccess",               "m_81354_");
-        putSM("sendFailure",               "m_81352_");
-        putSM("withSuppressedOutput",      "m_81324_");
-        putSM("hasPermission",             "m_6761_");
-        // Block
-        putSM("builtInRegistryHolder",     "m_204297_");
-    }
-
-    private static void putSM(String mojangName, String searge) { SEARGE_METHOD.put(mojangName, searge); }
-
-    // ==================================================================
-    // Searge field-name table (1.18.2)
-    // mojang/named field name → Searge runtime name
-    // ==================================================================
-
-    private static final java.util.Map<String,String> SEARGE_FIELD = new java.util.HashMap<>();
-    static {
-        putSF("LIGHTNING_BOLT",            "f_20465_");
-        putSF("BLOCK",                     "f_122824_");
-        putSF("CHAT",                      "f_130601_");
-        putSF("SYSTEM",                    "f_130602_");
-        putSF("isClientSide",              "m_5776_");
-        putSF("connection",                "f_8906_");
-    }
-
-    private static void putSF(String mojangName, String searge) { SEARGE_FIELD.put(mojangName, searge); }
 
     // ==================================================================
     // CLASS NAMES  (mojang/named → Searge runtime names on Forge 1.18.2)
