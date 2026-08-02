@@ -76,9 +76,10 @@ final class ForgeReflectionConstants {
             if (v != null) return v;
             boolean mojang = false;
             try {
-                Class<?> level = Class.forName("net.minecraft.world.level.Level");
-                // The class loaded — now verify a Mojang method name works.
-                level.getDeclaredMethod("getBlockState");
+                Class<?> entity = Class.forName("net.minecraft.world.entity.Entity");
+                // Verify a no-arg Mojang method name works.
+                // On SRG runtimes this throws NoSuchMethodException (method is m_142081_).
+                entity.getDeclaredMethod("getUUID");
                 mojang = true;
             } catch (ClassNotFoundException ignored) {
             } catch (NoSuchMethodException ignored) {
@@ -214,7 +215,7 @@ final class ForgeReflectionConstants {
     static final String CLS_TEXT_COMPONENT            = "net.minecraft.network.chat.TextComponent";
 
     // ==================================================================
-    // METHOD NAMES  (these ARE the runtime names on Forge)
+    // METHOD NAMES  (resolved at static-init via im → Searge on SRG)
     // ==================================================================
 
     // -- MinecraftServer -------------------------------------------------
@@ -296,121 +297,124 @@ final class ForgeReflectionConstants {
     static final String F_CONNECTION                  = ifd("net.minecraft.server.level.ServerPlayer", "connection",     "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;", "field_13987");
 
     // ==================================================================
-    // Runtime method name redirector — mirrors Fabric's two-layer pattern:
-    //
-    // 1. METHOD_ALIASES: bare-name aliases (e.g. getTicks → getTickCount,
-    //    isExecutedByPlayer → isPlayer).  These are named→named and
-    //    independent of the SRG/Mojang namespace.
-    //
-    // 2. SEARGE_METHOD: Mojang/named method name → Searge runtime name
-    //    (m_XXXX_).  Only consulted on SRG runtimes (Forge 1.18.2).
-    //
-    // redirectMethod() chains them at call time, so the result always
-    // reflects the live isMojangRuntime() check, not a stale static init.
+    // Runtime method name redirector — mirrors Fabric:
+    // pre-computed map of bare names (with aliases merged) to resolved names
     // ==================================================================
 
-    private static final java.util.Map<String,String> METHOD_ALIASES = new java.util.HashMap<>();
+    private static final java.util.Map<String,String> METHOD_REDIRECT = new java.util.HashMap<>();
     static {
-        // MinecraftServer aliases
-        putMA("getTicks",            "getTickCount");
-        putMA("getWorld",            "getLevel");
-        putMA("getPlayerManager",    "getPlayerList");
-        putMA("getCommandManager",   "getCommands");
-        putMA("getWorlds",           "getAllLevels");
+        // Level
+        putM("dimension",           M_DIMENSION);
+        putM("getBlockState",       M_GET_BLOCK_STATE);
+        putM("getRegistryKey",      M_DIMENSION);
 
-        // Entity/Player aliases
-        putMA("getUuid",             "getUUID");
-        putMA("refreshPositionAfterTeleport", "setPosRaw");
+        // MinecraftServer
+        putM("getPlayerList",       M_GET_PLAYER_LIST);
+        putM("getAllLevels",        M_GET_ALL_LEVELS);
+        putM("getCommands",         M_GET_COMMANDS);
+        putM("createCommandSourceStack", M_CREATE_COMMAND_SOURCE_STACK);
+        putM("getTickCount",        M_GET_TICK_COUNT);
+        putM("getLevel",            M_GET_LEVEL);
+        putM("sendSystemMessage",   M_SEND_SYSTEM_MSG_SRV);
+        // Aliases
+        putM("getTicks",            M_GET_TICK_COUNT);
+        putM("getWorld",            M_GET_LEVEL);
+        putM("getPlayerManager",    M_GET_PLAYER_LIST);
+        putM("getCommandManager",   M_GET_COMMANDS);
+        putM("getWorlds",           M_GET_ALL_LEVELS);
 
-        // Level aliases
-        putMA("getRegistryKey",      "dimension");
+        // ServerPlayer / Entity
+        putM("getName",             M_GET_NAME);
+        putM("getUUID",             M_GET_UUID);
+        putM("getUuid",             M_GET_UUID);
+        putM("getX",                M_GET_X);
+        putM("getY",                M_GET_Y);
+        putM("getZ",                M_GET_Z);
+        putM("getGameProfile",      M_GET_GAME_PROFILE);
+        putM("sendMessage",         M_SEND_MSG_PLR_CMP);
+        putM("level",               M_LEVEL);
 
-        // CommandSourceStack aliases
-        putMA("isExecutedByPlayer",  "isPlayer");
-        putMA("withSilent",          "withSuppressedOutput");
-        putMA("hasPermissionLevel",  "hasPermission");
+        // PlayerList
+        putM("getPlayerByUUID",     M_GET_PLAYER_UUID);
+        putM("getPlayerByName",     M_GET_PLAYER_BY_NAME);
+        putM("getPlayers",          M_GET_PLAYERS);
+        putM("isOp",                M_IS_OP);
+        putM("broadcastSystemMessage", M_BROADCAST_SYSTEM_MSG);
+        putM("broadcastMessage",    M_BROADCAST_MSG);
+        putM("broadcast",           M_BROADCAST);
 
-        // FluidState aliases
-        putMA("getSource",           "getType");
+        // Entity
+        putM("setPos",              M_SET_POS);
+        putM("refreshPositionAfterTeleport", M_SET_POS);
 
-        // Commands aliases
-        putMA("executeWithPrefix",   "performPrefixedCommand");
+        // BlockState
+        putM("getBlock",            M_GET_BLOCK);
+        putM("getFluidState",       M_GET_FLUID_STATE);
+
+        // FluidState / Fluid
+        putM("getFluid",            M_GET_FLUID);
+        putM("getStill",            M_GET_STILL);
+
+        // ServerGamePacketListenerImpl
+        putM("disconnect",          M_DISCONNECT);
+
+        // Commands
+        putM("performCommand",      M_PERFORM_COMMAND);
+        putM("performPrefixedCommand", M_PERFORM_PREFIXED_CMD);
+        putM("executeWithPrefix",   M_PERFORM_PREFIXED_CMD);
+
+        // CommandSourceStack
+        putM("getServer",           M_GET_SERVER);
+        putM("isPlayer",            M_IS_PLAYER);
+        putM("getPlayer",           M_GET_PLAYER);
+        putM("getEntity",           M_GET_ENTITY);
+        putM("withSuppressedOutput", M_WITH_SUPPRESSED_OUTPUT);
+        putM("hasPermission",       M_HAS_PERMISSION);
+        putM("isExecutedByPlayer",  M_IS_PLAYER);
+        putM("withSilent",          M_WITH_SUPPRESSED_OUTPUT);
+        putM("hasPermissionLevel",  M_HAS_PERMISSION);
+        putM("sendSuccess",         M_SEND_SUCCESS_CSS);
+        putM("sendFailure",         M_SEND_FAILURE_CSS);
+
+        // Misc
+        putM("literal",             M_COMPONENT_LITERAL);
+        putM("builtInRegistryHolder", M_BUILT_IN_REGISTRY_HOLDER);
+        putM("getString",           "getString");
+        putM("getValue",            "getValue");
+        putM("getSource",           M_GET_STILL);
+        putM("getType",             M_GET_FLUID);
+        putM("getPhase",            "getPhase");
     }
 
-    private static void putMA(String alias, String target) {
-        METHOD_ALIASES.put(alias, target);
+    private static void putM(String mojangName, String resolved) {
+        METHOD_REDIRECT.put(mojangName, resolved);
     }
 
-    /**
-     * Redirect a bare Mojang method name to its resolved runtime form.
-     *
-     * <ol>
-     *   <li>Resolve alias chains (e.g. {@code getTicks → getTickCount}).</li>
-     *   <li>On SRG runtimes substitute the Searge name (e.g.
-     *       {@code getEntity → m_81373_}); on Mojang runtimes return the
-     *       Mojang name unchanged.</li>
-     * </ol>
-     */
+    /** Redirect a bare mojang method name to its resolved runtime form. */
     static String redirectMethod(String bareName) {
-        if (bareName == null) return null;
-        // 1) Resolve aliases (named→named, independent of SRG/Mojang)
-        String resolved = bareName;
-        for (int i = 0; i < 4; i++) { // guard against circular alias chains
-            String alias = METHOD_ALIASES.get(resolved);
-            if (alias == null) break;
-            resolved = alias;
-        }
-        // 2) On SRG, substitute Searge name
-        if (!isMojangRuntime()) {
-            String srg = SEARGE_METHOD.get(resolved);
-            if (srg != null) resolved = srg;
-        }
-        return resolved;
+        String r = METHOD_REDIRECT.get(bareName);
+        return r != null ? r : bareName;
     }
 
     // ==================================================================
-    // Runtime field name redirector — mirrors the method redirector:
-    //
-    // 1. FIELD_ALIASES: bare-name aliases (e.g. networkHandler → connection).
-    // 2. SEARGE_FIELD: Mojang field name → Searge runtime name (f_XXXX_).
-    //
-    // redirectField() chains them at call time.
+    // Runtime field name redirector
     // ==================================================================
 
-    private static final java.util.Map<String,String> FIELD_ALIASES = new java.util.HashMap<>();
+    private static final java.util.Map<String,String> FIELD_REDIRECT = new java.util.HashMap<>();
     static {
-        putFA("networkHandler",     "connection");
+        putF("isClientSide",        F_IS_CLIENT_SIDE);
+        putF("connection",          F_CONNECTION);
+        putF("networkHandler",      F_CONNECTION);
     }
 
-    private static void putFA(String alias, String target) {
-        FIELD_ALIASES.put(alias, target);
+    private static void putF(String mojangName, String resolved) {
+        FIELD_REDIRECT.put(mojangName, resolved);
     }
 
-    /**
-     * Redirect a bare Mojang field name to its resolved runtime form.
-     *
-     * <ol>
-     *   <li>Resolve alias chains.</li>
-     *   <li>On SRG runtimes substitute the Searge name (e.g.
-     *       {@code isClientSide → f_9236_}); on Mojang runtimes return
-     *       the Mojang name unchanged.</li>
-     * </ol>
-     */
+    /** Redirect a bare mojang field name to its resolved runtime form. */
     static String redirectField(String bareName) {
-        if (bareName == null) return null;
-        // 1) Resolve aliases
-        String resolved = bareName;
-        for (int i = 0; i < 4; i++) {
-            String alias = FIELD_ALIASES.get(resolved);
-            if (alias == null) break;
-            resolved = alias;
-        }
-        // 2) On SRG, substitute Searge name
-        if (!isMojangRuntime()) {
-            String srg = SEARGE_FIELD.get(resolved);
-            if (srg != null) resolved = srg;
-        }
-        return resolved;
+        String r = FIELD_REDIRECT.get(bareName);
+        return r != null ? r : bareName;
     }
 
     // ==================================================================
