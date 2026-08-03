@@ -217,6 +217,7 @@ final class ForgeReflectionConstants {
     static final String F_CHAT_TYPE_SYSTEM            = ifd("net.minecraft.network.chat.ChatType",     "SYSTEM",         "Lnet/minecraft/network/chat/ChatType;",   null);
     static final String F_IS_CLIENT_SIDE              = ifd("net.minecraft.world.level.Level",        "isClientSide",    "Z",                                       "field_9236");
     static final String F_CONNECTION                  = ifd("net.minecraft.server.level.ServerPlayer", "connection",     "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;", "field_13987");
+    static final String F_LEVEL                       = ifd("net.minecraft.world.entity.Entity",      "level",           "Lnet/minecraft/world/level/Level;",                          "f_19853_");
 
     // ==================================================================
     // Runtime method name redirector — mirrors Fabric:
@@ -327,6 +328,7 @@ final class ForgeReflectionConstants {
         putF("isClientSide",        F_IS_CLIENT_SIDE);
         putF("connection",          F_CONNECTION);
         putF("networkHandler",      F_CONNECTION);
+        putF("level",               F_LEVEL);
     }
 
     private static void putF(String mojangName, String resolved) {
