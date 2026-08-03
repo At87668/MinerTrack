@@ -91,6 +91,12 @@ public class ForgePlatform {
         miningListener = new ForgeMiningListener(miningCore, detectionBridge, violationManager, detectionBridge);
         miningListener.register();
 
+        // Register all already-loaded worlds so block lookups resolve to a real
+        // Level. Without this, dimensionToWorld stays empty and getBlockType
+        // returns AIR for every block, making the natural-environment scan see
+        // the whole 7x7x7 volume as air (air=337/343).
+        registerLoadedWorlds();
+
         commandExecutor = new ForgeCommandExecutor(adapter, languageBridge, violationManager, updateManager, detectionBridge);
 
         // Register server stopping handler
@@ -142,6 +148,31 @@ public class ForgePlatform {
             ForgeReflection.getMainEventBus(),
             ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStoppingEvent"),
             rawEvent -> onServerStopping());
+    }
+
+    /**
+     * Enumerate all currently-loaded worlds and register them with the
+     * detection bridge so {@code getBlockType} can resolve block lookups.
+     * Called from {@code onServerStarting} after the bridge is constructed.
+     */
+    private void registerLoadedWorlds() {
+        try {
+            Object server = ForgeReflection.getServer();
+            if (server == null) return;
+            Object worlds = ForgeReflection.callAny(server, "getAllLevels",
+                ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (worlds == null || !(worlds instanceof Iterable)) {
+                worlds = ForgeReflection.callAny(server, "getWorlds",
+                    ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            }
+            if (worlds instanceof Iterable) {
+                for (Object w : (Iterable<?>) worlds) {
+                    detectionBridge.registerWorld(w);
+                }
+            }
+        } catch (Throwable t) {
+            adapter.warning("Failed to enumerate startup worlds: " + t.getMessage());
+        }
     }
 
     static String[] parseArgs(String input) {

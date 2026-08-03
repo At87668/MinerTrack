@@ -146,6 +146,30 @@ public class ForgeDetectionBridge implements DetectionBridge {
     @Override public int getTraceRemoveTime(String worldName) { return getConfigForWorld(worldName, "xray.trace_remove", 15); }
     @Override public int getArtificialAirRemoveTime(String worldName) { return getConfigForWorld(worldName, "xray.natural-detection.cave.artificial-air-remove-time", 30); }
     @Override public boolean isArtificialAir(UUID playerId, CommonLocation location) { Map<CommonLocation, Long> map = brokenAir.get(playerId); return map != null && map.containsKey(location); }
+
+    /**
+     * Check a Forge permission for a player. Delegates to the same
+     * PermissionAPI + op-level fallback used by {@link ForgeCommandBridge}.
+     * Without this override, {@code DetectionBridge.hasPermission} falls back
+     * to the interface default (always {@code false}), so the
+     * {@code disable_bypass_permission} setting was ignored on Forge: players
+     * with {@code minertrack.bypass} were never skipped even when bypass was
+     * enabled.
+     */
+    @Override public boolean hasPermission(UUID playerId, String node) {
+        try {
+            Object server = ForgeReflection.getServer();
+            if (server == null) return false;
+            Object pm = ForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (pm == null) return false;
+            Object player = ForgeReflection.call(pm, "getPlayerByUUID",
+                new Class<?>[]{UUID.class}, new Object[]{playerId});
+            if (player == null) return false;
+            if (ForgeCommandBridge.checkForgePermission(player, node)) return true;
+            return ForgeCommandBridge.isPlayerOperator(player);
+        } catch (Throwable t) { return false; }
+    }
     @Override public boolean isWaterStill(String world, int x, int y, int z) {
         try {
             Object w = resolveWorld(world); if (w == null) return false;
