@@ -62,8 +62,7 @@ public class ForgeMiningListener {
         if (breakEvent != null) {
             ForgeReflection.registerEventListener(eventBus, breakEvent, rawEvent -> {
                 try {
-                    Object world = ForgeReflection.callAny(rawEvent, "getLevel",
-                        ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                    Object world = getEventWorld(rawEvent);
                     Object player = ForgeReflection.callAny(rawEvent, "getPlayer",
                         ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
                     Object pos = ForgeReflection.callAny(rawEvent, "getPos",
@@ -83,8 +82,7 @@ public class ForgeMiningListener {
         if (placeEvent != null) {
             ForgeReflection.registerEventListener(eventBus, placeEvent, rawEvent -> {
                 try {
-                    Object world = ForgeReflection.callAny(rawEvent, "getLevel",
-                        ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                    Object world = getEventWorld(rawEvent);
                     Object entity = ForgeReflection.callAny(rawEvent, "getEntity",
                         ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
                     Object pos = ForgeReflection.callAny(rawEvent, "getPos",
@@ -97,6 +95,32 @@ public class ForgeMiningListener {
                 } catch (Throwable t) {}
             });
         }
+    }
+
+    /**
+     * Resolve the world/level from a Forge BlockEvent.
+     *
+     * <p>Forge renamed the accessor across versions: 1.18.2 uses
+     * {@code getWorld()} (event package {@code net.minecraftforge.event.world}),
+     * while 1.19.3+ uses {@code getLevel()} (package
+     * {@code net.minecraftforge.event.level}). We try both names and validate
+     * the result is actually a {@code Level} instance. This validation is
+     * essential: {@code findMethodImpl}'s parameter-type scan fallback can
+     * otherwise match an unrelated no-arg method (e.g. {@code getPlayer()})
+     * and return the player object as the "world", which then yields a null
+     * dimension id and breaks detection.
+     */
+    private static Object getEventWorld(Object rawEvent) {
+        if (rawEvent == null) return null;
+        Class<?> levelCls = ForgeReflection.forName("net.minecraft.world.level.Level");
+        for (String name : new String[]{"getLevel", "getWorld"}) {
+            try {
+                Object w = ForgeReflection.callAny(rawEvent, name,
+                    ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                if (w != null && (levelCls == null || levelCls.isInstance(w))) return w;
+            } catch (Throwable t) { /* try next */ }
+        }
+        return null;
     }
 
     /** Returns the first class name that can be loaded, or null if none. */
