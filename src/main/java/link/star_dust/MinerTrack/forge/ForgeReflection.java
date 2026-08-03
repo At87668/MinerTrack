@@ -412,11 +412,11 @@ final class ForgeReflection {
         if (!resolved.equals(name)) { m = tryMethod(cls, name, paramTypes); if (m != null) { methodCache.put(key, m); return m; } }
         m = scanMethodNamed(cls, resolved, paramTypes); if (m != null) { methodCache.put(key, m); return m; }
         if (!resolved.equals(name)) { m = scanMethodNamed(cls, name, paramTypes); if (m != null) { methodCache.put(key, m); return m; } }
-        // Do NOT fall through to scanMethod (parameter-type-only match) — it
-        // silently matches unrelated methods (e.g. getPlayerNames() for
-        // getPlayer()) which causes wrong return values and crashes downstream.
-        // If a method cannot be found by its name, log the miss and return null
-        // so the caller gets a clean null instead of a wrong object.
+        // Parameter-type scan fallback (mirrors Fabric). Only reached when the
+        // name-based lookups above fail. METHOD_REDIRECT now correctly maps the
+        // common names (getPlayer→m_11259_, getEntity→m_81373_), so this scan
+        // is safe and helps classes whose methods have non-obvious names.
+        m = scanMethod(cls, paramTypes, null); if (m != null) { methodCache.put(key, m); return m; }
         Class<?> sup = cls.getSuperclass(); if (sup != null && sup != Object.class) { m = findMethodImpl(sup, name, paramTypes); if (m != null) { methodCache.put(key, m); return m; } }
         if (DEBUG_REFLECTION) log("M-MISS " + cls.getName() + "." + name + " (resolved=" + resolved + ")");
         methodCache.put(key, NOT_FOUND); return null;
