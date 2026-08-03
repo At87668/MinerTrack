@@ -81,6 +81,12 @@ public class NeoForgePlatform {
         miningListener = new NeoForgeMiningListener(miningCore, detectionBridge, violationManager, detectionBridge);
         miningListener.register();
 
+        // Register all already-loaded worlds so block lookups resolve to a real
+        // Level. Without this, dimensionToWorld stays empty and getBlockType
+        // returns AIR for every block, making the natural-environment scan see
+        // the whole 7x7x7 volume as air.
+        registerLoadedWorlds();
+
         commandExecutor = new NeoForgeCommandExecutor(adapter, languageBridge, violationManager, updateManager, detectionBridge);
 
         registerNeoForgeCommands();
@@ -117,6 +123,31 @@ public class NeoForgePlatform {
             NeoForgeReflection.getMainEventBus(),
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.server.ServerStoppingEvent"),
             rawEvent -> onServerStopping());
+    }
+
+    /**
+     * Enumerate all currently-loaded worlds and register them with the
+     * detection bridge so {@code getBlockType} can resolve block lookups.
+     * Called from {@code onServerStarting} after the bridge is constructed.
+     */
+    private void registerLoadedWorlds() {
+        try {
+            Object server = NeoForgeReflection.getServer();
+            if (server == null) return;
+            Object worlds = NeoForgeReflection.callAny(server, "getAllLevels",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (worlds == null || !(worlds instanceof Iterable)) {
+                worlds = NeoForgeReflection.callAny(server, "getWorlds",
+                    NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            }
+            if (worlds instanceof Iterable) {
+                for (Object w : (Iterable<?>) worlds) {
+                    detectionBridge.registerWorld(w);
+                }
+            }
+        } catch (Throwable t) {
+            adapter.warning("Failed to enumerate startup worlds: " + t.getMessage());
+        }
     }
 
     static String[] parseArgs(String input) {

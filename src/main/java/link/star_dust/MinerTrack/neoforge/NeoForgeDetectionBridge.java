@@ -105,6 +105,28 @@ public class NeoForgeDetectionBridge implements DetectionBridge {
     @Override public int getTraceRemoveTime(String w) { return getConfigForWorld(w, "xray.trace_remove", 15); }
     @Override public int getArtificialAirRemoveTime(String w) { return getConfigForWorld(w, "xray.natural-detection.cave.artificial-air-remove-time", 30); }
     @Override public boolean isArtificialAir(UUID pid, CommonLocation loc) { Map<CommonLocation, Long> m = brokenAir.get(pid); return m != null && m.containsKey(loc); }
+
+    /**
+     * Check a NeoForge permission for a player. Delegates to the same
+     * PermissionAPI + op-level fallback used by {@link NeoForgeCommandBridge}.
+     * Without this override, {@code DetectionBridge.hasPermission} falls back
+     * to the interface default (always {@code false}), so the
+     * {@code disable_bypass_permission} setting was ignored on NeoForge.
+     */
+    @Override public boolean hasPermission(UUID playerId, String node) {
+        try {
+            Object server = NeoForgeReflection.getServer();
+            if (server == null) return false;
+            Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (pm == null) return false;
+            Object player = NeoForgeReflection.call(pm, "getPlayerByUUID",
+                new Class<?>[]{UUID.class}, new Object[]{playerId});
+            if (player == null) return false;
+            if (NeoForgeCommandBridge.checkNeoForgePermission(player, node)) return true;
+            return NeoForgeCommandBridge.isPlayerOperator(player);
+        } catch (Throwable t) { return false; }
+    }
     @Override public boolean isWaterStill(String world, int x, int y, int z) { try { Object w = resolveWorld(world); if (w == null) return false; Object pos = NeoForgeReflection.newInstance("net.minecraft.core.BlockPos", new Class<?>[]{int.class, int.class, int.class}, new Object[]{x,y,z}); if (pos == null) return false; Object state = NeoForgeReflection.call(w, "getBlockState", new Class<?>[]{pos.getClass()}, new Object[]{pos}); if (state == null) return false; Object block = NeoForgeReflection.callAny(state, "getBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); Class<?> fbc = NeoForgeReflection.forName("net.minecraft.world.level.block.LiquidBlock"); if (block != null && fbc != null && fbc.isInstance(block)) { Object fs = NeoForgeReflection.callAny(w, "getFluidState", new Class<?>[]{pos.getClass()}, new Object[]{pos}); if (fs != null) { Object f = NeoForgeReflection.callAny(fs, "getType", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (f != null) { Object st = NeoForgeReflection.callAny(f, "getSource", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); return st != null && st == f; } } return true; } return false; } catch (Exception e) { return false; } }
 
     public void trackPlacedBlock(UUID pid, CommonLocation loc) { placedBlocks.computeIfAbsent(pid, k -> new ConcurrentHashMap<>()).put(loc, System.currentTimeMillis()); }
