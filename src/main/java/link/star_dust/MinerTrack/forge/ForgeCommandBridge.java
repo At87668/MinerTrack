@@ -21,6 +21,7 @@
 package link.star_dust.MinerTrack.forge;
 
 import link.star_dust.MinerTrack.common.CommandBridge;
+import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 
 import java.lang.reflect.Method;
 import java.util.Set;
@@ -38,11 +39,16 @@ import java.util.function.Supplier;
 public class ForgeCommandBridge implements CommandBridge {
     private final Object source;
     private final Set<UUID> verbosePlayers;
-    private volatile boolean verboseConsole = false;
+    private final ViolationManagerBridge vlBridge;
 
     public ForgeCommandBridge(Object source, Set<UUID> verbosePlayers) {
+        this(source, verbosePlayers, null);
+    }
+
+    public ForgeCommandBridge(Object source, Set<UUID> verbosePlayers, ViolationManagerBridge vlBridge) {
         this.source = source;
         this.verbosePlayers = verbosePlayers;
+        this.vlBridge = vlBridge;
     }
 
     private static Object createText(String message) {
@@ -264,7 +270,15 @@ public class ForgeCommandBridge implements CommandBridge {
                 else { verbosePlayers.add(id); return true; }
             }
         }
-        verboseConsole = !verboseConsole; return verboseConsole;
+        // Console: persist the toggle in the shared ViolationManager so it
+        // survives across command invocations (a fresh bridge is created per
+        // command). Fall back to a local field if no manager is available.
+        if (vlBridge != null) {
+            boolean next = !vlBridge.isVerboseConsoleEnabled();
+            vlBridge.setVerboseConsoleEnabled(next);
+            return next;
+        }
+        return false;
     }
 
     private static UUID extractPlayerUuid(Object css) {

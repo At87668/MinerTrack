@@ -106,7 +106,9 @@ public class ForgeViolationManager implements ViolationManagerBridge {
     @Override public void appendLogLine(String line) { writeLogLine(line); }
     @Override public void runConsoleCommand(String command) { try { Object server = ForgeReflection.getServer(); if (server == null) return; Object cm = ForgeReflection.callAny(server, "getCommands", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (cm == null) cm = ForgeReflection.callAny(server, "getCommandManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (cm == null) return; Object css = ForgeReflection.callAny(server, "createCommandSourceStack", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (css == null) return; Class<?> cssCls = css.getClass(); try { ForgeReflection.callAny(cm, "performPrefixedCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t1) { try { ForgeReflection.callAny(cm, "performCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t2) {} } } catch (Throwable t) {} }
     @Override public Set<UUID> getVerbosePlayers() { return verbosePlayers; }
-    @Override public boolean isVerboseConsoleEnabled() { return false; }
+    private volatile boolean verboseConsole = false;
+    @Override public boolean isVerboseConsoleEnabled() { return verboseConsole; }
+    @Override public void setVerboseConsoleEnabled(boolean enabled) { this.verboseConsole = enabled; }
     @Override public String getDisplayWorldName(String wk) { return wk; }
 
     @Override public boolean hasPermission(UUID pid, String node) { try { Object server = ForgeReflection.getServer(); if (server == null) return false; Object pm = ForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) return false; Object player = ForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return false; if (ForgeCommandBridge.checkForgePermission(player, node)) return true; return ForgeCommandBridge.isPlayerOperator(player); } catch (Throwable t) { return false; } }

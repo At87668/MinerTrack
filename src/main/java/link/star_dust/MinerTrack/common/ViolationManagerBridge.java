@@ -41,6 +41,16 @@ public interface ViolationManagerBridge {
     void runConsoleCommand(String command);
     Set<UUID> getVerbosePlayers();
     boolean isVerboseConsoleEnabled();
+
+    /**
+     * Set whether console verbose output is enabled. The console verbose
+     * state is shared across command invocations (a fresh CommandBridge is
+     * created per command), so it must be persisted here rather than on the
+     * per-invocation bridge. Default no-op for platforms that don't support
+     * console verbose toggling.
+     */
+    default void setVerboseConsoleEnabled(boolean enabled) {}
+
     void sendMessageToPlayer(UUID playerId, String message);
 
     /**
