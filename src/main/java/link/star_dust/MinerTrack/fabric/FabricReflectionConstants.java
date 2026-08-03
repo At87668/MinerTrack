@@ -205,7 +205,7 @@ final class FabricReflectionConstants {
     // -- CommandSourceStack ----------------------------------------------
     static final String M_GET_SERVER           = im("net.minecraft.commands.CommandSourceStack", "getServer",           "()Lnet/minecraft/server/MinecraftServer;",                                  "method_9211");
     static final String M_IS_PLAYER            = im("net.minecraft.commands.CommandSourceStack", "isPlayer",            "()Z",                                                                      "method_43737");
-    static final String M_GET_PLAYER           = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_44023");
+    static final String M_GET_PLAYER           = im("net.minecraft.commands.CommandSourceStack", "getPlayer",           "()Lnet/minecraft/server/level/ServerPlayer;",                               "method_9210");
     static final String M_GET_ENTITY           = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "method_9228");
     static final String M_SEND_SUCCESS_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendSuccess",         "(Lnet/minecraft/network/chat/Component;Z)V",                                "method_9226");
     static final String M_SEND_FAILURE_CSS     = im("net.minecraft.commands.CommandSourceStack", "sendFailure",         "(Lnet/minecraft/network/chat/Component;)V",                                 "method_9213");
@@ -224,7 +224,7 @@ final class FabricReflectionConstants {
     static final String F_BLOCKS_WATER          = ifd("net.minecraft.world.level.block.Blocks",  "WATER",          "Lnet/minecraft/world/level/block/Block;", "field_10382");
     static final String F_FLUIDS_WATER          = ifd("net.minecraft.world.level.material.Fluids","WATER",         "Lnet/minecraft/world/level/material/FlowingFluid;","field_15910");
     static final String F_CHAT_TYPE_CHAT        = ifd("net.minecraft.network.chat.ChatType",     "CHAT",           "Lnet/minecraft/network/chat/ChatType;",   "field_11737");
-    static final String F_CHAT_TYPE_SYSTEM      = ifd("net.minecraft.network.chat.ChatType",     "SYSTEM",         "Lnet/minecraft/network/chat/ChatType;",   null); // Not found
+    static final String F_CHAT_TYPE_SYSTEM      = ifd("net.minecraft.network.chat.ChatType",     "SYSTEM",         "Lnet/minecraft/network/chat/ChatType;",   "field_11735");
     static final String F_INTERACTION_PASS      = ifd("net.minecraft.world.InteractionResult",   "PASS",           "Lnet/minecraft/world/InteractionResult;", "field_5811");
     static final String F_INTERACTION_SUCCESS   = ifd("net.minecraft.world.InteractionResult",   "SUCCESS",        "Lnet/minecraft/world/InteractionResult;", "field_5812");
     static final String F_INTERACTION_FAIL      = ifd("net.minecraft.world.InteractionResult",   "FAIL",           "Lnet/minecraft/world/InteractionResult;", "field_5814");
@@ -319,8 +319,8 @@ final class FabricReflectionConstants {
         putM("nameAndId",           "nameAndId");          // named
         // Component
         putM("literal",             M_COMPONENT_LITERAL);
-        // Block — builtInRegistryHolder intermediary: method_20516
-        putM("builtInRegistryHolder", "method_20516");     // Block.builtInRegistryHolder() → ReferenceHolder
+        // Block — builtInRegistryHolder intermediary: method_40142
+        putM("builtInRegistryHolder", "method_40142");     // Block.builtInRegistryHolder() → ReferenceHolder
         // NOTE: do NOT add getKey/getResourceKey here.
         // ReferenceHolder.getKey() (0 params) and Registry.getKey(T) (1 param)
         // have DIFFERENT intermediary names.  A global redirect would break
