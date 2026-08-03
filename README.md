@@ -101,11 +101,20 @@ Look what users have to say:
 - Java 17 or higher
 - Paper, Purpur, Folia or compatible forks (1.18 or newer)  *Not Spigot!*
 
-**As mod:**
+**As Fabric mod:**
 - Java 17 or higher
 - Fabric 1.18 or newer
 - Fabric API
 - LuckPerms 5.0.0+ (If you need permission node function)
+
+**As Forge mod:**
+- Java 17 or higher
+- Forge 1.18 or newer
+
+**As NeoForge mod:**
+- Java 17 or higher
+- NeoForge 1.20.2 or newer
+
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Support.png)
 

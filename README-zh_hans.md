@@ -106,14 +106,22 @@
 ![Image](./Images/Requirements.png)
 
 **作为插件:**
-* Java 21 或更高版本
+* Java 17 或更高版本
 * 仅支持 Paper、Purpur、Folia 或兼容分支（支持 1.18 及以上）*请注意, 本插件不支持 Spigot!*
 
-**作为模组:**
-* Java 21 或更高版本
+**作为Fabric模组:**
+* Java 17 或更高版本
 * Fabric 1.18 或更高版本
 * Fabric API
 * LuckPerms 5.0.0 及以上（若您需要权限节点功能）
+
+**作为Forge模组:**
+* Java 17 或更高版本
+* Forge 1.18 或更高版本
+
+**作为NeoForge模组:**
+* Java 17 或更高版本
+* NeoForge 1.20.2 或更高版本
 
 ---
 
