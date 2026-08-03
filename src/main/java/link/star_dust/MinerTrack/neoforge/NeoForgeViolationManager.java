@@ -78,7 +78,9 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
     @Override public void appendLogLine(String line) { writeLogLine(line); }
     @Override public void runConsoleCommand(String command) { try { Object server = NeoForgeReflection.getServer(); if (server == null) return; Object cm = NeoForgeReflection.callAny(server, "getCommands", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (cm == null) return; Object css = NeoForgeReflection.callAny(server, "createCommandSourceStack", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (css == null) return; Class<?> cssCls = css.getClass(); try { NeoForgeReflection.callAny(cm, "performPrefixedCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t1) { try { NeoForgeReflection.callAny(cm, "performCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t2) {} } } catch (Throwable t) {} }
     @Override public Set<UUID> getVerbosePlayers() { return verbosePlayers; }
-    @Override public boolean isVerboseConsoleEnabled() { return false; }
+    private volatile boolean verboseConsole = false;
+    @Override public boolean isVerboseConsoleEnabled() { return verboseConsole; }
+    @Override public void setVerboseConsoleEnabled(boolean enabled) { this.verboseConsole = enabled; }
     @Override public String getDisplayWorldName(String wk) { return wk; }
 
     @Override public boolean hasPermission(UUID pid, String node) { try { Object server = NeoForgeReflection.getServer(); if (server == null) return false; Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return false; Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return false; if (NeoForgeCommandBridge.checkNeoForgePermission(player, node)) return true; return NeoForgeCommandBridge.isPlayerOperator(player); } catch (Throwable t) { return false; } }

@@ -46,7 +46,7 @@ public class NeoForgeCommandExecutor {
     }
 
     private MinerTrackCommandCore buildCore(Object source) {
-        return new MinerTrackCommandCore(langBridge, vlBridge, new NeoForgeCommandBridge(source, vlBridge.getVerbosePlayers()), new PlayerLookupImpl(source), new KickBridgeImpl(), new ConfigReloadBridgeImpl(), new UpdateCheckBridgeImpl(), new LogViewerBridgeImpl());
+        return new MinerTrackCommandCore(langBridge, vlBridge, new NeoForgeCommandBridge(source, vlBridge.getVerbosePlayers(), vlBridge), new PlayerLookupImpl(source), new KickBridgeImpl(), new ConfigReloadBridgeImpl(), new UpdateCheckBridgeImpl(), new LogViewerBridgeImpl());
     }
 
     public boolean onCommand(Object source, String[] args) { return buildCore(source).onCommand(args); }

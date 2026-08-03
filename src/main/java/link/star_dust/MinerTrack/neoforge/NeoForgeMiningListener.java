@@ -56,7 +56,7 @@ public class NeoForgeMiningListener {
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$BreakEvent"),
             rawEvent -> {
                 try {
-                    Object world = NeoForgeReflection.callAny(rawEvent, "getLevel", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object world = getEventWorld(rawEvent);
                     Object player = NeoForgeReflection.callAny(rawEvent, "getPlayer", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     Object state = NeoForgeReflection.callAny(rawEvent, "getState", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
@@ -70,7 +70,7 @@ public class NeoForgeMiningListener {
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$EntityPlaceEvent"),
             rawEvent -> {
                 try {
-                    Object world = NeoForgeReflection.callAny(rawEvent, "getLevel", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    Object world = getEventWorld(rawEvent);
                     Object entity = NeoForgeReflection.callAny(rawEvent, "getEntity", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
                     Object state = NeoForgeReflection.callAny(rawEvent, "getPlacedBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
@@ -79,6 +79,24 @@ public class NeoForgeMiningListener {
                     handleBlockPlace(entity, pos, state, world);
                 } catch (Throwable t) {}
             });
+    }
+
+    /**
+     * Resolve the world/level from a NeoForge BlockEvent. Tries both
+     * {@code getLevel()} and {@code getWorld()} and validates the result is a
+     * {@code Level} instance, so the reflection scan fallback cannot return an
+     * unrelated no-arg method (e.g. {@code getPlayer()}) as the world.
+     */
+    private static Object getEventWorld(Object rawEvent) {
+        if (rawEvent == null) return null;
+        Class<?> levelCls = NeoForgeReflection.forName("net.minecraft.world.level.Level");
+        for (String name : new String[]{"getLevel", "getWorld"}) {
+            try {
+                Object w = NeoForgeReflection.callAny(rawEvent, name, NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (w != null && (levelCls == null || levelCls.isInstance(w))) return w;
+            } catch (Throwable t) { /* try next */ }
+        }
+        return null;
     }
 
     private boolean isClientWorld(Object world) {
