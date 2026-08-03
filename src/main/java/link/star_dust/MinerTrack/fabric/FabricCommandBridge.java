@@ -21,6 +21,7 @@
 package link.star_dust.MinerTrack.fabric;
 
 import link.star_dust.MinerTrack.common.CommandBridge;
+import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import me.lucko.fabric.api.permissions.v0.Permissions;
 
 import java.lang.reflect.Method;
@@ -45,11 +46,16 @@ import java.util.function.Supplier;
 public class FabricCommandBridge implements CommandBridge {
     private final Object source;
     private final Set<UUID> verbosePlayers;
-    private volatile boolean verboseConsole = false;
+    private final ViolationManagerBridge vlBridge;
 
     public FabricCommandBridge(Object source, Set<UUID> verbosePlayers) {
+        this(source, verbosePlayers, null);
+    }
+
+    public FabricCommandBridge(Object source, Set<UUID> verbosePlayers, ViolationManagerBridge vlBridge) {
         this.source = source;
         this.verbosePlayers = verbosePlayers;
+        this.vlBridge = vlBridge;
     }
 
     // ── Text creation ─────────────────────────────────────────────
@@ -379,7 +385,15 @@ public class FabricCommandBridge implements CommandBridge {
                 else { verbosePlayers.add(id); return true; }
             }
         }
-        verboseConsole = !verboseConsole; return verboseConsole;
+        // Console: persist the toggle in the shared ViolationManager so it
+        // survives across command invocations (a fresh bridge is created per
+        // command). Fall back to a local field if no manager is available.
+        if (vlBridge != null) {
+            boolean next = !vlBridge.isVerboseConsoleEnabled();
+            vlBridge.setVerboseConsoleEnabled(next);
+            return next;
+        }
+        return false;
     }
 
     /**

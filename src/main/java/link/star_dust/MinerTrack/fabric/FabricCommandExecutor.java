@@ -58,7 +58,7 @@ public class FabricCommandExecutor {
     }
 
     private MinerTrackCommandCore buildCore(Object source) {
-        CommandBridge cmdBridge = new FabricCommandBridge(source, vlBridge.getVerbosePlayers());
+        CommandBridge cmdBridge = new FabricCommandBridge(source, vlBridge.getVerbosePlayers(), vlBridge);
         return new MinerTrackCommandCore(
             langBridge,
             vlBridge,

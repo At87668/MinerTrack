@@ -200,9 +200,15 @@ public class FabricViolationManager implements ViolationManagerBridge {
         return verbosePlayers;
     }
 
+    private volatile boolean verboseConsole = false;
     @Override
     public boolean isVerboseConsoleEnabled() {
-        return false;
+        return verboseConsole;
+    }
+
+    @Override
+    public void setVerboseConsoleEnabled(boolean enabled) {
+        this.verboseConsole = enabled;
     }
 
     @Override
