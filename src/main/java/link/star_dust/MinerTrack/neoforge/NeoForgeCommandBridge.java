@@ -108,21 +108,27 @@ public class NeoForgeCommandBridge implements CommandBridge {
         if (source == null) { System.out.println("[MinerTrack] " + message); return; }
         Object text = createText(message);
         if (text == null) { System.out.println("[MinerTrack] " + message); return; }
-        if (!sendFeedback(source, text, true)) System.out.println("[MinerTrack] " + message);
+        if (!sendFeedback(source, text, true)) {
+            System.out.println("[MinerTrack] (sendFeedback failed, source=" + source.getClass().getName() + ") " + message);
+        }
     }
 
     @Override public void sendSuccess(String message) {
         if (source == null) { System.out.println("[MinerTrack] " + message); return; }
         Object text = createText(message);
         if (text == null) { System.out.println("[MinerTrack] " + message); return; }
-        if (!sendFeedback(source, text, true)) System.out.println("[MinerTrack] " + message);
+        if (!sendFeedback(source, text, true)) {
+            System.out.println("[MinerTrack] (sendSuccess feedback failed, source=" + source.getClass().getName() + ") " + message);
+        }
     }
 
     @Override public void sendFailure(String message) {
         if (source == null) { System.out.println("[MinerTrack] " + message); return; }
         Object text = createText(message);
         if (text == null) { System.out.println("[MinerTrack] " + message); return; }
-        if (!sendFeedback(source, text, false)) System.out.println("[MinerTrack] " + message);
+        if (!sendFeedback(source, text, false)) {
+            System.out.println("[MinerTrack] (sendFailure feedback failed, source=" + source.getClass().getName() + ") " + message);
+        }
     }
 
     private static boolean sendFeedback(Object target, Object text, boolean isSuccess) {
@@ -130,6 +136,17 @@ public class NeoForgeCommandBridge implements CommandBridge {
         Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
         if (textCls == null) return false;
         Class<?> targetCls = target.getClass();
+
+        // sendSystemMessage(Component) FIRST — direct and reliable on MC 1.19.3+
+        // / 26.x. sendSuccess(Supplier,boolean) can silently no-op when
+        // source.acceptsSuccess() returns false (it returns void regardless),
+        // which made command feedback appear to do nothing on 26.2.
+        try {
+            Method m = NeoForgeReflection.findMethod(targetCls, "sendSystemMessage",
+                new Class<?>[]{textCls});
+            if (m != null) { m.invoke(target, text); return true; }
+        } catch (Throwable t) { /* fall through */ }
+
         if (isSuccess) {
             boolean oldDebug = NeoForgeReflection.DEBUG_REFLECTION;
             NeoForgeReflection.DEBUG_REFLECTION = false;
@@ -148,11 +165,11 @@ public class NeoForgeCommandBridge implements CommandBridge {
         }
         if (!isSuccess) {
             try {
-                Method m = NeoForgeReflection.findMethod(targetCls, "sendFailure", new Class<?>[]{textCls});
+                Method m = NeoForgeReflection.findMethod(targetCls, "sendFailure",
+                    new Class<?>[]{textCls});
                 if (m != null) { m.invoke(target, text); return true; }
             } catch (Throwable t) {}
         }
-        try { Method m = NeoForgeReflection.findMethod(targetCls, "sendSystemMessage", new Class<?>[]{textCls}); if (m != null) { m.invoke(target, text); return true; } } catch (Throwable t) {}
         try { Method m = NeoForgeReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, UUID.class}); if (m != null) { m.invoke(target, text, UUID.randomUUID()); return true; } } catch (Throwable t) {}
         try { Method m = NeoForgeReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls, boolean.class}); if (m != null) { m.invoke(target, text, false); return true; } } catch (Throwable t) {}
         try { Method m = NeoForgeReflection.findMethod(targetCls, "sendMessage", new Class<?>[]{textCls}); if (m != null) { m.invoke(target, text); return true; } } catch (Throwable t) {}
@@ -172,9 +189,12 @@ public class NeoForgeCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
             if (textCls == null) return;
-            try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
+            // MC 26.x ServerPlayer no longer has sendMessage(Component[,UUID]);
+            // it uses sendSystemMessage(Component). Try that first, then the
+            // legacy sendMessage variants for older versions.
+            try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); }
             catch (Throwable t1) {
-                try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); }
+                try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
                 catch (Throwable t2) {
                     try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, boolean.class}, new Object[]{text, false}); }
                     catch (Throwable t3) {}
@@ -191,6 +211,7 @@ public class NeoForgeCommandBridge implements CommandBridge {
             if (text == null) return;
             Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
             if (textCls == null) return;
+            // MC 26.x MinecraftServer uses sendSystemMessage(Component).
             try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls}, new Object[]{text}); }
             catch (Throwable t1) {
                 try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
@@ -256,9 +277,15 @@ public class NeoForgeCommandBridge implements CommandBridge {
         UUID playerId = extractPlayerUuid(source);
         if (playerId != null) {
             Object player = resolvePlayer(playerId);
-            if (player != null) return checkNeoForgePermission(player, node);
+            if (player != null) {
+                boolean p = checkNeoForgePermission(player, node);
+                System.out.println("[MinerTrack:DIAG] hasPermission(" + node + ") playerPath=" + p);
+                return p;
+            }
         }
-        return checkVanillaOpLevel(source, 2);
+        boolean v = checkVanillaOpLevel(source, 2);
+        System.out.println("[MinerTrack:DIAG] hasPermission(" + node + ") vanillaPath=" + v);
+        return v;
     }
 
     @Override public boolean hasPermissionForPlayer(UUID playerId, String node) {
@@ -288,31 +315,77 @@ public class NeoForgeCommandBridge implements CommandBridge {
             Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (pm == null) return false;
+            // MC 26.x: Player.nameAndId() → NameAndId; PlayerList.isOp(NameAndId)
+            // (1.18-1.20 used PlayerList.isOp(GameProfile)).
+            Object nameAndId = NeoForgeReflection.callAny(player, "nameAndId",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (nameAndId != null) {
+                Object result = NeoForgeReflection.callAny(pm, "isOp",
+                    new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                if (result instanceof Boolean) return (Boolean) result;
+            }
+            // Fallback: 1.18-1.20 PlayerList.isOp(GameProfile)
             Object profile = NeoForgeReflection.callAny(player, "getGameProfile",
                 NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-            if (profile == null) return false;
-            Object result = NeoForgeReflection.callAny(pm, "isOp",
-                new Class<?>[]{profile.getClass()}, new Object[]{profile});
-            return result instanceof Boolean && (Boolean) result;
+            if (profile != null) {
+                Object result = NeoForgeReflection.callAny(pm, "isOp",
+                    new Class<?>[]{profile.getClass()}, new Object[]{profile});
+                if (result instanceof Boolean) return (Boolean) result;
+            }
+            return false;
         } catch (Throwable t) { return false; }
     }
 
+    /**
+     * Check vanilla op level, mirroring FabricCommandBridge.checkVanillaOpLevel
+     * (the 26.1 reference implementation). The key difference from the old
+     * NeoForge code: instead of relying on {@code isPlayer()/isConsole()}
+     * (which can return the wrong result when reflection-based player probing
+     * fails), we detect a player by {@code getGameProfile()}. If the source
+     * is not backed by a player entity (console / command block / RCON), we
+     * allow it directly.
+     */
     private boolean checkVanillaOpLevel(Object source, int requiredLevel) {
-        try {
-            Object server = NeoForgeReflection.getServer();
-            if (server == null) return false;
-            if (isPlayer()) {
-                UUID id = extractPlayerUuid(source);
-                if (id != null) {
-                    Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
-                        NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    if (pm != null) {
-                        Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{id});
-                        if (player != null) return isPlayerOperator(player);
-                    }
-                }
-            }
-            return isConsole();
-        } catch (Throwable t) { return false; }
+        if (source == null) return false;
+        // Console / command block / RCON → always allowed.
+        // Detect by trying the player-specific probe first:
+        // if source resolves to a player entity, it IS a player.
+        Object player = resolvePlayerEntity(source);
+        if (player == null) return true; // not a player → console → allowed
+
+        // Player → operator check. NOTE: MC 26.x CommandSourceStack no longer
+        // has hasPermission(int) (it uses PermissionSet), so we go straight to
+        // the PlayerList.isOp check (which handles NameAndId on 26.x and
+        // GameProfile on 1.18-1.20).
+        return isPlayerOperator(player);
+    }
+
+    /**
+     * Extract the ServerPlayer entity from a CommandSourceStack, or return
+     * {@code source} itself if it already is a player entity.
+     *
+     * <p>Uses {@code ServerPlayer.isInstance()} rather than probing
+     * {@code getGameProfile()} on the source — CommandSourceStack has no
+     * getGameProfile(), so a blind parameter-scan would match an unrelated
+     * no-arg method and falsely identify the source as a player (breaking the
+     * console detection in checkVanillaOpLevel).
+     */
+    private static Object resolvePlayerEntity(Object source) {
+        if (source == null) return null;
+        Class<?> serverPlayerCls = NeoForgeReflection.forName("net.minecraft.server.level.ServerPlayer");
+        // 1. Source itself is already a ServerPlayer (DetectionBridge path).
+        if (serverPlayerCls != null && serverPlayerCls.isInstance(source)) return source;
+
+        // 2. Extract entity from CommandSourceStack via getEntity() (all versions).
+        Object entity = NeoForgeReflection.callAny(source, "getEntity",
+            NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+        if (entity != null && serverPlayerCls != null && serverPlayerCls.isInstance(entity)) return entity;
+
+        // 3. getPlayer() on 1.19.1+ (exists on 26.x; blind-scans getDisplayName
+        //    on 1.18.2 but that is not a ServerPlayer so it is rejected).
+        Object sp = NeoForgeReflection.callAny(source, "getPlayer",
+            NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+        if (sp != null && serverPlayerCls != null && serverPlayerCls.isInstance(sp)) return sp;
+        return null;
     }
 }
