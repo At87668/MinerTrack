@@ -27,6 +27,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -211,7 +212,21 @@ final class ForgeReflection {
     // Version-aware helpers
     // ==================================================================
 
-    public static Object callUuid(Object target) { if (target == null) return null; Object r = call(target, "getUUID", NO_PARAMS, NO_ARGS); if (r != null) return r; return call(target, "getUuid", NO_PARAMS, NO_ARGS); }
+    public static Object callUuid(Object target) {
+        if (target == null) return null;
+        // getUUID() lives on Entity (a parent of ServerPlayer). findMethodImpl's
+        // blind scanMethod fallback can match an unrelated no-arg method on
+        // hybrid servers (e.g. Arclight's getBukkitEntity() returning a
+        // CraftPlayer) and return a non-UUID. So: (1) prefer a signature scan
+        // that requires the return type to be UUID, and (2) always verify the
+        // result is actually a UUID before returning it.
+        Object r = callBySig(target, NO_PARAMS, NO_ARGS, UUID.class);
+        if (r instanceof UUID) return r;
+        r = call(target, "getUUID", NO_PARAMS, NO_ARGS);
+        if (r instanceof UUID) return r;
+        r = call(target, "getUuid", NO_PARAMS, NO_ARGS);
+        return r instanceof UUID ? r : null;
+    }
 
     public static Object callDimension(Object world) { if (world == null) return null; Object r = call(world, "dimension", NO_PARAMS, NO_ARGS); if (r != null) return r; return call(world, "getRegistryKey", NO_PARAMS, NO_ARGS); }
 
