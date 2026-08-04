@@ -51,34 +51,42 @@ public class NeoForgeMiningListener {
         Object eventBus = NeoForgeReflection.getMainEventBus();
         if (eventBus == null) return;
 
-        // BlockEvent.BreakEvent (NeoForge uses net.neoforged.neoforge.event package)
-        NeoForgeReflection.registerEventListener(eventBus,
-            NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$BreakEvent"),
-            rawEvent -> {
-                try {
-                    Object world = getEventWorld(rawEvent);
-                    Object player = NeoForgeReflection.callAny(rawEvent, "getPlayer", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    Object state = NeoForgeReflection.callAny(rawEvent, "getState", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    if (isClientWorld(world)) return;
-                    handleBlockBreak(player, pos, state, world);
-                } catch (Throwable t) {}
-            });
+        // NeoForge 26.2+ uses BreakBlockEvent (independent class in level.block package)
+        // Older NeoForge uses BlockEvent$BreakEvent (inner class of BlockEvent)
+        Class<?> breakEventCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.block.BreakBlockEvent");
+        if (breakEventCls == null) {
+            breakEventCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$BreakEvent");
+        }
+        if (breakEventCls != null) {
+            NeoForgeReflection.registerEventListener(eventBus, breakEventCls,
+                rawEvent -> {
+                    try {
+                        Object world = getEventWorld(rawEvent);
+                        Object player = NeoForgeReflection.callAny(rawEvent, "getPlayer", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        Object state = NeoForgeReflection.callAny(rawEvent, "getState", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        if (isClientWorld(world)) return;
+                        handleBlockBreak(player, pos, state, world);
+                    } catch (Throwable t) {}
+                });
+        }
 
-        // BlockEvent.EntityPlaceEvent
-        NeoForgeReflection.registerEventListener(eventBus,
-            NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$EntityPlaceEvent"),
-            rawEvent -> {
-                try {
-                    Object world = getEventWorld(rawEvent);
-                    Object entity = NeoForgeReflection.callAny(rawEvent, "getEntity", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    Object state = NeoForgeReflection.callAny(rawEvent, "getPlacedBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-                    if (isClientWorld(world)) return;
-                    if (!isServerPlayer(entity)) return;
-                    handleBlockPlace(entity, pos, state, world);
-                } catch (Throwable t) {}
-            });
+        // BlockEvent.EntityPlaceEvent (unchanged across NeoForge versions)
+        Class<?> placeEventCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.level.BlockEvent$EntityPlaceEvent");
+        if (placeEventCls != null) {
+            NeoForgeReflection.registerEventListener(eventBus, placeEventCls,
+                rawEvent -> {
+                    try {
+                        Object world = getEventWorld(rawEvent);
+                        Object entity = NeoForgeReflection.callAny(rawEvent, "getEntity", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        Object pos = NeoForgeReflection.callAny(rawEvent, "getPos", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        Object state = NeoForgeReflection.callAny(rawEvent, "getPlacedBlock", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        if (isClientWorld(world)) return;
+                        if (!isServerPlayer(entity)) return;
+                        handleBlockPlace(entity, pos, state, world);
+                    } catch (Throwable t) {}
+                });
+        }
     }
 
     /**
