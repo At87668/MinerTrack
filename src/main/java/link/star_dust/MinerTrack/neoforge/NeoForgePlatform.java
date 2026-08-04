@@ -52,6 +52,16 @@ public class NeoForgePlatform {
     private NeoForgeMiningListener miningListener;
 
     public void onServerStarting(Object event) {
+        // Cache the MinecraftServer from the ServerStartingEvent so that
+        // NeoForgeReflection.getServer() returns a non-null value. Many
+        // permission and player-lookup paths depend on it (e.g.
+        // isPlayerOperator -> PlayerList.isOp, resolvePlayer, sendMessageToPlayer).
+        if (event != null) {
+            Object server = NeoForgeReflection.callAny(event, "getServer",
+                NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (server != null) NeoForgeReflection.setCachedServer(server);
+        }
+
         adapter = new NeoForgeAdapter();
 
         violationManager = new NeoForgeViolationManager(adapter);
@@ -89,7 +99,6 @@ public class NeoForgePlatform {
 
         commandExecutor = new NeoForgeCommandExecutor(adapter, languageBridge, violationManager, updateManager, detectionBridge);
 
-        registerNeoForgeCommands();
         registerServerStopping();
 
         violationManager.scheduleGlobalDecayTask(20L * 60L * 20L);
@@ -97,7 +106,14 @@ public class NeoForgePlatform {
         adapter.info("MinerTrack (NeoForge) enabled.");
     }
 
-    private void registerNeoForgeCommands() {
+    /**
+     * Register the RegisterCommandsEvent listener early (from the NeoForgeMod
+     * constructor). Must be called before the MinecraftServer is constructed,
+     * because RegisterCommandsEvent fires during server construction — before
+     * ServerStartingEvent. Registering from onServerStarting is too late and
+     * results in "/mt Unknown or incomplete command".
+     */
+    public void registerCommandsEarly() {
         NeoForgeReflection.registerEventListener(
             NeoForgeReflection.getMainEventBus(),
             NeoForgeReflection.neoClass("net.neoforged.neoforge.event.RegisterCommandsEvent"),
@@ -113,7 +129,9 @@ public class NeoForgePlatform {
                         registerCommand(d, "mtrack");
                     }
                 } catch (Throwable t) {
-                    adapter.warning("Failed to register NeoForge commands: " + t.getMessage());
+                    if (adapter != null) {
+                        adapter.warning("Failed to register NeoForge commands: " + t.getMessage());
+                    }
                 }
             });
     }
@@ -165,11 +183,15 @@ public class NeoForgePlatform {
         RequiredArgumentBuilder arg = RequiredArgumentBuilder.argument("args", StringArgumentType.greedyString());
 
         arg.executes((Command) ctx -> {
+            // commandExecutor is initialized on ServerStartingEvent; commands are
+            // registered earlier (RegisterCommandsEvent) so guard against it.
+            if (commandExecutor == null) return 0;
             String greedy = StringArgumentType.getString(ctx, "args");
             return commandExecutor.onCommand(ctx.getSource(), parseArgs(greedy)) ? 1 : 0;
         });
 
         arg.suggests((SuggestionProvider) (ctx, builder) -> {
+            if (commandExecutor == null) return builder.buildFuture();
             String greedy = builder.getInput();
             int spaceIdx = greedy.indexOf(' ');
             if (spaceIdx < 0) {
@@ -196,7 +218,7 @@ public class NeoForgePlatform {
         });
 
         literal.then(arg);
-        literal.executes((Command) ctx -> commandExecutor.onCommand(ctx.getSource(), new String[0]) ? 1 : 0);
+        literal.executes((Command) ctx -> commandExecutor == null ? 0 : (commandExecutor.onCommand(ctx.getSource(), new String[0]) ? 1 : 0));
         dispatcher.register(literal);
     }
 
