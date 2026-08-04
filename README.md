@@ -109,11 +109,11 @@ Look what users have to say:
 
 **As Forge mod:**
 - Java 17 or higher
-- Forge 1.18 or newer
+- Forge 1.18 or newer (Theory supports hybrid)
 
 **As NeoForge mod:**
 - Java 17 or higher
-- NeoForge 1.20.2 or newer
+- NeoForge 1.20.2 or newer (Theory supports hybrid)
 
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Support.png)
