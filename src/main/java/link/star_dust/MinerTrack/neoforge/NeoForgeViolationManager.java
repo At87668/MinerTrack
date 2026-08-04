@@ -59,7 +59,51 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
 
     public NeoForgeViolationManager(NeoForgeAdapter adapter) { this.adapter = adapter; this.engine = new ViolationEngine(this); active = this; this.currentLogFileName = generateLogFileName(); File f = new File(adapter.getDataFolder(), "config.yml"); this.config = ConfigMerger.loadAndMerge(f, "config.yml", adapter, new NeoForgeYamlLoader()); }
 
-    public void scheduleGlobalDecayTask(long decayIntervalTicks) { this.globalDecayIntervalTicks = decayIntervalTicks; NeoForgeReflection.registerEventListener(NeoForgeReflection.getMainEventBus(), NeoForgeReflection.neoClass("net.neoforged.neoforge.event.TickEvent$ServerTickEvent"), rawEvent -> { try { Object phase = NeoForgeReflection.callAny(rawEvent, "getPhase", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (phase == null || !phase.toString().contains("END")) return; Object server = NeoForgeReflection.getServer(); if (server == null) return; Object tickObj = NeoForgeReflection.callMigrated(server, "getTickCount", "getTicks", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); long tick = tickObj instanceof Number ? ((Number) tickObj).longValue() : 0L; if (lastGlobalDecayRunTick < 0 || tick - lastGlobalDecayRunTick >= globalDecayIntervalTicks) { lastGlobalDecayRunTick = tick; try { engine.processDecay(); } catch (Throwable t) { adapter.warning("Global VL decay tick failed: " + t.getMessage()); } } } catch (Throwable t) {} }); }
+    public void scheduleGlobalDecayTask(long decayIntervalTicks) {
+        this.globalDecayIntervalTicks = decayIntervalTicks;
+        // ServerTickEvent is ABSTRACT (its Post/Pre subclasses are the concrete
+        // ones), so registering the abstract class itself makes EventBus throw
+        // "Cannot register listeners for abstract ..." and fall through to the
+        // raw-consumer path, which fails with "Failed to resolve handler".
+        // Register the $Post subclass (fires at the END phase) instead.
+        // NeoForge 26.2+ uses ServerTickEvent in the tick package; older
+        // NeoForge uses TickEvent$ServerTickEvent (inner class of TickEvent).
+        Class<?> serverTickCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.tick.ServerTickEvent$Post");
+        if (serverTickCls == null) {
+            serverTickCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.TickEvent$ServerTickEvent$Post");
+        }
+        if (serverTickCls == null) {
+            serverTickCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.tick.ServerTickEvent");
+        }
+        if (serverTickCls == null) {
+            serverTickCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.TickEvent$ServerTickEvent");
+        }
+        if (serverTickCls == null) return;
+        // 26.2+ ServerTickEvent (tick package) has NO getPhase() — its $Post
+        // subclass always fires at END. Legacy TickEvent$ServerTickEvent has
+        // getPhase() (START/END). Detect by class name so we never invoke the
+        // missing getPhase() (which produced M-MISS reflection logs).
+        final String tickClsName = serverTickCls.getName();
+        final boolean phaseAware = tickClsName.startsWith("net.neoforged.neoforge.event.TickEvent");
+        NeoForgeReflection.registerEventListener(NeoForgeReflection.getMainEventBus(), serverTickCls, rawEvent -> {
+            try {
+                // Only legacy TickEvent$ServerTickEvent has a START/END phase;
+                // 26.2+ ServerTickEvent$Post is always END.
+                if (phaseAware) {
+                    Object phase = NeoForgeReflection.callAny(rawEvent, "getPhase", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                    if (phase != null && !phase.toString().contains("END")) return;
+                }
+                Object server = NeoForgeReflection.getServer();
+                if (server == null) return;
+                Object tickObj = NeoForgeReflection.callMigrated(server, "getTickCount", "getTicks", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                long tick = tickObj instanceof Number ? ((Number) tickObj).longValue() : 0L;
+                if (lastGlobalDecayRunTick < 0 || tick - lastGlobalDecayRunTick >= globalDecayIntervalTicks) {
+                    lastGlobalDecayRunTick = tick;
+                    try { engine.processDecay(); } catch (Throwable t) { adapter.warning("Global VL decay tick failed: " + t.getMessage()); }
+                }
+            } catch (Throwable t) {}
+        });
+    }
 
     @Override public void cancelAllVLDecayTasks() { playerDecayTasks.clear(); }
     @Override public void cancelGlobalDecayTask() {}
@@ -85,7 +129,7 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
 
     @Override public boolean hasPermission(UUID pid, String node) { try { Object server = NeoForgeReflection.getServer(); if (server == null) return false; Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return false; Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return false; if (NeoForgeCommandBridge.checkNeoForgePermission(player, node)) return true; return NeoForgeCommandBridge.isPlayerOperator(player); } catch (Throwable t) { return false; } }
 
-    @Override public void sendMessageToPlayer(UUID pid, String msg) { try { Object server = NeoForgeReflection.getServer(); if (server == null) return; Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return; Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return; Object text = NeoForgeReflection.createText(msg); if (text == null) return; Class<?> tc = NeoForgeReflection.resolveTextComponentClass(); if (tc == null) return; try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, UUID.class}, new Object[]{text, UUID.randomUUID()}); } catch (Throwable t1) { try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t2) { try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, boolean.class}, new Object[]{text, false}); } catch (Throwable t3) {} } } } catch (Throwable t) {} }
+    @Override public void sendMessageToPlayer(UUID pid, String msg) { try { Object server = NeoForgeReflection.getServer(); if (server == null) return; Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return; Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return; Object text = NeoForgeReflection.createText(msg); if (text == null) return; Class<?> tc = NeoForgeReflection.resolveTextComponentClass(); if (tc == null) return; try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t1) { try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, UUID.class}, new Object[]{text, UUID.randomUUID()}); } catch (Throwable t2) { try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, boolean.class}, new Object[]{text, false}); } catch (Throwable t3) {} } } } catch (Throwable t) {} }
 
     @Override public Object getConfigSection(String p) { return config.get(p); }
     @Override public Object getConfig(String p) { return config.get(p); }
