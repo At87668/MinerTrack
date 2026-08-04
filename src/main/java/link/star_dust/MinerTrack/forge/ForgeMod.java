@@ -37,10 +37,6 @@ public class ForgeMod {
     private final ForgePlatform platform = new ForgePlatform();
 
     public ForgeMod() {
-        // Diagnostic: dump visible net.minecraftforge.* / net.minecraft.* classes
-        // to class.txt to help debug classloader / class-name issues.
-        ForgeReflection.dumpClasses();
-
         // Register on the Forge main event bus (server-side lifecycle).
         // The Forge @Mod constructor runs before the server starts, so we
         // must defer server-specific init to ServerStartingEvent.
