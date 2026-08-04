@@ -185,6 +185,8 @@ final class ForgeReflectionConstants {
 
     // -- ServerGamePacketListenerImpl ------------------------------------
     static final String M_DISCONNECT                  = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "m_9942_");
+    // 1.20.4+: disconnect(Component) moved to the ServerCommonPacketListenerImpl parent.
+    static final String M_DISCONNECT_NEW              = im("net.minecraft.server.network.ServerCommonPacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V", "m_3233_");
 
     // -- Commands --------------------------------------------------------
     static final String M_PERFORM_COMMAND             = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "m_82117_");
