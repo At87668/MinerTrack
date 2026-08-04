@@ -152,11 +152,20 @@ test {
 shadowJar {
     relocate 'org.bstats', 'link.star_dust.bstats'
     relocate 'org.apache.httpcomponents', 'link.star_dust.httpcomponents'
+    // Relocate SnakeYAML so the bundled copy does not clash with the
+    // server's own copy. Forge 1.20.x / Arclight use JPMS ModuleLayer and
+    // fail at boot with "Modules minertrack and org.yaml.snakeyaml export
+    // package org.yaml.snakeyaml.events to module forge" (split package)
+    // when SnakeYAML is bundled un-relocated. Fabric needs the bundled copy
+    // (the server does not ship SnakeYAML), so we relocate instead of
+    // excluding it.
+    relocate 'org.yaml.snakeyaml', 'link.star_dust.snakeyaml'
     // Do NOT bundle org/slf4j — the server (Forge, NeoForge, Fabric)
     // provides its own slf4j. Bundling a duplicate causes JPMS
     // "Modules X and org.slf4j export package org.slf4j" at boot.
     exclude 'org/slf4j/**'
     exclude 'META-INF/maven/**'
+    exclude 'META-INF/versions/**'
     // Stub annotations for @Mod — compile-time only; the server provides
     // the real net.minecraftforge.fml.common.Mod / net.neoforged.fml.common.Mod.
     exclude 'net/minecraftforge/**'
