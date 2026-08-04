@@ -69,14 +69,46 @@ public class ForgeCommandExecutor {
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
         private final Object commandSource;
         PlayerLookupImpl(Object cs) { this.commandSource = cs; }
-        @Override public UUID getPlayerUUID(String name) { try { Object p = playerByName(commandSource, name); if (p == null) return null; Object u = ForgeReflection.callUuid(p); return u instanceof UUID ? (UUID) u : null; } catch (Throwable t) { return null; } }
+        @Override public UUID getPlayerUUID(String name) {
+            try {
+                Object p = playerByName(commandSource, name);
+                if (p == null) {
+                    System.out.println("[MinerTrack:DIAG] getPlayerUUID('" + name + "') playerByName returned null (server=" + (ForgeReflection.getServer() == null ? "null" : ForgeReflection.getServer().getClass().getName()) + ")");
+                    return null;
+                }
+                Object u = ForgeReflection.callUuid(p);
+                System.out.println("[MinerTrack:DIAG] getPlayerUUID('" + name + "') player=" + p.getClass().getName() + " uuid=" + u);
+                return u instanceof UUID ? (UUID) u : null;
+            } catch (Throwable t) {
+                System.out.println("[MinerTrack:DIAG] getPlayerUUID('" + name + "') threw: " + t);
+                return null;
+            }
+        }
         @Override public String getPlayerName(UUID uuid) { try { Object p = playerByUuid(commandSource, uuid); if (p == null) return uuid.toString(); Object n = ForgeReflection.callAny(p, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(n); return s == null ? uuid.toString() : s; } catch (Throwable t) { return uuid.toString(); } }
         @Override public boolean isOnline(UUID uuid) { return playerByUuid(commandSource, uuid) != null; }
         @Override public List<String> getOnlinePlayerNames() { List<String> names = new ArrayList<>(); try { Object srv = commandSource != null ? ForgeReflection.callAny(commandSource, "getServer", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS) : server(); if (srv == null) return names; Object pm = ForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) return names; Object players = ForgeReflection.callAny(pm, "getPlayers", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (players instanceof List) for (Object p : (List<?>) players) { Object n = ForgeReflection.callAny(p, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(n); if (s != null) names.add(s); } } catch (Throwable t) {} return names; }
     }
 
     private class KickBridgeImpl implements MinerTrackCommandCore.KickBridge {
-        @Override public void kickPlayer(UUID pid, String reason) { try { Object player = playerByUuid(pid); if (player == null) return; Object text = ForgeReflection.createText(reason == null ? "Kicked by MinerTrack" : reason); if (text == null) return; Class<?> tc = ForgeReflection.resolveTextComponentClass(); if (tc == null) return; Object network = ForgeReflection.getField(player, "connection"); if (network == null) network = ForgeReflection.getField(player, "networkHandler"); if (network == null) return; try { ForgeReflection.callAny(network, "disconnect", new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t) { ForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text}); } } catch (Throwable t) { adapter.warning("Failed to kick " + pid + ": " + t.getMessage()); } }
+        @Override public void kickPlayer(UUID pid, String reason) { try { Object player = playerByUuid(pid); if (player == null) return; Object text = ForgeReflection.createText(reason == null ? "Kicked by MinerTrack" : reason); if (text == null) return; Class<?> tc = ForgeReflection.resolveTextComponentClass(); if (tc == null) return; Object network = ForgeReflection.getField(player, "connection"); if (network == null) network = ForgeReflection.getField(player, "networkHandler"); if (network == null) return; if (disconnect(network, tc, text)) return; ForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t) { adapter.warning("Failed to kick " + pid + ": " + t.getMessage()); } }
+
+        /** Disconnect a packet listener. Mirrors FabricCommandExecutor's kick:
+         *  use the redirect-mapped disconnect constants (which resolve to the
+         *  correct runtime name, Mojang or Searge), then fall back to a
+         *  signature scan that does not depend on the method name.
+         *  <p>1.20.4+ moved disconnect(Component) from ServerGamePacketListenerImpl
+         *  to its parent ServerCommonPacketListenerImpl, so M_DISCONNECT_NEW is
+         *  tried first. Forge 1.20.4 (Arclight) may still run with Searge names,
+         *  so findMethodImpl's redirectMethod handles the m_XXXXX_ lookup. */
+        private static boolean disconnect(Object network, Class<?> tc, Object text) {
+            // 1.20.4+: ServerCommonPacketListenerImpl.disconnect
+            try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT_NEW, new Class<?>[]{tc}, new Object[]{text}); return true; } catch (Throwable t) { /* fall through */ }
+            // 1.18-1.20.3: ServerGamePacketListenerImpl.disconnect
+            try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT, new Class<?>[]{tc}, new Object[]{text}); return true; } catch (Throwable t) { /* fall through */ }
+            // Last resort: name-independent signature scan (returns void).
+            try { ForgeReflection.callBySig(network, new Class<?>[]{tc}, new Object[]{text}, void.class); return true; } catch (Throwable t) { /* fall through */ }
+            return false;
+        }
 
         @Override public boolean isKickStrikeLightning() { try { return detectionBridge.getConfigBoolean("kick_strike_lightning", true); } catch (Throwable t) { return true; } }
 
