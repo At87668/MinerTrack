@@ -174,32 +174,110 @@ final class NeoForgeReflection {
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void registerEventListener(Object eventBus, Class<?> eventClass, java.util.function.Consumer<Object> handler) {
         if (eventBus == null) return;
+        if (eventClass == null) return;
+        // EventBus rejects abstract events (they have no concrete instances to
+        // dispatch): addListener(Class,Consumer) throws "Cannot register
+        // listeners for abstract ..." and the raw-consumer fallback then fails
+        // with "Failed to resolve handler". Skip early and log instead.
+        if (java.lang.reflect.Modifier.isAbstract(eventClass.getModifiers())) {
+            log("Refusing to register abstract event class " + eventClass.getName() + "; register a concrete subclass (e.g. ...$Post) instead");
+            return;
+        }
+        Class<?> consumerCls = java.util.function.Consumer.class;
+
+        // Strategy: try addListener overloads that take an explicit Class<T>
+        // parameter so NeoForge's TypeResolver is never invoked. The simplest
+        // such overload is addListener(Class<T>, Consumer<T>) (2-arg).
+        // We also try 3-arg and 4-arg variants with EventPriority.
+
+        // --- Attempt 1: addListener(Class<T>, Consumer<T>) ---
         try {
-            // NeoForge's IEventBus.addListener(Consumer<T>) resolves the event
-            // type from the Consumer's generic signature via TypeResolver. A
-            // dynamic Proxy<Consumer> (or a raw Consumer) has NO generic
-            // signature, so NeoForge fails with "Failed to resolve handler for ...".
-            //
-            // Fix: use the 4-arg overload
-            //   addListener(EventPriority, boolean, Class<T>, Consumer<T>)
-            // which takes the event type EXPLICITLY and never calls TypeResolver.
-            Class<?> priorityCls = Class.forName("net.neoforged.bus.api.EventPriority");
-            Object normal = priorityCls.getField("NORMAL").get(null);
-            Class<?> consumerCls = java.util.function.Consumer.class;
-            try {
-                Method al = eventBus.getClass().getMethod("addListener", priorityCls, boolean.class, Class.class, consumerCls);
-                al.invoke(eventBus, normal, false, eventClass, handler);
+            Method m2 = findAddListenerWithClass(eventBus.getClass(), 2);
+            if (m2 != null) {
+                m2.invoke(eventBus, eventClass, handler);
                 return;
-            } catch (Throwable t) {
-                if (DEBUG_REFLECTION) log("4-arg addListener failed: " + t.getMessage());
             }
-            // Fallback: 2-arg addListener(Consumer<T>) — only works if the
-            // consumer's generic signature is resolvable. Use a concrete
-            // Consumer<eventClass> subclass so TypeResolver can read it.
+        } catch (Throwable t) {
+            if (DEBUG_REFLECTION) log("2-arg addListener(Class,Consumer) failed: " + t);
+        }
+
+        // --- Attempt 2: addListener(boolean, Class<T>, Consumer<T>) ---
+        try {
+            Method m2b = findAddListenerWithClass(eventBus.getClass(), 3, 0, boolean.class);
+            if (m2b != null) {
+                m2b.invoke(eventBus, false, eventClass, handler);
+                return;
+            }
+        } catch (Throwable t) {
+            if (DEBUG_REFLECTION) log("3-arg addListener(boolean,Class,Consumer) failed: " + t);
+        }
+
+        // --- Attempt 3: addListener(EventPriority, Class<T>, Consumer<T>) ---
+        Class<?> priorityCls = neoClass("net.neoforged.bus.api.EventPriority");
+        if (priorityCls == null) {
+            try { priorityCls = Class.forName("net.neoforged.bus.api.EventPriority"); } catch (Throwable ignored) {}
+        }
+        if (priorityCls != null) {
+            try {
+                Object normal = priorityCls.getField("NORMAL").get(null);
+                Method m3 = findAddListenerWithClass(eventBus.getClass(), 3, 0, priorityCls);
+                if (m3 != null) {
+                    m3.invoke(eventBus, normal, eventClass, handler);
+                    return;
+                }
+            } catch (Throwable t) {
+                if (DEBUG_REFLECTION) log("3-arg addListener(Priority,Class,Consumer) failed: " + t);
+            }
+
+            // --- Attempt 4: addListener(EventPriority, boolean, Class<T>, Consumer<T>) ---
+            try {
+                Object normal = priorityCls.getField("NORMAL").get(null);
+                Method m4 = findAddListenerWithClass(eventBus.getClass(), 4, 0, priorityCls);
+                if (m4 != null) {
+                    m4.invoke(eventBus, normal, false, eventClass, handler);
+                    return;
+                }
+            } catch (Throwable t) {
+                if (DEBUG_REFLECTION) log("4-arg addListener(Priority,boolean,Class,Consumer) failed: " + t);
+            }
+        }
+
+        // --- Last resort: addListener(Consumer<T>) with typed consumer ---
+        try {
             Object typed = makeConsumer(eventClass, handler);
-            Method al2 = eventBus.getClass().getMethod("addListener", consumerCls);
-            al2.invoke(eventBus, typed);
-        } catch (Throwable t) { if (DEBUG_REFLECTION) log("Failed to register listener: " + t.getMessage()); }
+            Method al1 = eventBus.getClass().getMethod("addListener", consumerCls);
+            al1.invoke(eventBus, typed);
+        } catch (Throwable t) {
+            if (DEBUG_REFLECTION) log("All addListener attempts failed for " + eventClass.getName() + ": " + t);
+        }
+    }
+
+    /**
+     * Find an {@code addListener} method whose last two parameters are
+     * {@code Class} and {@code Consumer}, with the given total parameter count.
+     * Optionally checks that the first parameter matches {@code firstParamType}.
+     */
+    private static Method findAddListenerWithClass(Class<?> busClass, int paramCount, int firstParamIdx, Class<?> firstParamType) {
+        for (Method m : busClass.getMethods()) {
+            if (!"addListener".equals(m.getName())) continue;
+            if (m.getParameterCount() != paramCount) continue;
+            Class<?>[] pts = m.getParameterTypes();
+            // Last two params must be Class and Consumer
+            if (pts[paramCount - 2] != Class.class) continue;
+            if (!java.util.function.Consumer.class.isAssignableFrom(pts[paramCount - 1])) continue;
+            // Check first param type if specified
+            if (firstParamType != null && !firstParamType.isAssignableFrom(pts[firstParamIdx])) continue;
+            return m;
+        }
+        return null;
+    }
+
+    /**
+     * Find an {@code addListener} method whose last two parameters are
+     * {@code Class} and {@code Consumer}, with exactly 2 parameters.
+     */
+    private static Method findAddListenerWithClass(Class<?> busClass, int paramCount) {
+        return findAddListenerWithClass(busClass, paramCount, 0, null);
     }
 
     /**
