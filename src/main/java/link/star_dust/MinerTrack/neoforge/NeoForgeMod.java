@@ -39,6 +39,11 @@ public class NeoForgeMod {
     public NeoForgeMod() {
         Object eventBus = NeoForgeReflection.getMainEventBus();
         if (eventBus != null) {
+            // RegisterCommandsEvent fires during MinecraftServer construction,
+            // which happens BEFORE ServerStartingEvent. Register its listener
+            // now (in the mod constructor) so commands are registered in time.
+            platform.registerCommandsEarly();
+
             // ServerStartingEvent
             NeoForgeReflection.registerEventListener(eventBus,
                 NeoForgeReflection.neoClass("net.neoforged.neoforge.event.server.ServerStartingEvent"),
