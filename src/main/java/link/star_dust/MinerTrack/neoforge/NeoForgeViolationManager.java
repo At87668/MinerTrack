@@ -79,20 +79,19 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
             serverTickCls = NeoForgeReflection.neoClass("net.neoforged.neoforge.event.TickEvent$ServerTickEvent");
         }
         if (serverTickCls == null) return;
-        // 26.2+ ServerTickEvent (tick package) has NO getPhase() — its $Post
-        // subclass always fires at END. Legacy TickEvent$ServerTickEvent has
-        // getPhase() (START/END). Detect by class name so we never invoke the
-        // missing getPhase() (which produced M-MISS reflection logs).
-        final String tickClsName = serverTickCls.getName();
-        final boolean phaseAware = tickClsName.startsWith("net.neoforged.neoforge.event.TickEvent");
+        // The tick phase is exposed as a public final FIELD `phase`
+        // (TickEvent.Phase) on NeoForge 1.20.4, as getPhase() on older Forge,
+        // and is absent on 26.2+ ServerTickEvent$Post (always END). Reading the
+        // `phase` field works on 1.19-1.20.4 and avoids the getPhase() M-MISS;
+        // on 26.2+ there is no phase field so we always run (END).
         NeoForgeReflection.registerEventListener(NeoForgeReflection.getMainEventBus(), serverTickCls, rawEvent -> {
             try {
-                // Only legacy TickEvent$ServerTickEvent has a START/END phase;
-                // 26.2+ ServerTickEvent$Post is always END.
-                if (phaseAware) {
-                    Object phase = NeoForgeReflection.callAny(rawEvent, "getPhase", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                // If a `phase` field exists (1.19-1.20.4), skip the START phase.
+                // 26.2+ ServerTickEvent$Post has no phase field → always END.
+                try {
+                    Object phase = NeoForgeReflection.getField(rawEvent, "phase");
                     if (phase != null && !phase.toString().contains("END")) return;
-                }
+                } catch (Throwable t) { /* no phase field → treat as END */ }
                 Object server = NeoForgeReflection.getServer();
                 if (server == null) return;
                 Object tickObj = NeoForgeReflection.callMigrated(server, "getTickCount", "getTicks", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
