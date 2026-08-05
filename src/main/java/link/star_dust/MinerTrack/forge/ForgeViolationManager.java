@@ -126,7 +126,7 @@ public class ForgeViolationManager implements ViolationManagerBridge {
         ForgeDetectionBridge bridge = ForgeDetectionBridge.getActive(); if (bridge != null) bridge.clearPlayerPath(pid);
         resetViolation(pid); playerNameCache.remove(pid);
     }
-    @Override public void appendCommandLog(String cmd) { appendLogLine("[CMD] " + cmd); }
+    @Override public void appendCommandLog(String cmd) { appendLogLine(cmd); }
     @Override public String getPlayerName(UUID pid) { String n = playerNameCache.get(pid); if (n != null) return n; try { Object server = ForgeReflection.getServer(); if (server != null) { Object pm = ForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm != null) { Object player = ForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player != null) { Object name = ForgeReflection.callAny(player, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(name); if (s != null) { playerNameCache.put(pid, s); return s; } } } } } catch (Throwable t) {} return pid.toString(); }
     @Override public int getConfigInt(String p, int d) { return config.getInt(p, d); }
     @Override public boolean getConfigBoolean(String p, boolean d) { return config.getBoolean(p, d); }

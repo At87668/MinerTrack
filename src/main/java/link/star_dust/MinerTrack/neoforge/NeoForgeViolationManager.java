@@ -141,7 +141,7 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
         NeoForgeDetectionBridge bridge = NeoForgeDetectionBridge.getActive(); if (bridge != null) bridge.clearPlayerPath(pid);
         resetViolation(pid); playerNameCache.remove(pid);
     }
-    @Override public void appendCommandLog(String cmd) { appendLogLine("[CMD] " + cmd); }
+    @Override public void appendCommandLog(String cmd) { appendLogLine(cmd); }
     @Override public String getPlayerName(UUID pid) { String n = playerNameCache.get(pid); if (n != null) return n; try { Object server = NeoForgeReflection.getServer(); if (server != null) { Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm != null) { Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player != null) { Object name = NeoForgeReflection.callAny(player, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); String s = NeoForgeReflection.readString(name); if (s != null) { playerNameCache.put(pid, s); return s; } } } } } catch (Throwable t) {} return pid.toString(); }
     @Override public int getConfigInt(String p, int d) { return config.getInt(p, d); }
     @Override public boolean getConfigBoolean(String p, boolean d) { return config.getBoolean(p, d); }

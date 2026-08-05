@@ -51,15 +51,8 @@ public class NeoForgeCommandExecutor {
 
     public boolean onCommand(Object source, String[] args) {
         try {
-            boolean result = buildCore(source).onCommand(args);
-            if (adapter.isDebugEnabled()) {
-                adapter.info("[CMD] onCommand " + Arrays.toString(args) + " source=" + (source == null ? "null" : source.getClass().getName()) + " -> " + result);
-            }
-            return result;
+            return buildCore(source).onCommand(args);
         } catch (Throwable t) {
-            if (adapter.isDebugEnabled()) {
-                adapter.info("[CMD] onCommand threw for " + Arrays.toString(args) + ": " + t);
-            }
             return true;
         }
     }
