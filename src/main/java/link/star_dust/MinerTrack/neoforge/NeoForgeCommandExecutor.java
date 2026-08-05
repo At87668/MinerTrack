@@ -116,17 +116,21 @@ public class NeoForgeCommandExecutor {
          */
         private static boolean disconnect(Object network, Class<?> tc, Object text) {
             String[] names = {NeoForgeReflectionConstants.M_DISCONNECT_NEW, NeoForgeReflectionConstants.M_DISCONNECT};
-            try {
-                for (String name : names) {
-                    for (java.lang.reflect.Method m : network.getClass().getMethods()) {
-                        if (!m.getName().equals(name)) continue;
-                        if (m.getParameterCount() != 1) continue;
-                        if (!m.getParameterTypes()[0].isAssignableFrom(tc)) continue;
+            for (String name : names) {
+                for (java.lang.reflect.Method m : network.getClass().getMethods()) {
+                    if (!m.getName().equals(name)) continue;
+                    if (m.getParameterCount() != 1) continue;
+                    if (!m.getParameterTypes()[0].isAssignableFrom(tc)) continue;
+                    // Invoke the real disconnect. Its internal handleDisconnection
+                    // may throw once the connection is torn down; that must NOT
+                    // make us return false (which would trigger a second
+                    // invokeBySigOrThrow kick → "handleDisconnection() called twice").
+                    try {
                         m.invoke(network, text);
-                        return true;
-                    }
+                    } catch (Throwable t) { /* disconnect already initiated; ignore */ }
+                    return true;
                 }
-            } catch (Throwable t) { /* fall through */ }
+            }
             return false;
         }
 
