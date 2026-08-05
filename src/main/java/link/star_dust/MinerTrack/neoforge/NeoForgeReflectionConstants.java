@@ -72,22 +72,39 @@ final class NeoForgeReflectionConstants {
     static final String CLS_TEXT_COMPONENT            = "net.minecraft.network.chat.TextComponent";
 
     // ==================================================================
-    // METHOD NAMES (only those referenced elsewhere)
+    // Resolution helpers
+    //
+    // NeoForge 20.2+ uses Mojang/named names at runtime, so a mojang name is
+    // always the runtime name. These helpers keep the descriptor for
+    // documentation / potential future mapping needs and mirror
+    // ForgeReflectionConstants' structure (im = method, ifd = field).
     // ==================================================================
 
-    static final String M_COMPONENT_LITERAL           = "literal";
+    private static String im(String namedOwner, String named, String desc, String interFallback) { return named; }
+
+    /** Same as {@link #im} but for fields. */
+    private static String ifd(String namedOwner, String named, String desc, String interFallback) { return named; }
+
+    // ==================================================================
+    // METHOD NAMES
+    // ==================================================================
+
+    // -- Component -------------------------------------------------------
+    static final String M_COMPONENT_LITERAL           = im("net.minecraft.network.chat.Component",             "literal",    "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;", null);
+
+    // -- ServerGamePacketListenerImpl / ServerCommonPacketListenerImpl ---
     // disconnect(Component): 1.18-1.20.3 declared on ServerGamePacketListenerImpl,
     // 1.20.4+ moved to the ServerCommonPacketListenerImpl parent. Both resolve to
     // the same Mojang name; NeoForge's findMethodImpl walks the superclass chain.
-    static final String M_DISCONNECT                  = "disconnect";
-    static final String M_DISCONNECT_NEW              = "disconnect";
+    static final String M_DISCONNECT                  = im("net.minecraft.server.network.ServerGamePacketListenerImpl",   "disconnect", "(Lnet/minecraft/network/chat/Component;)V", null);
+    static final String M_DISCONNECT_NEW              = im("net.minecraft.server.network.ServerCommonPacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V", null);
 
     // ==================================================================
-    // FIELD NAMES (only those referenced elsewhere)
+    // FIELD NAMES
     // ==================================================================
 
-    static final String F_BUILTIN_BLOCK               = "BLOCK";
-    static final String F_REGISTRY_BLOCK              = "BLOCK";
+    static final String F_BUILTIN_BLOCK               = ifd("net.minecraft.core.registries.BuiltInRegistries", "BLOCK", "Lnet/minecraft/core/DefaultedRegistry;", null);
+    static final String F_REGISTRY_BLOCK              = ifd("net.minecraft.core.Registry",             "BLOCK",          "Lnet/minecraft/core/DefaultedRegistry;",  null);
 
     // ==================================================================
     // Runtime name redirectors
