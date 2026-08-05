@@ -68,6 +68,7 @@ final class NeoForgeReflectionConstants {
     static final String CLS_MUTABLE_COMPONENT         = "net.minecraft.network.chat.MutableComponent";
     static final String CLS_VEC3                      = "net.minecraft.world.phys.Vec3";
     static final String CLS_SERVER_GAME_PACKET_LISTENER = "net.minecraft.server.network.ServerGamePacketListenerImpl";
+    static final String CLS_SERVER_COMMON_PACKET_LISTENER = "net.minecraft.server.network.ServerCommonPacketListenerImpl";
     static final String CLS_TEXT_COMPONENT            = "net.minecraft.network.chat.TextComponent";
 
     // ==================================================================
@@ -75,6 +76,11 @@ final class NeoForgeReflectionConstants {
     // ==================================================================
 
     static final String M_COMPONENT_LITERAL           = "literal";
+    // disconnect(Component): 1.18-1.20.3 declared on ServerGamePacketListenerImpl,
+    // 1.20.4+ moved to the ServerCommonPacketListenerImpl parent. Both resolve to
+    // the same Mojang name; NeoForge's findMethodImpl walks the superclass chain.
+    static final String M_DISCONNECT                  = "disconnect";
+    static final String M_DISCONNECT_NEW              = "disconnect";
 
     // ==================================================================
     // FIELD NAMES (only those referenced elsewhere)
