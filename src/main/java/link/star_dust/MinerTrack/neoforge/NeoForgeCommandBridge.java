@@ -277,15 +277,9 @@ public class NeoForgeCommandBridge implements CommandBridge {
         UUID playerId = extractPlayerUuid(source);
         if (playerId != null) {
             Object player = resolvePlayer(playerId);
-            if (player != null) {
-                boolean p = checkNeoForgePermission(player, node);
-                System.out.println("[MinerTrack:DIAG] hasPermission(" + node + ") playerPath=" + p);
-                return p;
-            }
+            if (player != null) return checkNeoForgePermission(player, node);
         }
-        boolean v = checkVanillaOpLevel(source, 2);
-        System.out.println("[MinerTrack:DIAG] hasPermission(" + node + ") vanillaPath=" + v);
-        return v;
+        return checkVanillaOpLevel(source, 2);
     }
 
     @Override public boolean hasPermissionForPlayer(UUID playerId, String node) {
