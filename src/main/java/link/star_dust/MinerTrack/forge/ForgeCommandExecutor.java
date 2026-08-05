@@ -69,21 +69,7 @@ public class ForgeCommandExecutor {
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
         private final Object commandSource;
         PlayerLookupImpl(Object cs) { this.commandSource = cs; }
-        @Override public UUID getPlayerUUID(String name) {
-            try {
-                Object p = playerByName(commandSource, name);
-                if (p == null) {
-                    System.out.println("[MinerTrack:DIAG] getPlayerUUID('" + name + "') playerByName returned null (server=" + (ForgeReflection.getServer() == null ? "null" : ForgeReflection.getServer().getClass().getName()) + ")");
-                    return null;
-                }
-                Object u = ForgeReflection.callUuid(p);
-                System.out.println("[MinerTrack:DIAG] getPlayerUUID('" + name + "') player=" + p.getClass().getName() + " uuid=" + u);
-                return u instanceof UUID ? (UUID) u : null;
-            } catch (Throwable t) {
-                System.out.println("[MinerTrack:DIAG] getPlayerUUID('" + name + "') threw: " + t);
-                return null;
-            }
-        }
+        @Override public UUID getPlayerUUID(String name) { try { Object p = playerByName(commandSource, name); if (p == null) return null; Object u = ForgeReflection.callUuid(p); return u instanceof UUID ? (UUID) u : null; } catch (Throwable t) { return null; } }
         @Override public String getPlayerName(UUID uuid) { try { Object p = playerByUuid(commandSource, uuid); if (p == null) return uuid.toString(); Object n = ForgeReflection.callAny(p, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(n); return s == null ? uuid.toString() : s; } catch (Throwable t) { return uuid.toString(); } }
         @Override public boolean isOnline(UUID uuid) { return playerByUuid(commandSource, uuid) != null; }
         @Override public List<String> getOnlinePlayerNames() { List<String> names = new ArrayList<>(); try { Object srv = commandSource != null ? ForgeReflection.callAny(commandSource, "getServer", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS) : server(); if (srv == null) return names; Object pm = ForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (pm == null) return names; Object players = ForgeReflection.callAny(pm, "getPlayers", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (players instanceof List) for (Object p : (List<?>) players) { Object n = ForgeReflection.callAny(p, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(n); if (s != null) names.add(s); } } catch (Throwable t) {} return names; }
