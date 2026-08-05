@@ -90,24 +90,30 @@ public class ForgeCommandExecutor {
     }
 
     private class KickBridgeImpl implements MinerTrackCommandCore.KickBridge {
-        @Override public void kickPlayer(UUID pid, String reason) { try { Object player = playerByUuid(pid); if (player == null) return; Object text = ForgeReflection.createText(reason == null ? "Kicked by MinerTrack" : reason); if (text == null) return; Class<?> tc = ForgeReflection.resolveTextComponentClass(); if (tc == null) return; Object network = ForgeReflection.getField(player, "connection"); if (network == null) network = ForgeReflection.getField(player, "networkHandler"); if (network == null) return; if (disconnect(network, tc, text)) return; ForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t) { adapter.warning("Failed to kick " + pid + ": " + t.getMessage()); } }
-
-        /** Disconnect a packet listener. Mirrors FabricCommandExecutor's kick:
-         *  use the redirect-mapped disconnect constants (which resolve to the
-         *  correct runtime name, Mojang or Searge), then fall back to a
-         *  signature scan that does not depend on the method name.
-         *  <p>1.20.4+ moved disconnect(Component) from ServerGamePacketListenerImpl
-         *  to its parent ServerCommonPacketListenerImpl, so M_DISCONNECT_NEW is
-         *  tried first. Forge 1.20.4 (Arclight) may still run with Searge names,
-         *  so findMethodImpl's redirectMethod handles the m_XXXXX_ lookup. */
-        private static boolean disconnect(Object network, Class<?> tc, Object text) {
-            // 1.20.4+: ServerCommonPacketListenerImpl.disconnect
-            try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT_NEW, new Class<?>[]{tc}, new Object[]{text}); return true; } catch (Throwable t) { /* fall through */ }
-            // 1.18-1.20.3: ServerGamePacketListenerImpl.disconnect
-            try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT, new Class<?>[]{tc}, new Object[]{text}); return true; } catch (Throwable t) { /* fall through */ }
-            // Last resort: name-independent signature scan (returns void).
-            try { ForgeReflection.callBySig(network, new Class<?>[]{tc}, new Object[]{text}, void.class); return true; } catch (Throwable t) { /* fall through */ }
-            return false;
+        @Override public void kickPlayer(UUID pid, String reason) {
+            try {
+                Object player = playerByUuid(pid);
+                if (player == null) return;
+                Object text = ForgeReflection.createText(reason == null ? "Kicked by MinerTrack" : reason);
+                if (text == null) return;
+                Class<?> tc = ForgeReflection.resolveTextComponentClass();
+                if (tc == null) return;
+                Object network = ForgeReflection.getField(player, "connection");
+                if (network == null) network = ForgeReflection.getField(player, "networkHandler");
+                if (network == null) return;
+                // Mirrors FabricCommandExecutor: call the redirect-mapped disconnect
+                // constants. 1.20.4+ moved disconnect(Component) to
+                // ServerCommonPacketListenerImpl, so try M_DISCONNECT_NEW first,
+                // then the legacy M_DISCONNECT (redirectMethod resolves the correct
+                // runtime name — Mojang or Searge — and the superclass walk finds it).
+                try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT_NEW, new Class<?>[]{tc}, new Object[]{text}); return; }
+                catch (Throwable t) {}
+                try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT, new Class<?>[]{tc}, new Object[]{text}); return; }
+                catch (Throwable t) {}
+                ForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text});
+            } catch (Throwable t) {
+                adapter.warning("Failed to kick " + pid + ": " + t.getMessage());
+            }
         }
 
         @Override public boolean isKickStrikeLightning() { try { return detectionBridge.getConfigBoolean("kick_strike_lightning", true); } catch (Throwable t) { return true; } }
