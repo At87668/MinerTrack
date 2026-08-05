@@ -101,19 +101,43 @@ public class ForgeCommandExecutor {
                 Object network = ForgeReflection.getField(player, "connection");
                 if (network == null) network = ForgeReflection.getField(player, "networkHandler");
                 if (network == null) return;
-                // Mirrors FabricCommandExecutor: call the redirect-mapped disconnect
-                // constants. 1.20.4+ moved disconnect(Component) to
-                // ServerCommonPacketListenerImpl, so try M_DISCONNECT_NEW first,
-                // then the legacy M_DISCONNECT (redirectMethod resolves the correct
-                // runtime name — Mojang or Searge — and the superclass walk finds it).
-                try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT_NEW, new Class<?>[]{tc}, new Object[]{text}); return; }
-                catch (Throwable t) {}
-                try { ForgeReflection.callAny(network, ForgeReflectionConstants.M_DISCONNECT, new Class<?>[]{tc}, new Object[]{text}); return; }
-                catch (Throwable t) {}
+                if (disconnect(network, tc, text)) return;
+                // Last resort: name-independent signature scan.
                 ForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text});
             } catch (Throwable t) {
                 adapter.warning("Failed to kick " + pid + ": " + t.getMessage());
             }
+        }
+
+        /**
+         * Disconnect a packet listener using the redirect-mapped
+         * {@code M_DISCONNECT_NEW} / {@code M_DISCONNECT} constant values as the
+         * candidate method names, matched EXACTLY over {@code getMethods()}
+         * (which includes inherited public methods).
+         *
+         * <p>We deliberately bypass {@code callAny}/{@code findMethodImpl}: its
+         * blind scanMethod fallback can match an unrelated (Component)-&gt;void
+         * method on ServerGamePacketListenerImpl (not the real disconnect), which
+         * removes the player server-side but never sends the
+         * ClientboundDisconnectPacket — leaving the client half-connected.
+         * 1.20.4+ moved disconnect(Component) to ServerCommonPacketListenerImpl
+         * (reached via getMethods), and Forge/Arclight may run with Searge names
+         * (M_DISCONNECT_NEW = m_3233_, M_DISCONNECT = m_9942_).
+         */
+        private static boolean disconnect(Object network, Class<?> tc, Object text) {
+            String[] names = {ForgeReflectionConstants.M_DISCONNECT_NEW, ForgeReflectionConstants.M_DISCONNECT};
+            try {
+                for (String name : names) {
+                    for (java.lang.reflect.Method m : network.getClass().getMethods()) {
+                        if (!m.getName().equals(name)) continue;
+                        if (m.getParameterCount() != 1) continue;
+                        if (!m.getParameterTypes()[0].isAssignableFrom(tc)) continue;
+                        m.invoke(network, text);
+                        return true;
+                    }
+                }
+            } catch (Throwable t) { /* fall through */ }
+            return false;
         }
 
         @Override public boolean isKickStrikeLightning() { try { return detectionBridge.getConfigBoolean("kick_strike_lightning", true); } catch (Throwable t) { return true; } }
