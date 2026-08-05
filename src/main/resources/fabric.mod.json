@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "minertrack",
-  "version": "${version}",
+  "version": "2.1.0.0",
   "name": "MinerTrack",
   "description": "The Advanced Anti-Xray that you need. Have you ever dreamed of a powerful anti-xray?",
   "authors": [

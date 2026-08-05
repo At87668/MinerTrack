@@ -9,7 +9,7 @@ license = "MIT"
 
 [[mods]]
 modId = "minertrack"
-version = "${version}"
+version = "2.1.0.0"
 displayName = "MinerTrack"
 # logoFile is optional — omit for now
 description = '''
