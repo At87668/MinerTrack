@@ -183,10 +183,9 @@ final class ForgeReflectionConstants {
     static final String M_GET_FLUID                   = im("net.minecraft.world.level.material.FluidState", "getType",       "()Lnet/minecraft/world/level/material/Fluid;",                 "m_76152_");
     static final String M_GET_STILL                   = im("net.minecraft.world.level.material.FlowingFluid", "getSource",     "()Lnet/minecraft/world/level/material/Fluid;",                 "m_5613_");
 
-    // -- ServerGamePacketListenerImpl ------------------------------------
+    // -- ServerGamePacketListenerImpl / ServerCommonPacketListenerImpl ----
     static final String M_DISCONNECT                  = im("net.minecraft.server.network.ServerGamePacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V",          "m_9942_");
-    // 1.20.4+: disconnect(Component) moved to the ServerCommonPacketListenerImpl parent.
-    static final String M_DISCONNECT_NEW              = im("net.minecraft.server.network.ServerCommonPacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V", "m_3233_");
+    static final String M_DISCONNECT_NEW              = im("net.minecraft.server.network.ServerCommonPacketListenerImpl", "disconnect", "(Lnet/minecraft/network/chat/Component;)V", "m_294716_");
 
     // -- Commands --------------------------------------------------------
     static final String M_PERFORM_COMMAND             = im("net.minecraft.commands.Commands",           "performCommand",       "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I",  "m_82117_");
