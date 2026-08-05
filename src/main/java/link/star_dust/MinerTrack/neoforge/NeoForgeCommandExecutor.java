@@ -81,7 +81,30 @@ public class NeoForgeCommandExecutor {
     }
 
     private class KickBridgeImpl implements MinerTrackCommandCore.KickBridge {
-        @Override public void kickPlayer(UUID pid, String reason) { try { Object player = playerByUuid(pid); if (player == null) return; Object text = NeoForgeReflection.createText(reason == null ? "Kicked by MinerTrack" : reason); if (text == null) return; Class<?> tc = NeoForgeReflection.resolveTextComponentClass(); if (tc == null) return; Object network = NeoForgeReflection.getField(player, "connection"); if (network == null) network = NeoForgeReflection.getField(player, "networkHandler"); if (network == null) return; try { NeoForgeReflection.callAny(network, "disconnect", new Class<?>[]{tc}, new Object[]{text}); } catch (Throwable t) { NeoForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text}); } } catch (Throwable t) { adapter.warning("Failed to kick " + pid + ": " + t.getMessage()); } }
+        @Override public void kickPlayer(UUID pid, String reason) {
+            try {
+                Object player = playerByUuid(pid);
+                if (player == null) return;
+                Object text = NeoForgeReflection.createText(reason == null ? "Kicked by MinerTrack" : reason);
+                if (text == null) return;
+                Class<?> tc = NeoForgeReflection.resolveTextComponentClass();
+                if (tc == null) return;
+                Object network = NeoForgeReflection.getField(player, "connection");
+                if (network == null) network = NeoForgeReflection.getField(player, "networkHandler");
+                if (network == null) return;
+                // Mirrors FabricCommandExecutor: call the redirect-mapped disconnect
+                // constants. 1.20.4+ moved disconnect(Component) to
+                // ServerCommonPacketListenerImpl, so try M_DISCONNECT_NEW first,
+                // then the legacy M_DISCONNECT (superclass walk resolves it).
+                try { NeoForgeReflection.callAny(network, NeoForgeReflectionConstants.M_DISCONNECT_NEW, new Class<?>[]{tc}, new Object[]{text}); return; }
+                catch (Throwable t) {}
+                try { NeoForgeReflection.callAny(network, NeoForgeReflectionConstants.M_DISCONNECT, new Class<?>[]{tc}, new Object[]{text}); return; }
+                catch (Throwable t) {}
+                NeoForgeReflection.invokeBySigOrThrow(network, new Class<?>[]{tc}, new Object[]{text});
+            } catch (Throwable t) {
+                adapter.warning("Failed to kick " + pid + ": " + t.getMessage());
+            }
+        }
         @Override public boolean isKickStrikeLightning() { try { return detectionBridge.getConfigBoolean("kick_strike_lightning", true); } catch (Throwable t) { return true; } }
         @Override public void strikeLightningEffect(UUID pid) { try { Object player = playerByUuid(pid); if (player == null) return; Object world = NeoForgeReflection.callMigrated(player, "level", "getWorld", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (world == null) return; Object rk = NeoForgeReflection.callDimension(world); if (rk == null) return; Object srv = server(); if (srv == null) return; Object sw = NeoForgeReflection.callMigrated(srv, "getLevel", "getWorld", new Class<?>[]{rk.getClass()}, new Object[]{rk}); if (sw == null) return; Object l = NeoForgeReflection.newInstance("net.minecraft.world.entity.LightningBolt", new Class<?>[]{Class.forName("net.minecraft.world.entity.EntityType"), Class.forName("net.minecraft.server.level.ServerLevel")}, new Object[]{Class.forName("net.minecraft.world.entity.EntityType").getField("LIGHTNING_BOLT").get(null), sw}); if (l == null) { l = NeoForgeReflection.newInstance("net.minecraft.world.entity.LightningBolt", new Class<?>[]{Class.forName("net.minecraft.world.entity.EntityType"), Class.forName("net.minecraft.world.level.Level")}, new Object[]{Class.forName("net.minecraft.world.entity.EntityType").getField("LIGHTNING_BOLT").get(null), sw}); } if (l == null) return; Object x = NeoForgeReflection.callAny(player, "getX", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); Object y = NeoForgeReflection.callAny(player, "getY", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); Object z = NeoForgeReflection.callAny(player, "getZ", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); try { NeoForgeReflection.callAny(l, "setPos", new Class<?>[]{double.class, double.class, double.class}, new Object[]{x, y, z}); } catch (Throwable t) { NeoForgeReflection.callAny(l, "refreshPositionAfterTeleport", new Class<?>[]{double.class, double.class, double.class}, new Object[]{x, y, z}); } } catch (Throwable t) {} }
         @Override public void broadcastMessage(String msg) { try { Object srv = server(); if (srv == null) return; Object pm = NeoForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return; String full = langBridge.getPrefix().trim() + " " + adapter.applyColors(msg); Object text = NeoForgeReflection.createText(full); if (text == null) return; Class<?> tc = NeoForgeReflection.resolveTextComponentClass(); boolean old = NeoForgeReflection.DEBUG_REFLECTION; NeoForgeReflection.DEBUG_REFLECTION = false; try { NeoForgeReflection.call(pm, "broadcastSystemMessage", new Class<?>[]{tc, boolean.class}, new Object[]{text, false}); return; } catch (Throwable t) {} finally { NeoForgeReflection.DEBUG_REFLECTION = old; } try { Class<?> ct = NeoForgeReflection.forName("net.minecraft.network.chat.ChatType"); if (ct != null) { Object chatType = NeoForgeReflection.getField(ct, "CHAT"); if (chatType == null) chatType = NeoForgeReflection.getField(ct, "SYSTEM"); if (chatType != null) { NeoForgeReflection.call(pm, "broadcastMessage", new Class<?>[]{tc, ct, UUID.class}, new Object[]{text, chatType, UUID.randomUUID()}); return; } } } catch (Throwable t) {} try { NeoForgeReflection.call(pm, "broadcast", new Class<?>[]{tc, boolean.class}, new Object[]{text, false}); } catch (Throwable t) {} } catch (Throwable t) {} }
