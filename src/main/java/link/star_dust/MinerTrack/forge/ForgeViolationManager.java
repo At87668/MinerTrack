@@ -76,7 +76,11 @@ public class ForgeViolationManager implements ViolationManagerBridge {
             ForgeReflection.forgeClass("net.minecraftforge.event.TickEvent$ServerTickEvent"),
             rawEvent -> {
                 try {
-                    Object phase = ForgeReflection.callAny(rawEvent, "getPhase", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                    // The tick phase is exposed as a public final FIELD `phase`
+                    // (TickEvent.Phase) on Forge 1.20.4 (no getPhase() method),
+                    // and as getPhase() on older versions. Reading the `phase`
+                    // field works on both and avoids the getPhase() M-MISS.
+                    Object phase = ForgeReflection.getField(rawEvent, "phase");
                     if (phase == null || !phase.toString().contains("END")) return;
                     Object server = ForgeReflection.getServer(); if (server == null) return;
                     Object tickObj = ForgeReflection.callMigrated(server, "getTickCount", "getTicks", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
