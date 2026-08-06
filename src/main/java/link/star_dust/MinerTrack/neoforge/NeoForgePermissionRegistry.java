@@ -137,9 +137,8 @@ final class NeoForgePermissionRegistry {
             // event.addNodes(PermissionNode<?>... nodes)
             Method addNodes = event.getClass().getMethod("addNodes", nodes.getClass());
             addNodes.invoke(event, nodes);
-            System.out.println("[MinerTrack:NeoForgePermissionRegistry] Registered " + NODES.length + " permission nodes: " + String.join(", ", NODES));
         } catch (Throwable t) {
-            System.out.println("[MinerTrack:NeoForgePermissionRegistry] Failed to register permission nodes: " + t);
+            // Nodes are best-effort; on failure the bridge falls back to op-level.
         }
     }
 }
