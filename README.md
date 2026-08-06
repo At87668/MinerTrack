@@ -113,7 +113,7 @@ Look what users have to say:
 
 **As NeoForge mod:**
 - Java 17 or higher
-- NeoForge 1.20.2 or newer
+- NeoForge 1.20.1 or newer
 
 
 ![Image](https://at87668.github.io/MinerTrack/Images/Support.png)

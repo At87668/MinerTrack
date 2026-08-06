@@ -121,7 +121,7 @@
 
 **作为NeoForge模组:**
 * Java 17 或更高版本
-* NeoForge 1.20.2 或更高版本
+* NeoForge 1.20.1 或更高版本
 
 ---
 
