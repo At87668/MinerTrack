@@ -300,27 +300,47 @@ public class ForgeCommandBridge implements CommandBridge {
     // ==================================================================
     // Permission checks via native Forge PermissionAPI
     //
-    // Forge ships net.minecraftforge.server.permission.PermissionAPI
-    // which integrates with LuckPerms or any Forge-compatible permission
-    // plugin.  We call it reflectively to avoid compile-time coupling.
+    // Forge 1.19+ ships net.minecraftforge.server.permission.PermissionAPI
+    // which integrates with any Forge-compatible permission handler
+    // (default: DefaultPermissionHandler; LuckPerms-Forge, etc. register
+    // their own handler via PermissionGatherEvent.Handler).  We register the
+    // minertrack.* PermissionNodes via ForgePermissionRegistry and query
+    // through the native API, so the active permission handler decides.
+    // Called reflectively to avoid compile-time coupling.
     // Fallback: vanilla op-level check via PlayerList.isOp().
     // ==================================================================
 
     static boolean checkForgePermission(Object player, String node) {
+        // 1) Native PermissionAPI using a registered PermissionNode (1.19+).
+        Object cachedNode = ForgePermissionRegistry.getNode(node);
+        if (cachedNode != null) {
+            try {
+                Class<?> apiCls = Class.forName("net.minecraftforge.server.permission.PermissionAPI");
+                Class<?> playerCls = Class.forName("net.minecraft.server.level.ServerPlayer");
+                java.lang.reflect.Method m = apiCls.getMethod("getPermission", playerCls, cachedNode.getClass());
+                Object result = m.invoke(null, player, cachedNode);
+                if (result instanceof Boolean) return (Boolean) result;
+                if (result != null) {
+                    String ts = result.toString();
+                    if ("TRUE".equals(ts)) return true;
+                    if ("FALSE".equals(ts)) return false;
+                }
+            } catch (Throwable t) { /* PermissionAPI not present */ }
+        }
+        // 2) Legacy String overload (Forge 1.18.x) → boolean/Tristate.
         try {
-            // PermissionAPI.getPermission(ServerPlayer, String) → Tristate
             Class<?> apiCls = Class.forName("net.minecraftforge.server.permission.PermissionAPI");
             java.lang.reflect.Method m = apiCls.getMethod("getPermission",
                 Class.forName("net.minecraft.server.level.ServerPlayer"), String.class);
-            Object tristate = m.invoke(null, player, node);
-            if (tristate != null) {
-                // Tristate.TRUE, Tristate.FALSE, Tristate.DEFAULT
-                String ts = tristate.toString();
+            Object result = m.invoke(null, player, node);
+            if (result instanceof Boolean) return (Boolean) result;
+            if (result != null) {
+                String ts = result.toString();
                 if ("TRUE".equals(ts)) return true;
                 if ("FALSE".equals(ts)) return false;
                 // DEFAULT → fall through to op-level
             }
-        } catch (Throwable t) { /* PermissionAPI not present */ }
+        } catch (Throwable t) { /* PermissionAPI not present / no String overload */ }
         return isPlayerOperator(player);
     }
 
