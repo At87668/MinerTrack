@@ -1,15 +1,15 @@
 ---
-name: BUG Report (Fabric)
+name: BUG Report (NeoForge)
 about: If you want to report a bug, select this.
 title: "[Minecraft Version] Issue Title"
-labels: "❌BUG, 📃Fabric"
+labels: "❌BUG, 🦊NeoForge"
 assignees: ''
 
 ---
 
 ### [Minecraft Version] Issue Title
 
-- [ ] Tested on Fabric
+- [ ] Tested on NeoForge
 - [ ] Tested with this mod only
 #### Description
 
@@ -26,7 +26,7 @@ assignees: ''
 [Minecraft's version.]
 
 #### Server Software
-[If hybrid, then fill in `Software (Fabric)`, else input `Fabric`.]
+[If hybrid, then fill in `Software (NeoForge)`, else input `NeoForge`.]
 
 #### How to reproduce
 1. Step 1
