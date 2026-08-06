@@ -137,9 +137,8 @@ final class ForgePermissionRegistry {
             // event.addNodes(PermissionNode<?>... nodes)
             Method addNodes = event.getClass().getMethod("addNodes", nodes.getClass());
             addNodes.invoke(event, nodes);
-            System.out.println("[MinerTrack:ForgePermissionRegistry] Registered " + NODES.length + " permission nodes: " + String.join(", ", NODES));
         } catch (Throwable t) {
-            System.out.println("[MinerTrack:ForgePermissionRegistry] Failed to register permission nodes: " + t);
+            // Nodes are best-effort; on failure the bridge falls back to op-level.
         }
     }
 }
