@@ -42,6 +42,13 @@ public class ForgeMod {
         // must defer server-specific init to ServerStartingEvent.
         Object eventBus = ForgeReflection.getMainEventBus();
         if (eventBus != null) {
+            // PermissionGatherEvent.Nodes also fires during MinecraftServer
+            // construction (PermissionAPI.initializePermissionAPI), BEFORE
+            // ServerStartingEvent — register its listener now so the native
+            // minertrack.* PermissionNodes exist before the permission handler
+            // is built.
+            ForgePermissionRegistry.registerGatherListener();
+
             // RegisterCommandsEvent fires during MinecraftServer construction,
             // which happens BEFORE ServerStartingEvent. Register its listener
             // now (in the mod constructor) so commands are registered in time.
