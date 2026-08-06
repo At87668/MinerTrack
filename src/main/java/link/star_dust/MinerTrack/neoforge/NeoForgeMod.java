@@ -39,6 +39,13 @@ public class NeoForgeMod {
     public NeoForgeMod() {
         Object eventBus = NeoForgeReflection.getMainEventBus();
         if (eventBus != null) {
+            // PermissionGatherEvent.Nodes also fires during MinecraftServer
+            // construction (PermissionAPI.initializePermissionAPI), BEFORE
+            // ServerStartingEvent — register its listener now so the native
+            // minertrack.* PermissionNodes exist before the permission handler
+            // is built.
+            NeoForgePermissionRegistry.registerGatherListener();
+
             // RegisterCommandsEvent fires during MinecraftServer construction,
             // which happens BEFORE ServerStartingEvent. Register its listener
             // now (in the mod constructor) so commands are registered in time.
