@@ -312,7 +312,15 @@ public class ForgeCommandBridge implements CommandBridge {
 
     static boolean checkForgePermission(Object player, String node) {
         logForgePermDiagOnce();
-        // 1) Native PermissionAPI using a registered PermissionNode (1.19+).
+        // 1) LuckPerms direct — works on hybrid servers (Arclight/Mohist) where
+        //    the active Forge permission handler is replaced by the hybrid's own
+        //    handler (e.g. arclight:permission) which forwards to Bukkit, hiding
+        //    LuckPerms-Forge grants from the native PermissionAPI. Querying
+        //    LuckPerms directly always reflects the /lp grants. Optional, so a
+        //    missing LuckPerms is silently skipped.
+        Boolean lp = checkForgeLuckPerms(player, node);
+        if (lp != null) return lp;
+        // 2) Native PermissionAPI using a registered PermissionNode (1.19+).
         Object cachedNode = ForgePermissionRegistry.getNode(node);
         if (cachedNode != null) {
             try {
@@ -328,7 +336,7 @@ public class ForgeCommandBridge implements CommandBridge {
                 }
             } catch (Throwable t) { /* PermissionAPI not present */ }
         }
-        // 2) Legacy String overload (Forge 1.18.x) → boolean/Tristate.
+        // 3) Legacy String overload (Forge 1.18.x) → boolean/Tristate.
         try {
             Class<?> apiCls = Class.forName("net.minecraftforge.server.permission.PermissionAPI");
             java.lang.reflect.Method m = apiCls.getMethod("getPermission",
@@ -343,6 +351,41 @@ public class ForgeCommandBridge implements CommandBridge {
             }
         } catch (Throwable t) { /* PermissionAPI not present / no String overload */ }
         return isPlayerOperator(player);
+    }
+
+    /**
+     * Query LuckPerms directly for a node and player. Returns {@code null}
+     * when LuckPerms is absent, the user is not loaded, or the result is
+     * undefined — the caller then falls through to the native API / op level.
+     */
+    private static Boolean checkForgeLuckPerms(Object player, String node) {
+        try {
+            UUID uuid = ForgePlayerUuid(player);
+            if (uuid == null) return null;
+            Class<?> provider = Class.forName("net.luckperms.api.LuckPermsProvider");
+            Object luckPerms = provider.getMethod("get").invoke(null);
+            Object userManager = luckPerms.getClass().getMethod("getUserManager").invoke(luckPerms);
+            Object user = userManager.getClass().getMethod("getUser", UUID.class).invoke(userManager, uuid);
+            if (user == null) return null;
+            Object cached = user.getClass().getMethod("getCachedData").invoke(user);
+            Object permData = cached.getClass().getMethod("getPermissionData").invoke(cached);
+            Object tristate = permData.getClass().getMethod("checkPermission", String.class).invoke(permData, node);
+            if (tristate == null) return null;
+            try {
+                Object asBool = tristate.getClass().getMethod("asBoolean").invoke(tristate);
+                if (asBool instanceof Boolean) return (Boolean) asBool;
+            } catch (Throwable t) { /* no asBoolean */ }
+            String ts = tristate.toString();
+            if (ts != null && ts.contains("TRUE")) return true;
+            if (ts != null && ts.contains("FALSE")) return false;
+            return null; // DEFAULT / undefined → fall through
+        } catch (Throwable t) { return null; } // LuckPerms not present
+    }
+
+    /** Resolve a player's UUID (needed for the LuckPerms API lookup). */
+    private static UUID ForgePlayerUuid(Object player) {
+        try { Object u = ForgeReflection.callUuid(player); return u instanceof UUID ? (UUID) u : null; }
+        catch (Throwable t) { return null; }
     }
 
     private static volatile boolean forgePermDiagLogged = false;
