@@ -94,13 +94,21 @@ final class ForgePermissionRegistry {
 
             Object booleanType = typesCls.getField("BOOLEAN").get(null);
 
-            // PermissionResolver: default value for every node is false.
+            // PermissionResolver: the DefaultPermissionHandler (used when no
+            // third-party permission plugin is installed) forwards every query
+            // to this resolver, so it must NOT be hardcoded false — otherwise
+            // every player is denied. Resolve to the vanilla op status instead:
+            // an op player is granted, everyone else is denied. When a real
+            // permission handler (e.g. LuckPerms-Forge) is active it ignores
+            // this resolver and uses its own data.
             Object resolver = java.lang.reflect.Proxy.newProxyInstance(
                 resolverCls.getClassLoader(),
                 new Class<?>[]{resolverCls},
                 (proxy, method, args) -> {
                     switch (method.getName()) {
-                        case "resolve": return Boolean.FALSE;
+                        case "resolve":
+                            Object player = (args != null && args.length > 0) ? args[0] : null;
+                            return player != null && ForgeCommandBridge.isPlayerOperator(player);
                         case "toString": return "MinerTrackDefaultResolver";
                         case "hashCode": return System.identityHashCode(proxy);
                         case "equals": return proxy == args[0];
@@ -114,21 +122,24 @@ final class ForgePermissionRegistry {
             Constructor<?> ctor = nodeCls.getConstructor(String.class, String.class,
                 booleanType.getClass(), resolverCls, emptyDyns.getClass());
 
-            Object[] nodes = new Object[NODES.length];
+            // Build a real PermissionNode[] (NOT Object[]) so getMethod finds
+            // addNodes(PermissionNode<?>...) via an exact array-type match.
+            Object nodes = java.lang.reflect.Array.newInstance(nodeCls, NODES.length);
             for (int i = 0; i < NODES.length; i++) {
                 int dot = NODES[i].indexOf('.');
                 String modId = NODES[i].substring(0, dot);
                 String name = NODES[i].substring(dot + 1);
                 Object node = ctor.newInstance(modId, name, booleanType, resolver, emptyDyns);
                 NODE_CACHE.put(NODES[i], node);
-                nodes[i] = node;
+                java.lang.reflect.Array.set(nodes, i, node);
             }
 
             // event.addNodes(PermissionNode<?>... nodes)
             Method addNodes = event.getClass().getMethod("addNodes", nodes.getClass());
-            addNodes.invoke(event, (Object) nodes);
+            addNodes.invoke(event, nodes);
+            System.out.println("[MinerTrack:ForgePermissionRegistry] Registered " + NODES.length + " permission nodes: " + String.join(", ", NODES));
         } catch (Throwable t) {
-            // Permission system absent (Forge 1.18.x) — native path is a no-op.
+            System.out.println("[MinerTrack:ForgePermissionRegistry] Failed to register permission nodes: " + t);
         }
     }
 }
