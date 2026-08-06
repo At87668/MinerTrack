@@ -252,21 +252,50 @@ public class NeoForgeCommandBridge implements CommandBridge {
     // Permission checks via native NeoForge PermissionAPI
     //
     // NeoForge ships net.neoforged.neoforge.server.permission.PermissionAPI
-    // which integrates with LuckPerms or any permission plugin.
-    // Called reflectively to avoid compile-time coupling.
+    // which integrates with any NeoForge-compatible permission handler.
+    // We register the minertrack.* PermissionNodes via NeoForgePermissionRegistry
+    // and query through the native API, so the active permission handler
+    // decides.  Called reflectively to avoid compile-time coupling.
     // Fallback: vanilla op-level check via PlayerList.isOp().
     // ==================================================================
 
     static boolean checkNeoForgePermission(Object player, String node) {
+        // 1) Native PermissionAPI using a registered PermissionNode (1.20.4+).
+        Object cachedNode = NeoForgePermissionRegistry.getNode(node);
+        if (cachedNode != null) {
+            try {
+                Class<?> apiCls = Class.forName("net.neoforged.neoforge.server.permission.PermissionAPI");
+                Class<?> playerCls = Class.forName("net.minecraft.server.level.ServerPlayer");
+                java.lang.reflect.Method m = apiCls.getMethod("getPermission", playerCls, cachedNode.getClass());
+                Object result = m.invoke(null, player, cachedNode);
+                if (result instanceof Boolean) return (Boolean) result;
+                if (result != null) {
+                    String ts = result.toString();
+                    if ("TRUE".equals(ts)) return true;
+                    if ("FALSE".equals(ts)) return false;
+                }
+            } catch (Throwable t) { /* PermissionAPI not present */ }
+        }
+        // 2) Fallback: scan getRegisteredNodes() for a node whose name matches
+        //    (in case the handler filters nodes or the cache was empty).
         try {
             Class<?> apiCls = Class.forName("net.neoforged.neoforge.server.permission.PermissionAPI");
-            java.lang.reflect.Method m = apiCls.getMethod("getPermission",
-                Class.forName("net.minecraft.server.level.ServerPlayer"), String.class);
-            Object tristate = m.invoke(null, player, node);
-            if (tristate != null) {
-                String ts = tristate.toString();
-                if ("TRUE".equals(ts)) return true;
-                if ("FALSE".equals(ts)) return false;
+            Class<?> playerCls = Class.forName("net.minecraft.server.level.ServerPlayer");
+            Object nodes = apiCls.getMethod("getRegisteredNodes").invoke(null);
+            if (nodes instanceof java.util.Collection) {
+                for (Object n : (java.util.Collection<?>) nodes) {
+                    String nodeName = (String) n.getClass().getMethod("getNodeName").invoke(n);
+                    if (node != null && node.equals(nodeName)) {
+                        java.lang.reflect.Method m = apiCls.getMethod("getPermission", playerCls, n.getClass());
+                        Object result = m.invoke(null, player, n);
+                        if (result instanceof Boolean) return (Boolean) result;
+                        if (result != null) {
+                            String ts = result.toString();
+                            if ("TRUE".equals(ts)) return true;
+                            if ("FALSE".equals(ts)) return false;
+                        }
+                    }
+                }
             }
         } catch (Throwable t) { /* PermissionAPI not present */ }
         return isPlayerOperator(player);
