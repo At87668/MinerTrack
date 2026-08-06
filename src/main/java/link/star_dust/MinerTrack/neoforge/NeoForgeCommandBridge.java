@@ -260,7 +260,6 @@ public class NeoForgeCommandBridge implements CommandBridge {
     // ==================================================================
 
     static boolean checkNeoForgePermission(Object player, String node) {
-        logNeoPermDiagOnce();
         // 1) LuckPerms direct — works on hybrid servers (Arclight/Mohist) where
         //    the active NeoForge permission handler is replaced by the hybrid's
         //    own handler which forwards to Bukkit, hiding LuckPerms grants from
@@ -283,9 +282,7 @@ public class NeoForgeCommandBridge implements CommandBridge {
                     if ("TRUE".equals(ts)) return true;
                     if ("FALSE".equals(ts)) return false;
                 }
-            } catch (Throwable t) {
-                System.out.println("[MinerTrack:Perm] native getPermission failed for " + node + ": " + t);
-            }
+            } catch (Throwable t) { /* PermissionAPI not present */ }
         }
         // 3) Fallback: scan getRegisteredNodes() for a node whose name matches
         //    (in case the handler filters nodes or the cache was empty).
@@ -345,37 +342,6 @@ public class NeoForgeCommandBridge implements CommandBridge {
     private static UUID NeoForgePlayerUuid(Object player) {
         try { Object u = NeoForgeReflection.callUuid(player); return u instanceof UUID ? (UUID) u : null; }
         catch (Throwable t) { return null; }
-    }
-
-    private static volatile boolean neoPermDiagLogged = false;
-
-    /**
-     * Print the active NeoForge permission handler and registered nodes once.
-     * If the active handler is neoforge:default_handler (not LuckPerms), the
-     * native PermissionAPI never reads LuckPerms data — that explains why
-     * permission nodes set via /lp are ignored while op checks pass.
-     */
-    private static void logNeoPermDiagOnce() {
-        if (neoPermDiagLogged) return;
-        neoPermDiagLogged = true;
-        try {
-            Class<?> apiCls = Class.forName("net.neoforged.neoforge.server.permission.PermissionAPI");
-            Object id = apiCls.getMethod("getActivePermissionHandler").invoke(null);
-            Object nodes = apiCls.getMethod("getRegisteredNodes").invoke(null);
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-            if (nodes instanceof java.util.Collection) {
-                java.util.Collection<?> col = (java.util.Collection<?>) nodes;
-                count = col.size();
-                for (Object n : col) {
-                    try { sb.append(n.getClass().getMethod("getNodeName").invoke(n)).append(' '); } catch (Throwable ignore) {}
-                }
-            }
-            System.out.println("[MinerTrack:Perm] NeoForge active permission handler = " + id
-                + " ; registered nodes (" + count + "): " + sb);
-        } catch (Throwable t) {
-            System.out.println("[MinerTrack:Perm] NeoForge active handler diag failed: " + t);
-        }
     }
 
     @Override public boolean hasPermission(String node) {
