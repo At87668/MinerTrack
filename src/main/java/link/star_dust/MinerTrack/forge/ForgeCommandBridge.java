@@ -311,7 +311,6 @@ public class ForgeCommandBridge implements CommandBridge {
     // ==================================================================
 
     static boolean checkForgePermission(Object player, String node) {
-        logForgePermDiagOnce();
         // 1) LuckPerms direct — works on hybrid servers (Arclight/Mohist) where
         //    the active Forge permission handler is replaced by the hybrid's own
         //    handler (e.g. arclight:permission) which forwards to Bukkit, hiding
@@ -386,37 +385,6 @@ public class ForgeCommandBridge implements CommandBridge {
     private static UUID ForgePlayerUuid(Object player) {
         try { Object u = ForgeReflection.callUuid(player); return u instanceof UUID ? (UUID) u : null; }
         catch (Throwable t) { return null; }
-    }
-
-    private static volatile boolean forgePermDiagLogged = false;
-
-    /**
-     * Print the active Forge permission handler and registered nodes once.
-     * If the active handler is forge:default_handler (not LuckPerms), the
-     * native PermissionAPI never reads LuckPerms data — that explains why
-     * permission nodes set via /lp are ignored while op checks pass.
-     */
-    private static void logForgePermDiagOnce() {
-        if (forgePermDiagLogged) return;
-        forgePermDiagLogged = true;
-        try {
-            Class<?> apiCls = Class.forName("net.minecraftforge.server.permission.PermissionAPI");
-            Object id = apiCls.getMethod("getActivePermissionHandler").invoke(null);
-            Object nodes = apiCls.getMethod("getRegisteredNodes").invoke(null);
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-            if (nodes instanceof java.util.Collection) {
-                java.util.Collection<?> col = (java.util.Collection<?>) nodes;
-                count = col.size();
-                for (Object n : col) {
-                    try { sb.append(n.getClass().getMethod("getNodeName").invoke(n)).append(' '); } catch (Throwable ignore) {}
-                }
-            }
-            System.out.println("[MinerTrack:Perm] Forge active permission handler = " + id
-                + " ; registered nodes (" + count + "): " + sb);
-        } catch (Throwable t) {
-            System.out.println("[MinerTrack:Perm] Forge active handler diag failed: " + t);
-        }
     }
 
     @Override
