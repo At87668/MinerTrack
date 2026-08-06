@@ -261,7 +261,15 @@ public class NeoForgeCommandBridge implements CommandBridge {
 
     static boolean checkNeoForgePermission(Object player, String node) {
         logNeoPermDiagOnce();
-        // 1) Native PermissionAPI using a registered PermissionNode (1.20.4+).
+        // 1) LuckPerms direct — works on hybrid servers (Arclight/Mohist) where
+        //    the active NeoForge permission handler is replaced by the hybrid's
+        //    own handler which forwards to Bukkit, hiding LuckPerms grants from
+        //    the native PermissionAPI. Querying LuckPerms directly always
+        //    reflects the /lp grants. Optional, so a missing LuckPerms is
+        //    silently skipped.
+        Boolean lp = checkNeoForgeLuckPerms(player, node);
+        if (lp != null) return lp;
+        // 2) Native PermissionAPI using a registered PermissionNode (1.20.4+).
         Object cachedNode = NeoForgePermissionRegistry.getNode(node);
         if (cachedNode != null) {
             try {
@@ -279,7 +287,7 @@ public class NeoForgeCommandBridge implements CommandBridge {
                 System.out.println("[MinerTrack:Perm] native getPermission failed for " + node + ": " + t);
             }
         }
-        // 2) Fallback: scan getRegisteredNodes() for a node whose name matches
+        // 3) Fallback: scan getRegisteredNodes() for a node whose name matches
         //    (in case the handler filters nodes or the cache was empty).
         try {
             Class<?> apiCls = Class.forName("net.neoforged.neoforge.server.permission.PermissionAPI");
@@ -302,6 +310,41 @@ public class NeoForgeCommandBridge implements CommandBridge {
             }
         } catch (Throwable t) { /* PermissionAPI not present */ }
         return isPlayerOperator(player);
+    }
+
+    /**
+     * Query LuckPerms directly for a node and player. Returns {@code null}
+     * when LuckPerms is absent, the user is not loaded, or the result is
+     * undefined — the caller then falls through to the native API / op level.
+     */
+    private static Boolean checkNeoForgeLuckPerms(Object player, String node) {
+        try {
+            UUID uuid = NeoForgePlayerUuid(player);
+            if (uuid == null) return null;
+            Class<?> provider = Class.forName("net.luckperms.api.LuckPermsProvider");
+            Object luckPerms = provider.getMethod("get").invoke(null);
+            Object userManager = luckPerms.getClass().getMethod("getUserManager").invoke(luckPerms);
+            Object user = userManager.getClass().getMethod("getUser", UUID.class).invoke(userManager, uuid);
+            if (user == null) return null;
+            Object cached = user.getClass().getMethod("getCachedData").invoke(user);
+            Object permData = cached.getClass().getMethod("getPermissionData").invoke(cached);
+            Object tristate = permData.getClass().getMethod("checkPermission", String.class).invoke(permData, node);
+            if (tristate == null) return null;
+            try {
+                Object asBool = tristate.getClass().getMethod("asBoolean").invoke(tristate);
+                if (asBool instanceof Boolean) return (Boolean) asBool;
+            } catch (Throwable t) { /* no asBoolean */ }
+            String ts = tristate.toString();
+            if (ts != null && ts.contains("TRUE")) return true;
+            if (ts != null && ts.contains("FALSE")) return false;
+            return null; // DEFAULT / undefined → fall through
+        } catch (Throwable t) { return null; } // LuckPerms not present
+    }
+
+    /** Resolve a player's UUID (needed for the LuckPerms API lookup). */
+    private static UUID NeoForgePlayerUuid(Object player) {
+        try { Object u = NeoForgeReflection.callUuid(player); return u instanceof UUID ? (UUID) u : null; }
+        catch (Throwable t) { return null; }
     }
 
     private static volatile boolean neoPermDiagLogged = false;
