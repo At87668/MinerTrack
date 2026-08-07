@@ -72,6 +72,8 @@ public final class BStatsCompat {
         String serverSoftware();
         /** Minecraft version, e.g. "1.20.1"; may be null/empty (field omitted). */
         String serverVersion();
+        /** Lowercase bStats platform tag appended to the reported plugin version, e.g. "fabric". */
+        String platformTag();
     }
 
     private final MetricsBase metricsBase;
@@ -106,6 +108,7 @@ public final class BStatsCompat {
 
             String software = safe(data.serverSoftware());
             String version = safe(data.serverVersion());
+            String platformTag = safe(data.platformTag());
 
             if (!enabled) {
                 adapter.info("[bStats] Metrics are disabled (see " + configFile(adapter.getDataFolder()) + ").");
@@ -117,7 +120,7 @@ public final class BStatsCompat {
                     + ", config=" + configFile(adapter.getDataFolder()));
                 if (debug) {
                     adapter.info("[bStats] Payload that will be submitted:\n"
-                        + buildPayload(serverUuid, serviceId, data, software, version, adapter));
+                        + buildPayload(serverUuid, serviceId, data, software, version, platformTag, adapter));
                 }
             }
 
@@ -127,7 +130,7 @@ public final class BStatsCompat {
                 serviceId,
                 enabled,
                 builder -> appendPlatformData(builder, data, software, version),
-                builder -> appendServiceData(builder, adapter),
+                builder -> appendServiceData(builder, adapter, platformTag),
                 null, // collect + submit on bStats' own scheduler thread
                 () -> running,
                 (msg, err) -> adapter.warning("[bStats] " + msg + (err == null ? "" : ": " + err.getMessage())),
@@ -192,11 +195,16 @@ public final class BStatsCompat {
         try { builder.appendField(key, value); } catch (Throwable ignored) {}
     }
 
-    /** Append the service payload, guarding the plugin-version read. */
-    private static void appendServiceData(JsonObjectBuilder builder, PluginAdapter adapter) {
+    /** Append the service payload, guarding the plugin-version read. The reported
+     *  plugin version carries the mod-platform tag (e.g. "2.1.0.0+neoforge") so the
+     *  Bukkit bStats area can distinguish installs by platform. */
+    private static void appendServiceData(JsonObjectBuilder builder, PluginAdapter adapter, String platformTag) {
         String pv = null;
         try { pv = adapter.getVersion(); } catch (Throwable ignored) {}
         if (pv != null && !pv.isEmpty()) {
+            if (platformTag != null && !platformTag.isEmpty() && !pv.endsWith("+" + platformTag)) {
+                pv = pv + "+" + platformTag;
+            }
             try { builder.appendField("pluginVersion", pv); } catch (Throwable ignored) {}
         }
     }
@@ -211,14 +219,14 @@ public final class BStatsCompat {
 
     /** Build the exact JSON payload MetricsBase will submit (debug dry-run, never sent). */
     private static String buildPayload(String serverUuid, int serviceId, Data data,
-                                       String software, String version, PluginAdapter adapter) {
+                                       String software, String version, String platformTag, PluginAdapter adapter) {
         try {
             JsonObjectBuilder base = new JsonObjectBuilder();
             appendPlatformData(base, data, software, version);
             JsonObjectBuilder service = new JsonObjectBuilder();
             service.appendField("id", serviceId);
             service.appendField("customCharts", new JsonObjectBuilder.JsonObject[0]);
-            appendServiceData(service, adapter);
+            appendServiceData(service, adapter, platformTag);
             base.appendField("service", service.build());
             base.appendField("serverUUID", serverUuid);
             base.appendField("metricsVersion", MetricsBase.METRICS_VERSION);
