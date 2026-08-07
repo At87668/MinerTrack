@@ -131,7 +131,7 @@ public class NeoForgeCommandBridge implements CommandBridge {
         }
     }
 
-    private static boolean sendFeedback(Object target, Object text, boolean isSuccess) {
+    static boolean sendFeedback(Object target, Object text, boolean isSuccess) {
         if (text == null || target == null) return false;
         Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
         if (textCls == null) return false;
@@ -179,47 +179,37 @@ public class NeoForgeCommandBridge implements CommandBridge {
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
             Object server = NeoForgeReflection.getServer();
-            if (server == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: server null"); return; }
+            if (server == null) return;
             Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-            if (pm == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: pm null"); return; }
+            if (pm == null) return;
             Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: player null for " + playerId); return; }
+            if (player == null) return;
             Object text = createText(message);
-            if (text == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: createText null for " + message); return; }
-            Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
-            if (textCls == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: textCls null"); return; }
-            // MC 26.x ServerPlayer no longer has sendMessage(Component[,UUID]);
-            // it uses sendSystemMessage(Component). Try that first, then the
-            // legacy sendMessage variants for older versions.
-            try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: OK (Component)"); }
-            catch (Throwable t1) {
-                System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: (Component) FAIL " + t1);
-                try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: OK (Component,UUID)"); }
-                catch (Throwable t2) {
-                    try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, boolean.class}, new Object[]{text, false}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: OK (Component,boolean)"); }
-                    catch (Throwable t3) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: ALL FAIL " + t3); }
-                }
-            }
-        } catch (Throwable t) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: outer FAIL " + t); }
+            if (text == null) return;
+            // Name-based routing via sendFeedback: explicitly finds ServerPlayer
+            // sendSystemMessage(Component) on 1.19.3+ / 26.x and falls back to the
+            // legacy sendMessage(Component[,UUID]/[boolean]) on 1.18.2. Avoids the
+            // signature-blind scan that can match an unrelated single-param
+            // (Component) method added by a mod.
+            sendFeedback(player, text, true);
+        } catch (Throwable t) { /* silent */ }
     }
 
     @Override public void sendMessageToConsole(String message) {
         try {
             Object server = NeoForgeReflection.getServer();
-            if (server == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: server null"); return; }
             Object text = createText(message);
-            if (text == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: createText null for " + message); return; }
-            Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
-            if (textCls == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: textCls null"); return; }
-            // MC 26.x MinecraftServer uses sendSystemMessage(Component).
-            try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls}, new Object[]{text}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: OK (Component)"); }
-            catch (Throwable t1) {
-                System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: (Component) FAIL " + t1);
-                try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: OK (Component,UUID)"); }
-                catch (Throwable t2) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: ALL FAIL " + t2); }
-            }
-        } catch (Throwable t) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: outer FAIL " + t); }
+            if (server == null || text == null) { System.out.println("[MinerTrack] " + message); return; }
+            // Name-based routing via sendFeedback: explicitly finds MinecraftServer
+            // sendSystemMessage(Component) on 1.19.3+ / 26.x. The old signature-blind
+            // scanMethod matched an unrelated single-param (Component) method on
+            // NeoForge 1.21.1 and threw InvocationTargetException, so the notify never
+            // reached the console. Fall back to stdout so the message is always printed
+            // (mirrors the Forge/Fabric bridges).
+            if (sendFeedback(server, text, true)) return;
+        } catch (Throwable t) { /* fall through */ }
+        System.out.println("[MinerTrack] " + message);
     }
 
     @Override public boolean toggleVerbose() {
