@@ -102,8 +102,9 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         violationManager.scheduleGlobalDecayTask(20L * 60L * 20L);
 
         // bStats — Fabric has no JavaPlugin, so the Bukkit bStats library cannot
-        // start from this platform. Feed the same Bukkit project (id 23790) through
-        // the platform-agnostic bridge so Fabric installs are counted too. Non-fatal.
+        // start from this platform. Feed the bStats project through the
+        // platform-agnostic bridge (serviceId/platform are configurable in
+        // <dataFolder>/bStats/config.properties). Non-fatal.
         try {
             bStatsCompat = new BStatsCompat(adapter, new FabricBStatsData());
         } catch (Throwable t) {
