@@ -156,6 +156,13 @@ final class NeoForgeReflectionConstants {
     static final String M_GET_ENTITY                  = im("net.minecraft.commands.CommandSourceStack", "getEntity",           "()Lnet/minecraft/world/entity/Entity;",                                     "m_81373_");
     static final String M_HAS_PERMISSION              = im("net.minecraft.commands.CommandSourceStack", "hasPermission",       "(I)Z",                                                                     "m_6761_");
 
+    // -- Commands (dispatch) ----------------------------------------------
+    // performPrefixedCommand(CommandSourceStack, String) → void exists on
+    // 1.20.2+ (1.20.4 SRG: m_230957_); performCommand(CommandSourceStack, String)
+    // → int is the 1.18.x legacy name (1.18.2 SRG: m_82117_).
+    static final String M_PERFORM_COMMAND             = im("net.minecraft.commands.Commands", "performCommand",         "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)I", "m_82117_");
+    static final String M_PERFORM_PREFIXED_CMD        = im("net.minecraft.commands.Commands", "performPrefixedCommand", "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V", "m_230957_");
+
     // ==================================================================
     // FIELD NAMES
     // ==================================================================
@@ -207,6 +214,12 @@ final class NeoForgeReflectionConstants {
         putM("getServer",           M_GET_SERVER);
         putM("getEntity",           M_GET_ENTITY);
         putM("hasPermission",       M_HAS_PERMISSION);
+
+        // Commands (dispatch) — mirror Forge so runConsoleCommand resolves on
+        // the SRG runtime (NeoForge 1.20.4) where NeoForge has no scan fallback.
+        putM("performCommand",          M_PERFORM_COMMAND);
+        putM("performPrefixedCommand",  M_PERFORM_PREFIXED_CMD);
+        putM("executeWithPrefix",       M_PERFORM_PREFIXED_CMD);
 
         // Misc
         putM("getString",           "getString");
