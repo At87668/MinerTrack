@@ -148,6 +148,7 @@ final class ForgeReflectionConstants {
     static final String M_GET_TICK_COUNT              = im("net.minecraft.server.MinecraftServer", "getTickCount",          "()I",                                                          "m_129921_");
     static final String M_GET_LEVEL                   = im("net.minecraft.server.MinecraftServer", "getLevel",              "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/server/level/ServerLevel;", "m_129880_");
     static final String M_SEND_SYSTEM_MSG_SRV         = im("net.minecraft.server.MinecraftServer", "sendSystemMessage",     "(Lnet/minecraft/network/chat/Component;)V",                     "m_6352_");
+    static final String M_IS_ONLINE_MODE              = im("net.minecraft.server.MinecraftServer", "isOnlineMode",          "()Z",                                                          "m_129797_");
 
     // -- ServerPlayer / Entity -------------------------------------------
     static final String M_GET_NAME                    = im("net.minecraft.world.entity.Entity", "getName",             "()Lnet/minecraft/network/chat/Component;",                     "m_7755_");
@@ -240,6 +241,7 @@ final class ForgeReflectionConstants {
         putM("getTickCount",        M_GET_TICK_COUNT);
         putM("getLevel",            M_GET_LEVEL);
         putM("sendSystemMessage",   M_SEND_SYSTEM_MSG_SRV);
+        putM("isOnlineMode",        M_IS_ONLINE_MODE);
         // Aliases
         putM("getTicks",            M_GET_TICK_COUNT);
         putM("getWorld",            M_GET_LEVEL);
