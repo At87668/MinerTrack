@@ -27,6 +27,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import link.star_dust.MinerTrack.common.BStatsCompat;
 import link.star_dust.MinerTrack.common.DebugConfig;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
@@ -51,6 +52,7 @@ public class ForgePlatform {
     private ForgeWebhookSender webhookSender;
     private ForgeCommandExecutor commandExecutor;
     private ForgeMiningListener miningListener;
+    private BStatsCompat bStatsCompat;
 
     public void onServerStarting(Object event) {
         // Cache the MinecraftServer from the ServerStartingEvent so that
@@ -103,6 +105,16 @@ public class ForgePlatform {
         registerServerStopping();
 
         violationManager.scheduleGlobalDecayTask(20L * 60L * 20L);
+
+        // bStats — Forge has no JavaPlugin, so the Bukkit bStats library cannot
+        // start from this platform. Feed the same Bukkit project (id 23790) through
+        // the platform-agnostic bridge so Forge installs are counted too. Non-fatal.
+        try {
+            bStatsCompat = new BStatsCompat(adapter, new ForgeBStatsData());
+        } catch (Throwable t) {
+            adapter.warning("Failed to initialise bStats metrics: " + t.getMessage());
+        }
+
         new Core(adapter).printStartupBanner();
         adapter.info("MinerTrack (Forge) enabled.");
     }
@@ -241,6 +253,49 @@ public class ForgePlatform {
     }
 
     public void onServerStopping() {
+        if (bStatsCompat != null) bStatsCompat.shutdown();
         adapter.info("MinerTrack (Forge) disabled.");
+    }
+
+    /** bStats telemetry provider for the Forge runtime (defensive reads). */
+    private static final class ForgeBStatsData implements BStatsCompat.Data {
+        @Override
+        public int playerAmount() {
+            try {
+                Object server = ForgeReflection.getServer();
+                if (server == null) return 0;
+                Object pm = ForgeReflection.call(server, "getPlayerList", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                if (pm == null) return 0;
+                Object list = ForgeReflection.call(pm, "getPlayers", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                if (list instanceof java.util.Collection) return ((java.util.Collection<?>) list).size();
+            } catch (Throwable ignored) {}
+            return 0;
+        }
+
+        @Override
+        public int onlineMode() {
+            try {
+                Object server = ForgeReflection.getServer();
+                if (server == null) return -1;
+                Object v = ForgeReflection.call(server, "isOnlineMode", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                if (v instanceof Boolean) return ((Boolean) v) ? 1 : 0;
+            } catch (Throwable ignored) {}
+            return -1;
+        }
+
+        @Override
+        public String serverSoftware() { return "Forge"; }
+
+        @Override
+        public String serverVersion() {
+            try {
+                // Stable FML API — avoids an SRG method-name lookup on MinecraftServer.
+                Object info = ForgeReflection.callStatic("net.minecraftforge.fml.loading.FMLLoader",
+                    "versionInfo", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                if (info == null) return null;
+                Object v = ForgeReflection.call(info, "mcVersion", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+                return v == null ? null : v.toString();
+            } catch (Throwable ignored) { return null; }
+        }
     }
 }
