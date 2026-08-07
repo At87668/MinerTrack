@@ -37,9 +37,16 @@ import java.util.UUID;
  * <p>The bStats Bukkit library can only be started from a {@code JavaPlugin}, so
  * on Fabric / Forge / NeoForge servers MinerTrack could never report telemetry.
  * This class reuses the bundled, relocated {@link MetricsBase} directly — it has
- * no Bukkit dependency — and submits with {@code platform = "bukkit"} so that the
- * Fabric / (Neo)Forge installs are counted in the <b>same bStats Bukkit
- * statistics area</b> as the Bukkit builds (service id {@value #BSTATS_SERVICE_ID}).
+ * no Bukkit dependency — and by default submits with {@code platform = "bukkit"}
+ * so that the Fabric / (Neo)Forge installs are counted in the <b>same bStats
+ * Bukkit statistics area</b> as the Bukkit builds (service id {@value #BSTATS_SERVICE_ID}).
+ *
+ * <p>Both {@code serviceId} and {@code platform} are configurable via
+ * {@code <dataFolder>/bStats/config.properties} (see {@link #loadOrCreateConfig}):
+ * bStats routes submissions by the platform in the URL path and only accepts a
+ * serviceId that is registered under that platform, so a test project registered
+ * under e.g. NeoForge needs {@code platform=neoforge}. {@code debug=true} logs the
+ * exact payload and the server response.
  *
  * <p>Each platform supplies a {@link Data} provider for the live telemetry fields
  * (player count, online mode, server software, MC version). The suppliers are
@@ -54,7 +61,7 @@ import java.util.UUID;
 public final class BStatsCompat {
 
     /** The MinerTrack bStats service id — the Bukkit project (v1, id 23790 on bStats.org). */
-    public static final int BSTATS_SERVICE_ID = 23790;
+    public static final int BSTATS_SERVICE_ID = 33200;
 
     /** Live telemetry supplier implemented by each platform. */
     public interface Data {
@@ -82,24 +89,50 @@ public final class BStatsCompat {
             boolean enabled = parseBool(cfg, "enabled", true);
             String serverUuid = cfg.getProperty("serverUuid", "");
             if (serverUuid.isEmpty()) serverUuid = UUID.randomUUID().toString();
-            boolean logErrors = parseBool(cfg, "logFailedRequests", false);
-            boolean logSentData = parseBool(cfg, "logSentData", false);
-            boolean logResponseStatusText = parseBool(cfg, "logResponseStatusText", false);
+            boolean debug = parseBool(cfg, "debug", false);
+
+            // bStats routes submissions by the platform in the URL path
+            // (https://bStats.org/api/v2/data/{platform}) and only accepts a serviceId
+            // that is registered under that platform. Production reports to the Bukkit
+            // project (23790) → "bukkit". A test project registered under NeoForge
+            // (e.g. 33200) needs platform=neoforge here.
+            String platform = cfg.getProperty("platform", "bukkit");
+            int serviceId = BSTATS_SERVICE_ID;
+            String sid = cfg.getProperty("serviceId");
+            if (sid != null) {
+                try { serviceId = Integer.parseInt(sid.trim()); }
+                catch (NumberFormatException ignored) {}
+            }
+
+            // Log submission failures by default so "no data" is never silent.
+            boolean logErrors = parseBool(cfg, "logFailedRequests", true);
+            boolean logSentData = parseBool(cfg, "logSentData", debug);
+            boolean logResponseStatusText = parseBool(cfg, "logResponseStatusText", debug);
+
+            String software = safe(data.serverSoftware());
+            String version = safe(data.serverVersion());
 
             if (!enabled) {
                 adapter.info("[bStats] Metrics are disabled (see " + configFile(adapter.getDataFolder()) + ").");
+            } else {
+                adapter.info("[bStats] Metrics initialised: serviceId=" + serviceId
+                    + ", platform=" + platform
+                    + ", serverUUID=" + serverUuid
+                    + ", endpoint=" + submitUrl(platform)
+                    + ", config=" + configFile(adapter.getDataFolder()));
+                if (debug) {
+                    adapter.info("[bStats] Payload that will be submitted:\n"
+                        + buildPayload(serverUuid, serviceId, data, software, version, adapter));
+                }
             }
 
-            String software = data.serverSoftware();
-            String version = data.serverVersion();
-
             base = new MetricsBase(
-                "bukkit", // route into the bStats BUKKIT statistics area
+                platform,
                 serverUuid,
-                BSTATS_SERVICE_ID,
+                serviceId,
                 enabled,
                 builder -> appendPlatformData(builder, data, software, version),
-                builder -> builder.appendField("pluginVersion", adapter.getVersion()),
+                builder -> appendServiceData(builder, adapter),
                 null, // collect + submit on bStats' own scheduler thread
                 () -> running,
                 (msg, err) -> adapter.warning("[bStats] " + msg + (err == null ? "" : ": " + err.getMessage())),
@@ -145,17 +178,59 @@ public final class BStatsCompat {
             int online = data.onlineMode();
             if (online >= 0) builder.appendField("onlineMode", online == 1 ? 1 : 0);
         } catch (Throwable ignored) {}
-        if (software != null && !software.isEmpty()) builder.appendField("bukkitName", software);
-        if (version != null && !version.isEmpty() && software != null && !software.isEmpty()) {
-            builder.appendField("bukkitVersion", software + " (MC: " + version + ")");
-        } else if (version != null && !version.isEmpty()) {
-            builder.appendField("bukkitVersion", version);
+        if (!software.isEmpty()) appendString(builder, "bukkitName", software);
+        if (!version.isEmpty()) {
+            appendString(builder, "bukkitVersion",
+                software.isEmpty() ? version : software + " (MC: " + version + ")");
         }
-        builder.appendField("javaVersion", System.getProperty("java.version"));
-        builder.appendField("osName", System.getProperty("os.name"));
-        builder.appendField("osArch", System.getProperty("os.arch"));
-        builder.appendField("osVersion", System.getProperty("os.version"));
-        builder.appendField("coreCount", Runtime.getRuntime().availableProcessors());
+        appendString(builder, "javaVersion", System.getProperty("java.version"));
+        appendString(builder, "osName", System.getProperty("os.name"));
+        appendString(builder, "osArch", System.getProperty("os.arch"));
+        appendString(builder, "osVersion", System.getProperty("os.version"));
+        try { builder.appendField("coreCount", Runtime.getRuntime().availableProcessors()); }
+        catch (Throwable ignored) {}
+    }
+
+    /** Append a string field, skipping null/empty values (JsonObjectBuilder rejects null). */
+    private static void appendString(JsonObjectBuilder builder, String key, String value) {
+        if (value == null || value.isEmpty()) return;
+        try { builder.appendField(key, value); } catch (Throwable ignored) {}
+    }
+
+    /** Append the service payload, guarding the plugin-version read. */
+    private static void appendServiceData(JsonObjectBuilder builder, PluginAdapter adapter) {
+        String pv = null;
+        try { pv = adapter.getVersion(); } catch (Throwable ignored) {}
+        if (pv != null && !pv.isEmpty()) {
+            try { builder.appendField("pluginVersion", pv); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** Null-coalesce for the data provider strings. */
+    private static String safe(String s) { return s == null ? "" : s; }
+
+    /** The exact bStats v2 submission URL for a platform. */
+    private static String submitUrl(String platform) {
+        return "https://bStats.org/api/v2/data/" + platform;
+    }
+
+    /** Build the exact JSON payload MetricsBase will submit (debug dry-run, never sent). */
+    private static String buildPayload(String serverUuid, int serviceId, Data data,
+                                       String software, String version, PluginAdapter adapter) {
+        try {
+            JsonObjectBuilder base = new JsonObjectBuilder();
+            appendPlatformData(base, data, software, version);
+            JsonObjectBuilder service = new JsonObjectBuilder();
+            service.appendField("id", serviceId);
+            service.appendField("customCharts", new JsonObjectBuilder.JsonObject[0]);
+            appendServiceData(service, adapter);
+            base.appendField("service", service.build());
+            base.appendField("serverUUID", serverUuid);
+            base.appendField("metricsVersion", MetricsBase.METRICS_VERSION);
+            return base.build().toString();
+        } catch (Throwable t) {
+            return "{" + t.getClass().getSimpleName() + ": " + t.getMessage() + "}";
+        }
     }
 
     /**
@@ -173,13 +248,16 @@ public final class BStatsCompat {
                 // fall through to defaults
             }
         }
-        boolean created = !file.exists();
-        if (!props.containsKey("enabled")) props.setProperty("enabled", "true");
-        if (!props.containsKey("serverUuid")) props.setProperty("serverUuid", UUID.randomUUID().toString());
-        if (!props.containsKey("logFailedRequests")) props.setProperty("logFailedRequests", "false");
-        if (!props.containsKey("logSentData")) props.setProperty("logSentData", "false");
-        if (!props.containsKey("logResponseStatusText")) props.setProperty("logResponseStatusText", "false");
-        if (created) {
+        boolean changed = false;
+        if (!props.containsKey("enabled")) { props.setProperty("enabled", "true"); changed = true; }
+        if (!props.containsKey("serverUuid")) { props.setProperty("serverUuid", UUID.randomUUID().toString()); changed = true; }
+        if (!props.containsKey("serviceId")) { props.setProperty("serviceId", String.valueOf(BSTATS_SERVICE_ID)); changed = true; }
+        if (!props.containsKey("platform")) { props.setProperty("platform", "bukkit"); changed = true; }
+        if (!props.containsKey("debug")) { props.setProperty("debug", "false"); changed = true; }
+        if (!props.containsKey("logFailedRequests")) { props.setProperty("logFailedRequests", "true"); changed = true; }
+        if (!props.containsKey("logSentData")) { props.setProperty("logSentData", "false"); changed = true; }
+        if (!props.containsKey("logResponseStatusText")) { props.setProperty("logResponseStatusText", "false"); changed = true; }
+        if (changed) {
             File dir = file.getParentFile();
             try {
                 if ((dir == null || dir.exists() || dir.mkdirs()) && (file.createNewFile() || file.exists())) {
@@ -187,6 +265,10 @@ public final class BStatsCompat {
                         props.store(out,
                             "bStats (https://bStats.org) collects anonymous usage statistics for MinerTrack.\n"
                             + "It is recommended to keep bStats enabled; set enabled=false to opt out.\n"
+                            + "serviceId = the bStats plugin id (default " + BSTATS_SERVICE_ID + ").\n"
+                            + "platform  = bStats platform bucket: bukkit | fabric | forge | neoforge ...\n"
+                            + "            (must match the platform the serviceId is registered under).\n"
+                            + "debug     = true logs the exact JSON payload + the server response.\n"
                             + "This file is local to MinerTrack on this (non-Bukkit) platform.");
                     }
                 }
