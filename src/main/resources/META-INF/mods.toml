@@ -5,11 +5,11 @@
 modLoader = "javafml"
 loaderVersion = "[1,)" # Compatible with NeoForge 1.20
 
-license = "MIT"
+license = "GPLv3"
 
 [[mods]]
 modId = "minertrack"
-version = "2.1.1.0"
+version = "2.1.0.1"
 displayName = "MinerTrack"
 # logoFile is optional — omit for now
 description = '''

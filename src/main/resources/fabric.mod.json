@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "minertrack",
-  "version": "2.1.1.0",
+  "version": "2.1.0.1",
   "name": "MinerTrack",
   "description": "The Advanced Anti-Xray that you need. Have you ever dreamed of a powerful anti-xray?",
   "authors": [
@@ -12,7 +12,7 @@
     "sources": "https://github.com/At87668/MinerTrack",
     "issues": "https://github.com/At87668/MinerTrack/issues"
   },
-  "license": "MIT",
+  "license": "GPLv3",
   "icon": "assets/minertrack/icon.png",
   "environment": "server",
   "entrypoints": {

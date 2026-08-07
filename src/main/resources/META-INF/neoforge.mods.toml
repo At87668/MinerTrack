@@ -5,11 +5,11 @@
 modLoader = "javafml"
 loaderVersion = "[1,)"  # NeoForge 20.2+
 
-license = "MIT"
+license = "GPLv3"
 
 [[mods]]
 modId = "minertrack"
-version = "2.1.1.0"
+version = "2.1.0.1"
 displayName = "MinerTrack"
 description = '''The Advanced Anti-Xray that you need. Have you ever dreamed of a powerful anti-xray?'''
 authors = "Author87668"
