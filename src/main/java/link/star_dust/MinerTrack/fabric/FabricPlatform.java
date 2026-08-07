@@ -244,6 +244,9 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         public String serverSoftware() { return "Fabric"; }
 
         @Override
+        public String platformTag() { return "fabric"; }
+
+        @Override
         public String serverVersion() {
             try {
                 // fabric-loader 0.14.x has no FabricLoader.getGameVersion(); read the
