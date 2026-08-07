@@ -288,6 +288,9 @@ public class ForgePlatform {
         public String serverSoftware() { return "Forge"; }
 
         @Override
+        public String platformTag() { return "forge"; }
+
+        @Override
         public String serverVersion() {
             try {
                 // Stable FML API — avoids an SRG method-name lookup on MinecraftServer.
