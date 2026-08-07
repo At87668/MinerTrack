@@ -41,12 +41,11 @@ import java.util.UUID;
  * so that the Fabric / (Neo)Forge installs are counted in the <b>same bStats
  * Bukkit statistics area</b> as the Bukkit builds (service id {@value #BSTATS_SERVICE_ID}).
  *
- * <p>Both {@code serviceId} and {@code platform} are configurable via
- * {@code <dataFolder>/bStats/config.properties} (see {@link #loadOrCreateConfig}):
- * bStats routes submissions by the platform in the URL path and only accepts a
- * serviceId that is registered under that platform, so a test project registered
- * under e.g. NeoForge needs {@code platform=neoforge}. {@code debug=true} logs the
- * exact payload and the server response.
+ * <p>The service id and the platform are fixed: service id {@value #BSTATS_SERVICE_ID}
+ * submitted to the {@code "bukkit"} platform bucket (bStats routes submissions by the
+ * platform in the URL path). {@code debug=true} in
+ * {@code <dataFolder>/bStats/config.properties} logs the exact payload and the server
+ * response for troubleshooting.
  *
  * <p>Each platform supplies a {@link Data} provider for the live telemetry fields
  * (player count, online mode, server software, MC version). The suppliers are
@@ -60,7 +59,7 @@ import java.util.UUID;
  */
 public final class BStatsCompat {
 
-    /** The MinerTrack bStats service id — the Bukkit project (v1, id 23790 on bStats.org). */
+    /** The MinerTrack bStats service id (Bukkit platform project). */
     public static final int BSTATS_SERVICE_ID = 33200;
 
     /** Live telemetry supplier implemented by each platform. */
@@ -91,18 +90,14 @@ public final class BStatsCompat {
             if (serverUuid.isEmpty()) serverUuid = UUID.randomUUID().toString();
             boolean debug = parseBool(cfg, "debug", false);
 
-            // bStats routes submissions by the platform in the URL path
-            // (https://bStats.org/api/v2/data/{platform}) and only accepts a serviceId
-            // that is registered under that platform. Production reports to the Bukkit
-            // project (23790) → "bukkit". A test project registered under NeoForge
-            // (e.g. 33200) needs platform=neoforge here.
-            String platform = cfg.getProperty("platform", "bukkit");
+            // Fixed submission target: the MinerTrack Bukkit project (service id
+            // BSTATS_SERVICE_ID) into the bStats "bukkit" platform bucket. bStats
+            // routes submissions by the platform in the URL path
+            // (https://bStats.org/api/v2/data/bukkit), so the id must be a Bukkit
+            // project — that is how the Fabric/(Neo)Forge installs are counted in
+            // the same stats area as the Bukkit builds.
+            String platform = "bukkit";
             int serviceId = BSTATS_SERVICE_ID;
-            String sid = cfg.getProperty("serviceId");
-            if (sid != null) {
-                try { serviceId = Integer.parseInt(sid.trim()); }
-                catch (NumberFormatException ignored) {}
-            }
 
             // Log submission failures by default so "no data" is never silent.
             boolean logErrors = parseBool(cfg, "logFailedRequests", true);
@@ -251,8 +246,6 @@ public final class BStatsCompat {
         boolean changed = false;
         if (!props.containsKey("enabled")) { props.setProperty("enabled", "true"); changed = true; }
         if (!props.containsKey("serverUuid")) { props.setProperty("serverUuid", UUID.randomUUID().toString()); changed = true; }
-        if (!props.containsKey("serviceId")) { props.setProperty("serviceId", String.valueOf(BSTATS_SERVICE_ID)); changed = true; }
-        if (!props.containsKey("platform")) { props.setProperty("platform", "bukkit"); changed = true; }
         if (!props.containsKey("debug")) { props.setProperty("debug", "false"); changed = true; }
         if (!props.containsKey("logFailedRequests")) { props.setProperty("logFailedRequests", "true"); changed = true; }
         if (!props.containsKey("logSentData")) { props.setProperty("logSentData", "false"); changed = true; }
@@ -265,9 +258,6 @@ public final class BStatsCompat {
                         props.store(out,
                             "bStats (https://bStats.org) collects anonymous usage statistics for MinerTrack.\n"
                             + "It is recommended to keep bStats enabled; set enabled=false to opt out.\n"
-                            + "serviceId = the bStats plugin id (default " + BSTATS_SERVICE_ID + ").\n"
-                            + "platform  = bStats platform bucket: bukkit | fabric | forge | neoforge ...\n"
-                            + "            (must match the platform the serviceId is registered under).\n"
                             + "debug     = true logs the exact JSON payload + the server response.\n"
                             + "This file is local to MinerTrack on this (non-Bukkit) platform.");
                     }
