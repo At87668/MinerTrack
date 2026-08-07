@@ -270,6 +270,9 @@ public class NeoForgePlatform {
         public String serverSoftware() { return "NeoForge"; }
 
         @Override
+        public String platformTag() { return "neoforge"; }
+
+        @Override
         public String serverVersion() {
             try {
                 // Stable FML API — avoids an SRG method-name lookup on MinecraftServer.
