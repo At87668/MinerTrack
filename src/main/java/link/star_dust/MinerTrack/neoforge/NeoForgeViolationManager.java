@@ -122,31 +122,26 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
     @Override public void runConsoleCommand(String command) {
         try {
             Object server = NeoForgeReflection.getServer();
-            if (server == null) { System.out.println("[MinerTrack:DIAG] runConsoleCommand: server null"); return; }
+            if (server == null) return;
             Object cm = NeoForgeReflection.callAny(server, "getCommands", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
             if (cm == null) cm = NeoForgeReflection.callAny(server, "getCommandManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-            if (cm == null) { System.out.println("[MinerTrack:DIAG] runConsoleCommand: cm null"); return; }
+            if (cm == null) return;
             Object css = NeoForgeReflection.callAny(server, "createCommandSourceStack", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-            if (css == null) { System.out.println("[MinerTrack:DIAG] runConsoleCommand: css null"); return; }
+            if (css == null) return;
             Class<?> cssCls = NeoForgeReflection.forName("net.minecraft.commands.CommandSourceStack");
             if (cssCls == null) cssCls = css.getClass();
             try {
                 NeoForgeReflection.callAny(cm, "performPrefixedCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command});
-                System.out.println("[MinerTrack:DIAG] runConsoleCommand: performPrefixedCommand OK: " + command);
             } catch (Throwable t1) {
-                System.out.println("[MinerTrack:DIAG] runConsoleCommand: performPrefixedCommand FAIL: " + t1);
                 try {
                     NeoForgeReflection.callAny(cm, "performCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command});
-                    System.out.println("[MinerTrack:DIAG] runConsoleCommand: performCommand OK: " + command);
                 } catch (Throwable t2) {
-                    System.out.println("[MinerTrack:DIAG] runConsoleCommand: performCommand FAIL: " + t2);
                     try {
                         NeoForgeReflection.callAny(cm, "executeWithPrefix", new Class<?>[]{cssCls, String.class}, new Object[]{css, command});
-                        System.out.println("[MinerTrack:DIAG] runConsoleCommand: executeWithPrefix OK: " + command);
-                    } catch (Throwable t3) { System.out.println("[MinerTrack:DIAG] runConsoleCommand: executeWithPrefix FAIL: " + t3); }
+                    } catch (Throwable t3) { /* silent */ }
                 }
             }
-        } catch (Throwable t) { System.out.println("[MinerTrack:DIAG] runConsoleCommand: outer FAIL: " + t); }
+        } catch (Throwable t) { /* silent */ }
     }
     @Override public Set<UUID> getVerbosePlayers() { return verbosePlayers; }
     private volatile boolean verboseConsole = false;
@@ -156,7 +151,22 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
 
     @Override public boolean hasPermission(UUID pid, String node) { try { Object server = NeoForgeReflection.getServer(); if (server == null) return false; Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return false; Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) return false; if (NeoForgeCommandBridge.checkNeoForgePermission(player, node)) return true; return NeoForgeCommandBridge.isPlayerOperator(player); } catch (Throwable t) { return false; } }
 
-    @Override public void sendMessageToPlayer(UUID pid, String msg) { try { Object server = NeoForgeReflection.getServer(); if (server == null) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: server null"); return; } Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: pm null"); return; } Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player == null) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: player null for " + pid); return; } Object text = NeoForgeReflection.createText(msg); if (text == null) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: createText null for " + msg); return; } Class<?> tc = NeoForgeReflection.resolveTextComponentClass(); if (tc == null) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: textCls null"); return; } try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc}, new Object[]{text}); System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: OK via (Component)"); } catch (Throwable t1) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: (Component) FAIL " + t1); try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, UUID.class}, new Object[]{text, UUID.randomUUID()}); System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: OK via (Component,UUID)"); } catch (Throwable t2) { try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{tc, boolean.class}, new Object[]{text, false}); System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: OK via (Component,boolean)"); } catch (Throwable t3) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: ALL FAIL " + t3); } } } } catch (Throwable t) { System.out.println("[MinerTrack:DIAG] sendMessageToPlayer: outer FAIL " + t); } }
+    @Override public void sendMessageToPlayer(UUID pid, String msg) {
+        try {
+            Object server = NeoForgeReflection.getServer();
+            if (server == null) return;
+            Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (pm == null) return;
+            Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid});
+            if (player == null) return;
+            Object text = NeoForgeReflection.createText(msg);
+            if (text == null) return;
+            // Name-based routing via NeoForgeCommandBridge.sendFeedback (explicitly finds
+            // ServerPlayer sendSystemMessage(Component)); avoids the signature-blind scan
+            // that threw InvocationTargetException on NeoForge 1.21.1.
+            NeoForgeCommandBridge.sendFeedback(player, text, true);
+        } catch (Throwable t) { /* silent */ }
+    }
 
     @Override public Object getConfigSection(String p) { return config.get(p); }
     @Override public Object getConfig(String p) { return config.get(p); }
