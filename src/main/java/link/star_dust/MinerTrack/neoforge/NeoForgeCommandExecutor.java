@@ -70,7 +70,30 @@ public class NeoForgeCommandExecutor {
         @Override public UUID getPlayerUUID(String name) { try { Object p = playerByName(cs, name); if (p == null) return null; Object u = NeoForgeReflection.callUuid(p); return u instanceof UUID ? (UUID) u : null; } catch (Throwable t) { return null; } }
         @Override public String getPlayerName(UUID uuid) { try { Object p = playerByUuid(cs, uuid); if (p == null) return uuid.toString(); Object n = NeoForgeReflection.callAny(p, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); String s = NeoForgeReflection.readString(n); return s == null ? uuid.toString() : s; } catch (Throwable t) { return uuid.toString(); } }
         @Override public boolean isOnline(UUID uuid) { return playerByUuid(cs, uuid) != null; }
-        @Override public List<String> getOnlinePlayerNames() { List<String> names = new ArrayList<>(); try { Object srv = cs != null ? NeoForgeReflection.callAny(cs, "getServer", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS) : server(); if (srv == null) return names; Object pm = NeoForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm == null) return names; Object players = NeoForgeReflection.callAny(pm, "getPlayers", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (players instanceof List) for (Object p : (List<?>) players) { Object n = NeoForgeReflection.callAny(p, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); String s = NeoForgeReflection.readString(n); if (s != null) names.add(s); } } catch (Throwable t) {} return names; }
+        @Override public List<String> getOnlinePlayerNames() {
+            List<String> names = new ArrayList<>();
+            try {
+                Object srv = cs != null
+                    ? NeoForgeReflection.callAny(cs, "getServer", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS)
+                    : server();
+                if (srv == null) return names;
+                Object pm = NeoForgeReflection.callMigrated(srv, "getPlayerList", "getPlayerManager",
+                    NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (pm == null) return names;
+                // MC 26.1+: getPlayers(); 1.18-1.21: getPlayerList() — mirror Fabric.
+                Object players = NeoForgeReflection.callMigrated(pm, "getPlayers", "getPlayerList",
+                    NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (players == null) return names;
+                if (players instanceof java.util.Collection) {
+                    for (Object p : (java.util.Collection<?>) players) {
+                        Object n = NeoForgeReflection.callAny(p, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                        String s = NeoForgeReflection.readString(n);
+                        if (s != null) names.add(s);
+                    }
+                }
+            } catch (Throwable t) {}
+            return names;
+        }
     }
 
     private class KickBridgeImpl implements MinerTrackCommandCore.KickBridge {
