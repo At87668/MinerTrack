@@ -179,45 +179,47 @@ public class NeoForgeCommandBridge implements CommandBridge {
     @Override public void sendMessageToPlayer(UUID playerId, String message) {
         try {
             Object server = NeoForgeReflection.getServer();
-            if (server == null) return;
+            if (server == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: server null"); return; }
             Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
                 NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
-            if (pm == null) return;
+            if (pm == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: pm null"); return; }
             Object player = NeoForgeReflection.call(pm, "getPlayer", new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) return;
+            if (player == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: player null for " + playerId); return; }
             Object text = createText(message);
-            if (text == null) return;
+            if (text == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: createText null for " + message); return; }
             Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
-            if (textCls == null) return;
+            if (textCls == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: textCls null"); return; }
             // MC 26.x ServerPlayer no longer has sendMessage(Component[,UUID]);
             // it uses sendSystemMessage(Component). Try that first, then the
             // legacy sendMessage variants for older versions.
-            try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); }
+            try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls}, new Object[]{text}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: OK (Component)"); }
             catch (Throwable t1) {
-                try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
+                System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: (Component) FAIL " + t1);
+                try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: OK (Component,UUID)"); }
                 catch (Throwable t2) {
-                    try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, boolean.class}, new Object[]{text, false}); }
-                    catch (Throwable t3) {}
+                    try { NeoForgeReflection.invokeBySigOrThrow(player, new Class<?>[]{textCls, boolean.class}, new Object[]{text, false}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: OK (Component,boolean)"); }
+                    catch (Throwable t3) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: ALL FAIL " + t3); }
                 }
             }
-        } catch (Throwable t) {}
+        } catch (Throwable t) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToPlayer: outer FAIL " + t); }
     }
 
     @Override public void sendMessageToConsole(String message) {
         try {
             Object server = NeoForgeReflection.getServer();
-            if (server == null) return;
+            if (server == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: server null"); return; }
             Object text = createText(message);
-            if (text == null) return;
+            if (text == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: createText null for " + message); return; }
             Class<?> textCls = NeoForgeReflection.resolveTextComponentClass();
-            if (textCls == null) return;
+            if (textCls == null) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: textCls null"); return; }
             // MC 26.x MinecraftServer uses sendSystemMessage(Component).
-            try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls}, new Object[]{text}); }
+            try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls}, new Object[]{text}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: OK (Component)"); }
             catch (Throwable t1) {
-                try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); }
-                catch (Throwable t2) {}
+                System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: (Component) FAIL " + t1);
+                try { NeoForgeReflection.invokeBySigOrThrow(server, new Class<?>[]{textCls, UUID.class}, new Object[]{text, UUID.randomUUID()}); System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: OK (Component,UUID)"); }
+                catch (Throwable t2) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: ALL FAIL " + t2); }
             }
-        } catch (Throwable t) { System.out.println("[MinerTrack] " + message); }
+        } catch (Throwable t) { System.out.println("[MinerTrack:DIAG] bridge sendMessageToConsole: outer FAIL " + t); }
     }
 
     @Override public boolean toggleVerbose() {
