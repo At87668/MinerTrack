@@ -108,7 +108,30 @@ public class ForgeViolationManager implements ViolationManagerBridge {
     @Override public boolean isLogFileEnabled() { return config.getBoolean("log_file", false); }
     @Override public String getLogFormat() { if (languageBridge != null) return languageBridge.getLogFormat(); return "%year%-%month%-%day% %hour%-%minute%-%second% | %player% | %vl% | %world% | %pos_x% %pos_y% %pos_z%"; }
     @Override public void appendLogLine(String line) { writeLogLine(line); }
-    @Override public void runConsoleCommand(String command) { try { Object server = ForgeReflection.getServer(); if (server == null) return; Object cm = ForgeReflection.callAny(server, "getCommands", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (cm == null) cm = ForgeReflection.callAny(server, "getCommandManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (cm == null) return; Object css = ForgeReflection.callAny(server, "createCommandSourceStack", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); if (css == null) return; Class<?> cssCls = css.getClass(); try { ForgeReflection.callAny(cm, "performPrefixedCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t1) { try { ForgeReflection.callAny(cm, "performCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command}); } catch (Throwable t2) {} } } catch (Throwable t) {} }
+    @Override public void runConsoleCommand(String command) {
+        try {
+            Object server = ForgeReflection.getServer();
+            if (server == null) return;
+            Object cm = ForgeReflection.callAny(server, "getCommands", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (cm == null) cm = ForgeReflection.callAny(server, "getCommandManager", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (cm == null) return;
+            Object css = ForgeReflection.callAny(server, "createCommandSourceStack", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
+            if (css == null) return;
+            Class<?> cssCls = ForgeReflection.forName("net.minecraft.commands.CommandSourceStack");
+            if (cssCls == null) cssCls = css.getClass();
+            try {
+                ForgeReflection.callAny(cm, "performPrefixedCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command});
+            } catch (Throwable t1) {
+                try {
+                    ForgeReflection.callAny(cm, "performCommand", new Class<?>[]{cssCls, String.class}, new Object[]{css, command});
+                } catch (Throwable t2) {
+                    try {
+                        ForgeReflection.callAny(cm, "executeWithPrefix", new Class<?>[]{cssCls, String.class}, new Object[]{css, command});
+                    } catch (Throwable t3) {}
+                }
+            }
+        } catch (Throwable t) {}
+    }
     @Override public Set<UUID> getVerbosePlayers() { return verbosePlayers; }
     private volatile boolean verboseConsole = false;
     @Override public boolean isVerboseConsoleEnabled() { return verboseConsole; }
