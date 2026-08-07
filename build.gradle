@@ -1,3 +1,5 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
     id 'java'
     id 'eclipse'
@@ -8,6 +10,21 @@ group 'link.star_dust'
 version '2.1.0.1'
 
 sourceCompatibility = 17
+
+// Per-platform bundled (shaded) dependency sets. Each distribution JAR bundles
+// only the runtime dependencies its platform needs:
+//   shadeCommon — shared by every platform (webhook HTTP transport + JSON)
+//   shadeBukkit / shadeFabric / shadeForge / shadeNeoForge — per-platform extras
+// These configurations feed the compile classpath (the source imports their
+// classes directly) and are consumed individually by the per-platform
+// shadowJar tasks at the bottom of this file.
+configurations {
+    shadeCommon
+    shadeBukkit
+    shadeFabric
+    shadeForge
+    shadeNeoForge
+}
 
 sourceSets {
     main {
@@ -64,6 +81,7 @@ repositories {
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
 
+    // ---- compileOnly: provided by the server at runtime, NOT bundled ----
     // Paper / Folia platform
     compileOnly 'dev.folia:folia-api:1.20.1-R0.1-SNAPSHOT'
     // Fabric platform
@@ -75,33 +93,37 @@ dependencies {
     // classes.
     // Brigadier is bundled with Minecraft; explicit dep for direct type access
     compileOnly 'com.mojang:brigadier:1.0.18'
-    implementation 'org.bstats:bstats-bukkit:3.0.0'
-    implementation 'org.json:json:20230227'
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2'
-    // SnakeYAML is the YAML 1.1 parser used by FabricYamlLoader.
-    // It MUST be bundled in the shadow JAR (Fabric servers don't
-    // ship SnakeYAML on the classpath, unlike Paper / Spigot
-    // which include it transitively through Bukkit). Declaring
-    // it `implementation` puts it on the shadow JAR's
-    // compileClasspath so the `from { configurations.compileClasspath
-    // ... }` block in the `jar` task pulls it in. The `org/yaml/`
-    // exclude that the v1 legacy jar config used (Paper / Spigot
-    // already ship their own SnakeYAML) is therefore removed
-    // below; on Bukkit the bundled copy is harmless because
-    // Bukkit's classloader resolves Bukkit's own first, and on
-    // Fabric we want our copy to win.
-    implementation 'org.yaml:snakeyaml:2.2'
     // fabric-permissions-api: delegates to LuckPerms (or op-level fallback).
     // compileOnly — NOT bundled in the JAR. LuckPerms provides its own
     // copy of this API that matches the server's Minecraft version.
     // The fabric.mod.json "recommends" luckperms as a soft dependency.
     compileOnly 'me.lucko:fabric-permissions-api:0.3.3'
-    // mapping-io provides ProGuardFileReader and Tiny2FileWriter
-    // for converting Mojang's ProGuard mappings to Tiny v2 format.
-    // The Tiny2FileReader used for injection is bundled inside
-    // Fabric Loader (net.fabricmc.loader.impl.lib.mappingio.*).
-    implementation 'net.fabricmc:mapping-io:0.5.0'
+
+    // ---- Bundled (shaded) dependencies, split per platform ----
+    // Shared by every platform (webhook HTTP transport + JSON):
+    shadeCommon 'org.json:json:20230227'
+    shadeCommon 'org.apache.httpcomponents.client5:httpclient5:5.2'
+    // Bukkit-only: bStats telemetry (org.bstats.bukkit.Metrics).
+    shadeBukkit 'org.bstats:bstats-bukkit:3.0.0'
+    // SnakeYAML is the YAML 1.1 parser used by the Fabric / Forge / NeoForge
+    // CommonYaml implementations. It MUST be bundled (relocated) because
+    // modded servers don't ship SnakeYAML on the classpath, unlike Paper /
+    // Spigot which include it transitively through Bukkit. The Bukkit JAR
+    // does NOT bundle it (BukkitCommonYaml uses Bukkit's YamlConfiguration).
+    shadeFabric 'org.yaml:snakeyaml:2.2'
+    shadeForge 'org.yaml:snakeyaml:2.2'
+    shadeNeoForge 'org.yaml:snakeyaml:2.2'
 }
+
+// The bundled deps are imported directly by the source, so expose them on the
+// compile classpath. Packaging picks per-platform subsets via the shade* configs.
+configurations.compileClasspath.extendsFrom(
+    configurations.shadeCommon,
+    configurations.shadeBukkit,
+    configurations.shadeFabric,
+    configurations.shadeForge,
+    configurations.shadeNeoForge,
+)
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
@@ -119,61 +141,119 @@ processResources {
     }
 }
 
+// The plain jar is disabled — distribution is done by the per-platform
+// shadowJar tasks below. Keeping it would produce a misleading
+// MinerTrack-<version>.jar (all classes, no deps) in build/libs next to
+// the real platform JARs.
 jar {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    manifest {
-        attributes(
-            'Main-Class': 'link.star_dust.MinerTrack',
-            'Implementation-Title': project.name,
-            'Implementation-Version': project.version
-        )
-    }
-    // The `org/yaml/` exclude was removed: SnakeYAML is now
-    // bundled (see the implementation 'org.yaml:snakeyaml:2.2'
-    // declaration above) so the Fabric platform can parse
-    // YAML without depending on a server-bundled copy.
-    // Bukkit's loader resolves Bukkit's own org/yaml/snakeyaml
-    // first (Paper / Spigot bundle it) so the shadowed copy
-    // is never used on the Bukkit path.
-    exclude 'META-INF/', 'LICENSE.txt', 'LICENSE', 'org/apache/', 'org/slf4j/', 'org/spigotmc/', 'org/bukkit/', 'com/', 'net/', 'mojang-translations/', 'javax/'
-    exclude 'net/minecraft/'
-    exclude 'net/fabricmc/'
-    exclude 'me/lucko/'
-
-    from {
-        configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    }
+    enabled = false
 }
 
 test {
     useJUnitPlatform()
 }
 
-shadowJar {
-    relocate 'org.bstats', 'link.star_dust.bstats'
-    relocate 'org.apache.httpcomponents', 'link.star_dust.httpcomponents'
-    // Relocate SnakeYAML so the bundled copy does not clash with the
-    // server's own copy. Forge 1.20.x / Arclight use JPMS ModuleLayer and
-    // fail at boot with "Modules minertrack and org.yaml.snakeyaml export
-    // package org.yaml.snakeyaml.events to module forge" (split package)
-    // when SnakeYAML is bundled un-relocated. Fabric needs the bundled copy
-    // (the server does not ship SnakeYAML), so we relocate instead of
-    // excluding it.
-    relocate 'org.yaml.snakeyaml', 'link.star_dust.snakeyaml'
-    // Do NOT bundle org/slf4j — the server (Forge, NeoForge, Fabric)
-    // provides its own slf4j. Bundling a duplicate causes JPMS
-    // "Modules X and org.slf4j export package org.slf4j" at boot.
-    exclude 'org/slf4j/**'
-    exclude 'META-INF/maven/**'
-    exclude 'META-INF/versions/**'
-    // Stub annotations for @Mod — compile-time only; the server provides
-    // the real net.minecraftforge.fml.common.Mod / net.neoforged.fml.common.Mod.
-    exclude 'net/minecraftforge/**'
-    exclude 'net/neoforged/**'
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    archiveClassifier.set('')
+// ---- Per-platform shaded distribution JARs -------------------------------
+// Each platform JAR contains only:
+//   link/star_dust/MinerTrack/common/**  (platform-agnostic contracts + utils)
+//   link/star_dust/MinerTrack/core/**    (platform-agnostic detection core)
+//   link/star_dust/MinerTrack/<platform>/** (that platform's implementation)
+// plus that platform's runtime dependencies and metadata. Output files are
+// named MinerTrack-<version>+<platform>.jar (e.g. MinerTrack-2.1.0.1+bukkit.jar).
+def platforms = ['bukkit', 'fabric', 'forge', 'neoforge']
+
+def shadeForPlatform = [
+    'bukkit':   [configurations.shadeCommon, configurations.shadeBukkit],
+    'fabric':   [configurations.shadeCommon, configurations.shadeFabric],
+    'forge':    [configurations.shadeCommon, configurations.shadeForge],
+    'neoforge': [configurations.shadeCommon, configurations.shadeNeoForge],
+]
+
+platforms.each { platform ->
+    def others = platforms - platform
+    def taskName = "shadowJar${platform.capitalize()}"
+    tasks.register(taskName, ShadowJar) {
+        group = 'build'
+        description = "Build the shaded ${platform} distribution JAR"
+        archiveBaseName = 'MinerTrack'
+        archiveVersion = "${project.version}+${platform}"
+        archiveClassifier = ''
+        configurations = shadeForPlatform[platform]
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        dependsOn 'classes'
+
+        // Project classes: common + core + this platform only.
+        from(sourceSets.main.output.classesDirs) {
+            include 'link/star_dust/MinerTrack/common/**'
+            include 'link/star_dust/MinerTrack/core/**'
+            include "link/star_dust/MinerTrack/${platform}/**"
+            others.each { p -> exclude "link/star_dust/MinerTrack/${p}/**" }
+            // Stub annotations for @Mod — compile-time only; the server
+            // provides the real net.minecraftforge.fml.common.Mod /
+            // net.neoforged.fml.common.Mod.
+            exclude 'net/minecraftforge/**'
+            exclude 'net/neoforged/**'
+        }
+
+        // Project resources: shared config files + this platform's metadata.
+        from(sourceSets.main.output.resourcesDir) {
+            include 'config.yml'
+            include 'Configuration/**'
+            include 'language.yml'
+            include 'Translations/**'
+            switch (platform) {
+                case 'bukkit':   include 'plugin.yml'; break
+                case 'fabric':   include 'fabric.mod.json'; break
+                case 'forge':    include 'META-INF/mods.toml'; break
+                case 'neoforge': include 'META-INF/neoforge.mods.toml'; break
+            }
+        }
+
+        relocate 'org.bstats', 'link.star_dust.bstats'
+        relocate 'org.apache.httpcomponents', 'link.star_dust.httpcomponents'
+        // Relocate SnakeYAML so the bundled copy does not clash with the
+        // server's own copy. Forge 1.20.x / Arclight use JPMS ModuleLayer and
+        // fail at boot with "Modules minertrack and org.yaml.snakeyaml export
+        // package org.yaml.snakeyaml.events to module forge" (split package)
+        // when SnakeYAML is bundled un-relocated. Fabric needs the bundled
+        // copy (the server does not ship SnakeYAML), so we relocate instead of
+        // excluding it. The Bukkit JAR skips this — it doesn't bundle
+        // SnakeYAML at all (BukkitCommonYaml uses Bukkit's YamlConfiguration).
+        if (platform != 'bukkit') {
+            relocate 'org.yaml.snakeyaml', 'link.star_dust.snakeyaml'
+        }
+
+        // Do NOT bundle org/slf4j — the server (Forge, NeoForge, Fabric)
+        // provides its own slf4j. Bundling a duplicate causes JPMS
+        // "Modules X and org.slf4j export package org.slf4j" at boot.
+        exclude 'org/slf4j/**'
+        // net/fabricmc: fabric-api / fabric-loader are compileOnly (the server
+        // provides them); mapping-io is not referenced by any source and is
+        // not bundled.
+        exclude 'net/fabricmc/**'
+        exclude 'net/minecraft/**'
+        exclude 'me/lucko/**'
+        exclude 'META-INF/maven/**'
+        exclude 'META-INF/versions/**'
+        exclude 'LICENSE.txt', 'LICENSE'
+        exclude 'module-info.class'
+
+        manifest {
+            attributes(
+                'Implementation-Title': "MinerTrack (${platform})",
+                'Implementation-Version': project.version
+            )
+        }
+    }
 }
 
-build {
-    dependsOn shadowJar
+// The shadow plugin's default `shadowJar` task would bundle everything into a
+// single all-platform JAR — not what we want. Disable it; the per-platform
+// tasks above are the only shaded outputs.
+shadowJar {
+    enabled = false
 }
+
+def platformTasks = platforms.collect { "shadowJar${it.capitalize()}" }
+assemble.dependsOn platformTasks
+build.dependsOn platformTasks
