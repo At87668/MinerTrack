@@ -25,6 +25,7 @@ import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
 import link.star_dust.MinerTrack.common.DebugConfig;
+import link.star_dust.MinerTrack.core.config.LanguageMerger;
 import link.star_dust.MinerTrack.core.config.WebhookConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
@@ -158,6 +159,11 @@ public class BukkitPlatform extends JavaPlugin {
         // right after both are constructed; until then the manager
         // falls back to key-literal / hard-coded defaults (which is
         // safe because no detection can have fired yet).
+
+        // Extract the bundled Translations/*.yml language files (de/fr/ru/zh_cn)
+        // into the data folder on first run. Mirrors the legacy v1.x behaviour;
+        // existing files are never overwritten so operator edits survive.
+        LanguageMerger.extractTranslations(adapter);
         BukkitLanguageBridge langBridge = new BukkitLanguageBridge(adapter);
         violationManager.setLanguageBridge(langBridge);
 
