@@ -269,12 +269,17 @@ platforms.each { platform ->
 }
 
 // The shadow plugin's default `shadowJar` task would bundle everything into a
-// single all-platform JAR — not what we want. Disable it; the per-platform
-// tasks above are the only shaded outputs.
+// single all-platform JAR — not what we want. Disable it (so it produces no
+// output) and re-route `./gradlew shadowJar` to build ALL per-platform JARs
+// (shadowJarBukkit / shadowJarFabric / shadowJarForge / shadowJarNeoforge).
+// Disabling a task does not prevent its dependencies from running, so
+// `gradlew shadowJar` still executes every platform task.
+def platformTasks = platforms.collect { "shadowJar${it.capitalize()}" }
+
 shadowJar {
     enabled = false
+    dependsOn platformTasks
 }
 
-def platformTasks = platforms.collect { "shadowJar${it.capitalize()}" }
 assemble.dependsOn platformTasks
 build.dependsOn platformTasks
