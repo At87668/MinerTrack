@@ -176,7 +176,7 @@ public final class FastStatsCompat extends SimpleContext {
             } catch (Throwable ignored) {}
             try {
                 String v = data.serverVersion();
-                if (v != null && !v.isEmpty()) metrics.addProperty("game_version", v);
+                if (v != null && !v.isEmpty()) metrics.addProperty("platform_version", v);
             } catch (Throwable ignored) {}
             try {
                 int om = data.onlineMode();
