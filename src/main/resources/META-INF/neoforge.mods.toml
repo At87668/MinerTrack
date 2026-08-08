@@ -24,6 +24,6 @@ authors = "Author87668"
 [[dependencies.minertrack]]
     modId = "minecraft"
     mandatory = true
-    versionRange = "[1.18,)"
+    versionRange = "[1.20.1,)"
     ordering = "NONE"
     side = "SERVER"
