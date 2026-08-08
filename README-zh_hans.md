@@ -138,4 +138,12 @@
 * **加入 Discord**: [https://discord.gg/MzTea2W9cb](https://discord.gg/MzTea2W9cb)
 * **支持项目**: [https://patreon.com/Author87668/join](https://patreon.com/Author87668/join)
 
+---
+
+**插件使用情况**
+
 [![bStats](https://bstats.org/signatures/bukkit/MinerTrack.svg)](https://bstats.org/plugin/bukkit/MinerTrack/23790)
+
+**模组使用情况**
+
+[![Servers & Players](https://faststats.dev/embed/default:21ee8e60-d3d4-420c-97f8-ed07e22d27d0:servers-and-players.svg?w=960&h=340&theme=light)](https://faststats.dev/project/minertrack/minecraft-mod)

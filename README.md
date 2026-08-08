@@ -132,5 +132,12 @@ If you encounter any issues or have suggestions for new features, feel free to r
 
 **Support Project: https://patreon.com/Author87668/join**
 
+---
+
+**Plugin Usage**
 
 [![bStats](https://bstats.org/signatures/bukkit/MinerTrack.svg)](https://bstats.org/plugin/bukkit/MinerTrack/23790)
+
+**Mod Usage**
+
+[![Servers & Players](https://faststats.dev/embed/default:21ee8e60-d3d4-420c-97f8-ed07e22d27d0:servers-and-players.svg?w=960&h=340&theme=light)](https://faststats.dev/project/minertrack/minecraft-mod)
