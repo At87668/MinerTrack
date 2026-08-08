@@ -31,6 +31,7 @@ import link.star_dust.MinerTrack.common.FastStatsCompat;
 import link.star_dust.MinerTrack.common.DebugConfig;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
+import link.star_dust.MinerTrack.core.config.LanguageMerger;
 import link.star_dust.MinerTrack.core.config.WebhookConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
@@ -82,6 +83,10 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         WebhookEngine webhookEngine = new WebhookEngine(webhookConfig, webhookSender);
         violationManager.setWebhookEngine(webhookEngine);
 
+        // Extract the bundled Translations/*.yml language files (de/fr/ru/zh_cn)
+        // into the config folder on first run. Mirrors the legacy v1.x
+        // behaviour; existing files are never overwritten.
+        LanguageMerger.extractTranslations(adapter);
         languageBridge = new FabricLanguageBridge(adapter);
         violationManager.setLanguageBridge(languageBridge);
 
