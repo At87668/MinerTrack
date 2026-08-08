@@ -228,6 +228,13 @@ platforms.each { platform ->
 
         relocate 'org.bstats', 'link.star_dust.bstats'
         relocate 'org.apache.httpcomponents', 'link.star_dust.httpcomponents'
+        // httpclient5 / httpcore5 actually live under org.apache.hc (not
+        // org.apache.httpcomponents), so relocate that prefix too — the bundled
+        // HTTP stack must never clash with a server-provided copy.
+        relocate 'org.apache.hc', 'link.star_dust.hc'
+        // org.json (webhook JSON) — relocate so it can't clash with a
+        // server-bundled org.json (e.g. Paper ships its own).
+        relocate 'org.json', 'link.star_dust.json'
         // Relocate SnakeYAML so the bundled copy does not clash with the
         // server's own copy. Forge 1.20.x / Arclight use JPMS ModuleLayer and
         // fail at boot with "Modules minertrack and org.yaml.snakeyaml export
@@ -238,10 +245,14 @@ platforms.each { platform ->
         // SnakeYAML at all (BukkitCommonYaml uses Bukkit's YamlConfiguration).
         if (platform != 'bukkit') {
             relocate 'org.yaml.snakeyaml', 'link.star_dust.snakeyaml'
-            // FastStats SDK + Gson — relocate so a server running another mod
-            // that bundles FastStats/Gson (or Minecraft's own Gson) doesn't clash.
+            // FastStats SDK + Gson + Gson's transitive error_prone_annotations —
+            // relocate every package we bundle so a server running another mod
+            // that provides the same package (e.g. mixinextras ships
+            // com.google.errorprone.annotations) doesn't hit a JPMS
+            // split-package error (Modules minertrack and X export package ...).
             relocate 'dev.faststats', 'link.star_dust.faststats'
             relocate 'com.google.gson', 'link.star_dust.gson'
+            relocate 'com.google.errorprone', 'link.star_dust.errorprone'
         }
 
         // Do NOT bundle org/slf4j — the server (Forge, NeoForge, Fabric)
