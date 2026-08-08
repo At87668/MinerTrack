@@ -26,6 +26,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import link.star_dust.MinerTrack.common.FastStatsCompat;
 import link.star_dust.MinerTrack.common.DebugConfig;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
@@ -50,6 +51,7 @@ public class NeoForgePlatform {
     private NeoForgeWebhookSender webhookSender;
     private NeoForgeCommandExecutor commandExecutor;
     private NeoForgeMiningListener miningListener;
+    private FastStatsCompat fastStats;
 
     public void onServerStarting(Object event) {
         // Cache the MinecraftServer from the ServerStartingEvent so that
@@ -102,6 +104,15 @@ public class NeoForgePlatform {
         registerServerStopping();
 
         violationManager.scheduleGlobalDecayTask(20L * 60L * 20L);
+
+        // FastStats (faststats.dev) mod-platform telemetry — replaces the removed
+        // bStats bridge. Non-fatal.
+        try {
+            fastStats = FastStatsCompat.create(adapter, new NeoForgeFastStatsData(), "neoforge", FastStatsCompat.FASTSTATS_TOKEN);
+            fastStats.ready();
+        } catch (Throwable t) {
+            adapter.warning("Failed to initialise FastStats metrics: " + t.getMessage());
+        }
 
         new Core(adapter).printStartupBanner();
         adapter.info("MinerTrack (NeoForge) enabled.");
@@ -224,6 +235,52 @@ public class NeoForgePlatform {
     }
 
     public void onServerStopping() {
+        if (fastStats != null) fastStats.shutdown();
         adapter.info("MinerTrack (NeoForge) disabled.");
+    }
+
+    /** FastStats telemetry provider for the NeoForge runtime (defensive reads). */
+    private static final class NeoForgeFastStatsData implements FastStatsCompat.Data {
+        @Override
+        public int playerAmount() {
+            try {
+                Object server = NeoForgeReflection.getServer();
+                if (server == null) return 0;
+                Object pm = NeoForgeReflection.call(server, "getPlayerList", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (pm == null) return 0;
+                Object list = NeoForgeReflection.call(pm, "getPlayers", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (list instanceof java.util.Collection) return ((java.util.Collection<?>) list).size();
+            } catch (Throwable ignored) {}
+            return 0;
+        }
+
+        @Override
+        public int onlineMode() {
+            try {
+                Object server = NeoForgeReflection.getServer();
+                if (server == null) return -1;
+                Object v = NeoForgeReflection.call(server, "isOnlineMode", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (v instanceof Boolean) return ((Boolean) v) ? 1 : 0;
+            } catch (Throwable ignored) {}
+            return -1;
+        }
+
+        @Override
+        public String serverSoftware() { return "NeoForge"; }
+
+        @Override
+        public String platformTag() { return "neoforge"; }
+
+        @Override
+        public String serverVersion() {
+            try {
+                // Stable FML API — avoids an SRG method-name lookup on MinecraftServer.
+                Object info = NeoForgeReflection.callStatic("net.neoforged.fml.loading.FMLLoader",
+                    "versionInfo", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                if (info == null) return null;
+                Object v = NeoForgeReflection.call(info, "mcVersion", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+                return v == null ? null : v.toString();
+            } catch (Throwable ignored) { return null; }
+        }
     }
 }
