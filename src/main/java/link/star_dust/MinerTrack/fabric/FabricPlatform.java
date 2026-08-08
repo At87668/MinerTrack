@@ -27,6 +27,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import link.star_dust.MinerTrack.common.FastStatsCompat;
 import link.star_dust.MinerTrack.common.DebugConfig;
 import link.star_dust.MinerTrack.core.Core;
 import link.star_dust.MinerTrack.core.CoreLogger;
@@ -34,6 +35,7 @@ import link.star_dust.MinerTrack.core.config.WebhookConfig;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 import link.star_dust.MinerTrack.core.violation.WebhookEngine;
 import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +50,7 @@ public class FabricPlatform implements DedicatedServerModInitializer {
     private FabricWebhookSender webhookSender;
     private FabricCommandExecutor commandExecutor;
     private FabricMiningListener miningListener;
+    private FastStatsCompat fastStats;
 
     @Override
     public void onInitializeServer() {
@@ -97,6 +100,15 @@ public class FabricPlatform implements DedicatedServerModInitializer {
         FabricEventBus.registerServerStopping(this::onServerStopping);
 
         violationManager.scheduleGlobalDecayTask(20L * 60L * 20L);
+
+        // FastStats (faststats.dev) mod-platform telemetry — replaces the removed
+        // bStats bridge. Non-fatal.
+        try {
+            fastStats = FastStatsCompat.create(adapter, new FabricFastStatsData(), "fabric", FastStatsCompat.FASTSTATS_TOKEN);
+            fastStats.ready();
+        } catch (Throwable t) {
+            adapter.warning("Failed to initialise FastStats metrics: " + t.getMessage());
+        }
 
         new Core(adapter).printStartupBanner();
         adapter.info("MinerTrack (Fabric) enabled.");
@@ -193,6 +205,55 @@ public class FabricPlatform implements DedicatedServerModInitializer {
     }
 
     public void onServerStopping(Object server) {
+        if (fastStats != null) fastStats.shutdown();
         adapter.info("MinerTrack (Fabric) disabled.");
+    }
+
+    /** FastStats telemetry provider for the Fabric runtime (defensive reads). */
+    private static final class FabricFastStatsData implements FastStatsCompat.Data {
+        @Override
+        public int playerAmount() {
+            try {
+                Object server = FabricReflection.getServer();
+                if (server == null) return 0;
+                Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                    FabricReflectionConstants.NO_ARGS, FabricReflectionConstants.NO_VALS);
+                if (pm == null) return 0;
+                // MC 26.1+: getPlayers(); 1.18-1.21: getPlayerList()
+                Object list = FabricReflection.callMigrated(pm, "getPlayers", "getPlayerList",
+                    FabricReflectionConstants.NO_ARGS, FabricReflectionConstants.NO_VALS);
+                if (list instanceof java.util.Collection) return ((java.util.Collection<?>) list).size();
+            } catch (Throwable ignored) {}
+            return 0;
+        }
+
+        @Override
+        public int onlineMode() {
+            try {
+                Object server = FabricReflection.getServer();
+                if (server == null) return -1;
+                Object v = FabricReflection.call(server, "isOnlineMode",
+                    FabricReflectionConstants.NO_ARGS, FabricReflectionConstants.NO_VALS);
+                if (v instanceof Boolean) return ((Boolean) v) ? 1 : 0;
+            } catch (Throwable ignored) {}
+            return -1;
+        }
+
+        @Override
+        public String serverSoftware() { return "Fabric"; }
+
+        @Override
+        public String platformTag() { return "fabric"; }
+
+        @Override
+        public String serverVersion() {
+            try {
+                // fabric-loader 0.14.x has no FabricLoader.getGameVersion(); read the
+                // "minecraft" mod's declared version from its metadata instead.
+                return FabricLoader.getInstance().getModContainer("minecraft")
+                    .map(mc -> mc.getMetadata().getVersion().getFriendlyString())
+                    .orElse(null);
+            } catch (Throwable ignored) { return null; }
+        }
     }
 }
