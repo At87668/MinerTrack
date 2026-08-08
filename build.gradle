@@ -76,6 +76,10 @@ repositories {
         name = 'NeoForge'
         url = 'https://maven.neoforged.net/releases'
     }
+    maven {
+        name = 'faststats'
+        url = 'https://repo.faststats.dev/releases'
+    }
 }
 
 dependencies {
@@ -113,6 +117,19 @@ dependencies {
     shadeFabric 'org.yaml:snakeyaml:2.2'
     shadeForge 'org.yaml:snakeyaml:2.2'
     shadeNeoForge 'org.yaml:snakeyaml:2.2'
+    // FastStats metrics SDK (mod platforms only) — replaces the removed bStats
+    // mod-platform telemetry. The SDK's core/config modules are platform-agnostic
+    // and use the JDK's java.net.http for submission (no extra HTTP dependency);
+    // Gson is bundled + relocated so we don't depend on the server's Gson version.
+    shadeFabric 'dev.faststats.metrics:core:0.29.4'
+    shadeFabric 'dev.faststats.metrics:config:0.29.4'
+    shadeFabric 'com.google.code.gson:gson:2.14.0'
+    shadeForge 'dev.faststats.metrics:core:0.29.4'
+    shadeForge 'dev.faststats.metrics:config:0.29.4'
+    shadeForge 'com.google.code.gson:gson:2.14.0'
+    shadeNeoForge 'dev.faststats.metrics:core:0.29.4'
+    shadeNeoForge 'dev.faststats.metrics:config:0.29.4'
+    shadeNeoForge 'com.google.code.gson:gson:2.14.0'
 }
 
 // The bundled deps are imported directly by the source, so expose them on the
@@ -221,6 +238,10 @@ platforms.each { platform ->
         // SnakeYAML at all (BukkitCommonYaml uses Bukkit's YamlConfiguration).
         if (platform != 'bukkit') {
             relocate 'org.yaml.snakeyaml', 'link.star_dust.snakeyaml'
+            // FastStats SDK + Gson — relocate so a server running another mod
+            // that bundles FastStats/Gson (or Minecraft's own Gson) doesn't clash.
+            relocate 'dev.faststats', 'link.star_dust.faststats'
+            relocate 'com.google.gson', 'link.star_dust.gson'
         }
 
         // Do NOT bundle org/slf4j — the server (Forge, NeoForge, Fabric)
