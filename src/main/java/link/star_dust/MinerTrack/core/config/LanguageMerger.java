@@ -216,4 +216,49 @@ public class LanguageMerger {
         // Persist the mutated top-level map back into the YAML.
         yaml.set(parts[0], root);
     }
+
+    /** Known bundled translation files under {@code Translations/} in the JAR. */
+    private static final String[] BUNDLED_TRANSLATIONS = {"de.yml", "fr.yml", "ru.yml", "zh_cn.yml"};
+
+    private static final String TRANSLATIONS_DIR = "Translations";
+
+    /**
+     * Extract the bundled {@code Translations/*.yml} language files from the JAR
+     * into the plugin's data folder ({@code <dataFolder>/Translations/}),
+     * mirroring the legacy v1.x behaviour where the pre-configured translations
+     * were automatically extracted at startup (see Updates.md 1.9.0 — "Will be
+     * automatically extract to Translations folder at startup").
+     *
+     * <p>Files that already exist on disk are left untouched
+     * ({@code replace=false}) so operator / third-party edits to a translation
+     * are never clobbered (see Updates.md 1.9.0.2 — "Unable to correctly update
+     * third-party language files in Translations/"). Files are only skipped when
+     * they are missing from the JAR entirely, which keeps the behaviour uniform
+     * across platforms (Fabric/Forge/NeoForge {@code saveResource} silently
+     * no-ops on a missing resource, whereas Bukkit throws).
+     *
+     * @param adapter the plugin adapter used to read / write resources
+     */
+    public static void extractTranslations(PluginAdapter adapter) {
+        if (adapter == null) return;
+        for (String name : BUNDLED_TRANSLATIONS) {
+            String path = TRANSLATIONS_DIR + "/" + name;
+            // Bukkit's JavaPlugin#saveResource throws IllegalArgumentException
+            // when the resource is absent from the JAR; every other platform
+            // silently no-ops. Guard with an existence check up-front so the
+            // behaviour is identical on all platforms.
+            boolean bundled;
+            try (InputStream in = adapter.getResource(path)) {
+                bundled = in != null;
+            } catch (Exception e) {
+                bundled = false;
+            }
+            if (!bundled) continue;
+            try {
+                adapter.saveResource(path, false);
+            } catch (Exception e) {
+                adapter.warning("Failed to extract " + path + ": " + e.getMessage());
+            }
+        }
+    }
 }
