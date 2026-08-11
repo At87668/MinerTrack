@@ -146,4 +146,4 @@
 
 **模组使用情况**
 
-[![Servers & Players](https://faststats.dev/embed/default:21ee8e60-d3d4-420c-97f8-ed07e22d27d0:servers-and-players.svg?w=960&h=340&theme=light)](https://faststats.dev/project/minertrack/minecraft-mod)
+[![Servers & Players](https://faststats.dev/embed/874f2ee7-b8fb-4c93-9885-a6c8fddb62c2.svg?w=960&h=340&theme=light)](https://faststats.dev/project/minertrack/minecraft-mod)
