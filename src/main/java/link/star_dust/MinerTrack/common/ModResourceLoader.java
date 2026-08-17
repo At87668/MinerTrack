@@ -78,9 +78,15 @@ public final class ModResourceLoader {
      * to {@code <jar>/config.yml}; {@code "Configuration/overworld.yml"}
      * resolves to {@code <jar>/Configuration/overworld.yml}.
      *
-     * <p>The returned stream borrows from an open {@link JarFile} and
-     * <strong>must be closed by the caller</strong>; do not let it
-     * leak past the {@code saveResource} / merge scope.
+     * <p>The returned stream is a {@link java.io.ByteArrayInputStream}:
+     * the entry's bytes are copied into memory before the underlying
+     * {@link JarFile} is closed, so the caller can consume the stream
+     * at any time (and should close it once done, like any input
+     * stream). This deliberately avoids returning a stream that
+     * borrows from a still-open {@link JarFile} — a {@code JarFile}
+     * closed in a try-with-resources block would leave the returned
+     * stream reading zero bytes (the classic "stream from a closed
+     * JAR" bug that produces empty config files).
      *
      * @param owner       the class whose code source (JAR or classes
      *                    directory) defines "this mod's resources".
@@ -88,7 +94,9 @@ public final class ModResourceLoader {
      *                    platform adapter.
      * @param resourcePath path to the resource relative to the JAR
      *                     root (forward slashes, no leading slash).
-     * @return an open input stream, or {@code null} if not found.
+     * @return an open input stream with the full resource content,
+     *         or {@code null} if the resource is not packaged with
+     *         the mod.
      */
     public static InputStream open(Class<?> owner, String resourcePath) {
         if (owner == null || resourcePath == null) return null;
@@ -106,16 +114,30 @@ public final class ModResourceLoader {
             if (url == null) return null;
             if (!"file".equals(url.getProtocol())) return null;
             File file = new File(url.toURI());
+            byte[] data = null;
             if (file.isFile()) {
                 try (JarFile jar = new JarFile(file)) {
                     JarEntry entry = jar.getJarEntry(normalised);
-                    if (entry != null) return jar.getInputStream(entry);
+                    if (entry != null) {
+                        // Copy the entry into memory BEFORE the JarFile
+                        // is closed by this try-with-resources block;
+                        // a stream handed out here would otherwise be
+                        // backed by a closed JAR and read zero bytes.
+                        try (InputStream in = jar.getInputStream(entry)) {
+                            data = readAll(in);
+                        }
+                    }
                 }
             } else if (file.isDirectory()) {
                 // Dev / IDE layout: classes are unpacked on disk.
                 File resourceFile = new File(file, normalised);
-                if (resourceFile.isFile()) return new FileInputStream(resourceFile);
+                if (resourceFile.isFile()) {
+                    try (InputStream in = new FileInputStream(resourceFile)) {
+                        data = readAll(in);
+                    }
+                }
             }
+            return data == null ? null : new java.io.ByteArrayInputStream(data);
         } catch (Exception ignored) {
             // Resource not packaged with this class, or the code
             // source location is unreadable. Either way the caller
@@ -124,5 +146,13 @@ public final class ModResourceLoader {
             // resource on disk.
         }
         return null;
+    }
+
+    private static byte[] readAll(InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(8192);
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        return out.toByteArray();
     }
 }
