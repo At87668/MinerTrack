@@ -26,7 +26,12 @@ import link.star_dust.MinerTrack.common.YamlLoader;
 
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -143,6 +148,7 @@ public class ConfigMerger {
         //
         // A timestamped backup is still produced before the bump, so
         // admins can recover the previous layout if they ever need to.
+        int newConfigVersion = -1;
         if (needsUpgrade(userConfig, defaultsConfig)) {
             int currentVersion = userConfig.getInt("_config-version", 0);
             int defaultVersion = defaultsConfig.getInt("_config-version", 0);
@@ -160,46 +166,33 @@ public class ConfigMerger {
             } catch (Exception e) {
                 adapter.info("Failed to backup " + userFile.getName() + ": " + e.getMessage());
             }
-            // Bump the version in the in-memory copy. The version
-            // stays in memory only (see "no-save" policy below);
-            // the user's file is left untouched so their comments
-            // and custom key ordering are preserved.
+            // Bump the version in the in-memory copy. The version is
+            // persisted to disk by appendMissingDefaults below, which
+            // updates the _config-version line in place and preserves
+            // every comment, so the bump survives a restart.
             userConfig.set("_config-version", defaultVersion);
+            newConfigVersion = defaultVersion;
+        }
+
+        // Persist missing keys (and any version bump) to disk WITHOUT
+        // rewriting the file. This must run BEFORE mergeConfigurations
+        // mutates userConfig in memory, because appendMissingDefaults
+        // uses userConfig.contains() to decide what is missing.
+        int appended = 0;
+        try {
+            appended = appendMissingDefaults(userFile, userConfig, defaultsConfig, "", newConfigVersion);
+        } catch (Exception e) {
+            adapter.info("Could not append missing keys to " + userFile.getName() + ": " + e.getMessage());
+        }
+        if (appended > 0) {
+            adapter.info("[Merger] " + userFile.getName() + ": appended " + appended
+                    + " missing key(s) from defaults (comments preserved).");
         }
 
         int added = mergeConfigurations(userConfig, defaultsConfig, "");
-
         if (added > 0) {
             adapter.info("[Merger] " + userFile.getName() + ": filled " + added
-                    + " missing key(s) from defaults.");
-        }
-
-        // Save the merged config back to disk ONLY if the
-        // merge actually changed anything. On a first-time
-        // install the {@link #saveResource} call above wrote
-        // the JAR-shipped default verbatim to disk, which
-        // preserves all of the comments and original
-        // formatting. The YAML round-trip via SnakeYAML on
-        // the save() path strips every comment (SnakeYAML
-        // has no comment-preservation mode for its default
-        // {@code Representer}/{@code DumperOptions}), so a
-        // blanket save-on-every-load would silently delete
-        // the entire comment block in the user's freshly
-        // generated config.yml. The merge step above is
-        // a no-op when the user file already contains every
-        // default key (i.e. on first install we just wrote
-        // the file from the JAR), so we can skip the save
-        // entirely in that case and keep the comment
-        // formatting intact. Subsequent reloads (after the
-        // user has edited the file and a new plugin version
-        // has added a new key) DO need a save — that's
-        // covered by the {@code added > 0} branch below.
-        if (added > 0) {
-            try {
-                userConfig.save(userFile);
-            } catch (Exception e) {
-                adapter.info("Could not save merged config " + userFile.getName() + ": " + e.getMessage());
-            }
+                    + " missing key(s) in memory.");
         }
 
         // Reload from disk so the returned config reflects the
@@ -393,68 +386,322 @@ public class ConfigMerger {
     }
 
     /**
-     * Append missing keys from defaults to the user file without
-     * destroying comments or formatting. Walks the defaults tree;
-     * for each leaf key missing from the user config, appends a
-     * minimal YAML line at the end of the file.
+     * Fill in missing keys from defaults by inserting them into the
+     * existing file at the correct positions, WITHOUT rewriting the
+     * file. This preserves every comment (the header banner AND the
+     * inline comments) the admin has in their config — a full YAML
+     * round-trip via {@link CommonYaml#save(File)} would strip all
+     * inline comments because SnakeYAML has no comment-preservation
+     * mode.
+     *
+     * <p>Each missing key is inserted right after its parent section's
+     * last line, with the correct indentation, so the resulting file
+     * stays valid YAML and the new keys land in the right place even
+     * when the parent section is not the last block in the file.
+     *
+     * <p>If {@code newVersion > 0}, the {@code _config-version} line is
+     * updated in place (or appended if absent) so the version bump is
+     * persisted without touching any comments.
+     *
+     * @param file the user's config file on disk
+     * @param userConfig the user's config (BEFORE the in-memory merge,
+     *                   so contains() still reports what is missing)
+     * @param defaultConfig the JAR defaults
+     * @param prefix current path prefix ("" at the root)
+     * @param newVersion the version to write into _config-version, or
+     *                   {@code <= 0} to leave the version line alone
+     * @return the number of keys appended
      */
-    private static void appendMissingDefaults(
+    private static int appendMissingDefaults(
             File file, CommonYaml userConfig,
-            CommonYaml defaultConfig, String prefix) throws java.io.IOException {
+            CommonYaml defaultConfig, String prefix,
+            int newVersion) throws java.io.IOException {
 
-        StringBuilder sb = new StringBuilder(256);
-        boolean[] any = {false};
+        // Collect missing keys as (fullPath, value) pairs.
+        List<Map.Entry<String, Object>> missing = new ArrayList<>();
+        collectMissing(missing, userConfig, defaultConfig, prefix);
+
+        if (missing.isEmpty() && newVersion <= 0) return 0;
+
+        List<String> lines = new ArrayList<>(
+                Files.readAllLines(file.toPath(), StandardCharsets.UTF_8));
+
+        // Persist the version bump in place (preserves comments).
+        if (newVersion > 0) {
+            updateVersionLine(lines, newVersion);
+        }
+
+        if (!missing.isEmpty()) {
+            // Parse the existing file structure: key-path -> line index,
+            // key-path -> indentation, key-path -> block end line (inclusive).
+            Map<String, Integer> keyLine = new HashMap<>();
+            Map<String, Integer> keyIndent = new HashMap<>();
+            Map<String, Integer> blockEnd = new HashMap<>();
+            parseStructure(lines, keyLine, keyIndent, blockEnd);
+
+            // Compute insertion points, then apply them bottom-up so
+            // earlier (higher-line) inserts do not shift later ones.
+            List<Insertion> insertions = new ArrayList<>(missing.size());
+            for (Map.Entry<String, Object> e : missing) {
+                insertions.add(computeInsertion(lines, keyLine, keyIndent, blockEnd, e.getKey(), e.getValue()));
+            }
+            // Apply bottom-up (highest line first) so earlier inserts do not
+            // shift later ones. For ties (same insertion line), shallower
+            // keys are processed first so they end up AFTER the deeper keys
+            // (addAll at the same index puts the last-processed item first),
+            // keeping an outer sibling after its inner children.
+            insertions.sort((a, b) -> {
+                int c = Integer.compare(b.insertAfterLine, a.insertAfterLine);
+                if (c != 0) return c;
+                return Integer.compare(a.depth, b.depth);
+            });
+            for (Insertion ins : insertions) {
+                lines.addAll(ins.insertAfterLine + 1, ins.lines);
+            }
+        }
+
+        Files.write(file.toPath(), lines, StandardCharsets.UTF_8);
+        return missing.size();
+    }
+
+    /** A pending line insertion: insert {@code lines} after line {@code insertAfterLine}. */
+    private static final class Insertion {
+        final int insertAfterLine;
+        final int depth; // number of path segments in the missing key
+        final List<String> lines;
+        Insertion(int insertAfterLine, int depth, List<String> lines) {
+            this.insertAfterLine = insertAfterLine;
+            this.depth = depth;
+            this.lines = lines;
+        }
+    }
+
+    /**
+     * Recursively collect missing keys. Mirrors {@link #mergeConfigurations}
+     * traversal: a missing key is collected regardless of the whitelist, but
+     * recursion into an existing section only happens for whitelisted paths.
+     */
+    private static void collectMissing(
+            List<Map.Entry<String, Object>> out,
+            CommonYaml userConfig, CommonYaml defaultConfig, String prefix) {
+
         for (String key : defaultConfig.getKeys(false)) {
+            String fullPath = prefix.isEmpty() ? key : prefix + "." + key;
             if (userConfig.contains(key)) {
                 Object dv = defaultConfig.get(key);
-                if (dv instanceof java.util.Map) {
+                if (dv instanceof java.util.Map && WHITELIST_KEYS.contains(fullPath)) {
                     CommonYaml child = userConfig.getChild(key);
                     CommonYaml defChild = defaultConfig.getChild(key);
                     if (child != null && defChild != null) {
-                        String childPath = prefix.isEmpty() ? key : prefix + "." + key;
-                        appendMissingDefaults(file, child, defChild, childPath);
+                        collectMissing(out, child, defChild, fullPath);
                     }
                 }
             } else {
-                int depth = prefix.isEmpty() ? 0 : prefix.split("\\.").length;
-                String indent = nSpaces(depth * 2);
-                Object v = defaultConfig.get(key);
-                if (v instanceof java.util.Map) {
-                    sb.append('\n').append(indent).append(key).append(':');
-                    writeMap(sb, (java.util.Map<?, ?>) v, depth + 1);
-                } else if (v instanceof java.util.List) {
-                    sb.append('\n').append(indent).append(key).append(':');
-                    for (Object item : (java.util.List<?>) v)
-                        sb.append('\n').append(indent).append("  - ").append(toYaml(item));
-                } else {
-                    sb.append('\n').append(indent).append(key).append(": ").append(toYaml(v));
-                }
-                any[0] = true;
-            }
-        }
-        if (any[0]) {
-            sb.append('\n');
-            try (java.io.FileWriter fw = new java.io.FileWriter(file, true)) {
-                fw.write(sb.toString());
+                out.add(new java.util.AbstractMap.SimpleEntry<>(fullPath, defaultConfig.get(key)));
             }
         }
     }
 
-    private static void writeMap(StringBuilder sb, java.util.Map<?, ?> map, int depth) {
-        String indent = nSpaces(depth * 2);
+    /**
+     * Parse the YAML file's line structure. Populates:
+     * <ul>
+     *   <li>{@code keyLine}: key-path -> 0-based line index of the key's line</li>
+     *   <li>{@code keyIndent}: key-path -> leading-space count of the key's line</li>
+     *   <li>{@code blockEnd}: key-path -> last line index (inclusive) of the
+     *       key's block (its own line for a leaf, or the last child line for a
+     *       section)</li>
+     * </ul>
+     * Comment lines, blank lines and list items are ignored.
+     */
+    private static void parseStructure(
+            List<String> lines,
+            Map<String, Integer> keyLine,
+            Map<String, Integer> keyIndent,
+            Map<String, Integer> blockEnd) {
+
+        java.util.Deque<String> pathStack = new java.util.ArrayDeque<>();
+        java.util.Deque<Integer> indentStack = new java.util.ArrayDeque<>();
+        List<String> orderedPaths = new ArrayList<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+            if (trimmed.startsWith("-")) continue; // list item
+
+            int indent = leadingSpaces(line);
+            String key = parseKey(trimmed);
+            if (key == null) continue;
+
+            while (!indentStack.isEmpty() && indentStack.peek() >= indent) {
+                indentStack.pop();
+                pathStack.pop();
+            }
+            String path = pathStack.isEmpty() ? key : pathStack.peek() + "." + key;
+            keyLine.put(path, i);
+            keyIndent.put(path, indent);
+            orderedPaths.add(path);
+            indentStack.push(indent);
+            pathStack.push(path);
+        }
+
+        // Compute blockEnd: a key's block ends at the last CONTENT line before
+        // the next key at the same or a lower indentation. Trailing comment and
+        // blank lines that belong to the next section are excluded, so a new
+        // child is inserted before (not after) the next section's comment block.
+        for (int idx = 0; idx < orderedPaths.size(); idx++) {
+            String path = orderedPaths.get(idx);
+            int indent = keyIndent.get(path);
+            int keyLineIdx = keyLine.get(path);
+            int end = lastContentLineBefore(lines, lines.size());
+            for (int j = idx + 1; j < orderedPaths.size(); j++) {
+                if (keyIndent.get(orderedPaths.get(j)) <= indent) {
+                    end = lastContentLineBefore(lines, keyLine.get(orderedPaths.get(j)));
+                    break;
+                }
+            }
+            if (end < keyLineIdx) end = keyLineIdx;
+            blockEnd.put(path, end);
+        }
+    }
+
+    /**
+     * Find the last line index (inclusive) before {@code beforeIndex} that is
+     * a content line (not a comment and not blank). Returns {@code beforeIndex-1}
+     * (or 0) if no content line exists before it.
+     */
+    private static int lastContentLineBefore(List<String> lines, int beforeIndex) {
+        for (int i = beforeIndex - 1; i >= 0; i--) {
+            String trimmed = lines.get(i).trim();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("#")) return i;
+        }
+        return Math.max(0, beforeIndex - 1);
+    }
+
+    /**
+     * Compute where and how to insert a missing key. Finds the longest
+     * existing ancestor path, then renders the missing subtree with the
+     * correct indentation and returns an {@link Insertion} targeting the
+     * ancestor's block end (or the end of the file if no ancestor exists).
+     */
+    private static Insertion computeInsertion(
+            List<String> lines,
+            Map<String, Integer> keyLine,
+            Map<String, Integer> keyIndent,
+            Map<String, Integer> blockEnd,
+            String fullPath, Object value) {
+
+        String[] parts = fullPath.split("\\.");
+        String existingAncestor = null;
+        int existingDepth = 0;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length - 1; i++) {
+            if (i > 0) sb.append('.');
+            sb.append(parts[i]);
+            String candidate = sb.toString();
+            if (keyLine.containsKey(candidate)) {
+                existingAncestor = candidate;
+                existingDepth = i + 1;
+            }
+        }
+
+        int insertAfterLine;
+        int indent;
+        if (existingAncestor != null) {
+            insertAfterLine = blockEnd.get(existingAncestor);
+            indent = keyIndent.get(existingAncestor) + 2;
+        } else {
+            // No ancestor exists (top-level missing key): insert after the
+            // last content line so the new key does not land after a trailing
+            // comment block that belongs to the previous section.
+            insertAfterLine = lastContentLineBefore(lines, lines.size());
+            indent = 0;
+        }
+
+        List<String> toInsert = new ArrayList<>();
+        renderMissingKey(toInsert, parts, existingDepth, indent, value);
+        return new Insertion(insertAfterLine, parts.length, toInsert);
+    }
+
+    /**
+     * Render a missing key (and its value) as YAML lines. {@code startPart}
+     * is the index into {@code parts} of the first key to render; keys before
+     * it already exist in the file. The leaf key is rendered with its value
+     * (scalar, list, or nested map); intermediate keys are rendered as bare
+     * section headers.
+     */
+    private static void renderMissingKey(
+            List<String> toInsert,
+            String[] parts, int startPart, int indent,
+            Object value) {
+
+        for (int i = startPart; i < parts.length; i++) {
+            String key = parts[i];
+            String pad = nSpaces(indent + (i - startPart) * 2);
+            if (i == parts.length - 1) {
+                if (value instanceof java.util.Map) {
+                    toInsert.add(pad + key + ":");
+                    writeMapLines(toInsert, (java.util.Map<?, ?>) value, indent + (i - startPart) * 2 + 2);
+                } else if (value instanceof java.util.List) {
+                    toInsert.add(pad + key + ":");
+                    for (Object item : (java.util.List<?>) value)
+                        toInsert.add(pad + "  - " + toYaml(item));
+                } else {
+                    toInsert.add(pad + key + ": " + toYaml(value));
+                }
+            } else {
+                toInsert.add(pad + key + ":");
+            }
+        }
+    }
+
+    /** Write a nested map as YAML lines at the given indentation. */
+    private static void writeMapLines(List<String> out, java.util.Map<?, ?> map, int indent) {
+        String pad = nSpaces(indent);
         for (java.util.Map.Entry<?, ?> e : map.entrySet()) {
             Object v = e.getValue();
             if (v instanceof java.util.Map) {
-                sb.append('\n').append(indent).append(e.getKey()).append(':');
-                writeMap(sb, (java.util.Map<?, ?>) v, depth + 1);
+                out.add(pad + e.getKey() + ":");
+                writeMapLines(out, (java.util.Map<?, ?>) v, indent + 2);
             } else if (v instanceof java.util.List) {
-                sb.append('\n').append(indent).append(e.getKey()).append(':');
+                out.add(pad + e.getKey() + ":");
                 for (Object item : (java.util.List<?>) v)
-                    sb.append('\n').append(indent).append("  - ").append(toYaml(item));
+                    out.add(pad + "  - " + toYaml(item));
             } else {
-                sb.append('\n').append(indent).append(e.getKey()).append(": ").append(toYaml(v));
+                out.add(pad + e.getKey() + ": " + toYaml(v));
             }
         }
+    }
+
+    /** Update the {@code _config-version} line in place, or append it if absent. */
+    private static void updateVersionLine(List<String> lines, int newVersion) {
+        for (int i = 0; i < lines.size(); i++) {
+            String trimmed = lines.get(i).trim();
+            if (trimmed.startsWith("_config-version:")) {
+                lines.set(i, "_config-version: " + newVersion);
+                return;
+            }
+        }
+        lines.add("_config-version: " + newVersion);
+    }
+
+    private static int leadingSpaces(String line) {
+        int n = 0;
+        while (n < line.length() && line.charAt(n) == ' ') n++;
+        return n;
+    }
+
+    /** Extract the key name from a trimmed YAML line (before the colon). */
+    private static String parseKey(String trimmed) {
+        int colon = trimmed.indexOf(':');
+        if (colon < 0) return null;
+        String key = trimmed.substring(0, colon).trim();
+        if (key.length() >= 2
+                && ((key.startsWith("'") && key.endsWith("'"))
+                    || (key.startsWith("\"") && key.endsWith("\"")))) {
+            key = key.substring(1, key.length() - 1);
+        }
+        return key.isEmpty() ? null : key;
     }
 
     private static String nSpaces(int n) {
