@@ -21,6 +21,7 @@
 package link.star_dust.MinerTrack.fabric;
 
 import link.star_dust.MinerTrack.common.CommonYaml;
+import link.star_dust.MinerTrack.common.ModResourceLoader;
 import link.star_dust.MinerTrack.common.PluginAdapter;
 import link.star_dust.MinerTrack.common.YamlLoader;
 import link.star_dust.MinerTrack.core.config.ConfigMerger;
@@ -107,13 +108,24 @@ public class FabricAdapter implements PluginAdapter {
     @Override
     public void saveResource(String resourcePath, boolean replace) {
         // Mirror the Bukkit saveResource contract: copy the named
-        // resource from the classpath to the data folder, replacing
+        // resource from the mod jar to the data folder, replacing
         // the file when {@code replace == true} (or when the file
-        // doesn't exist on disk). The mod jar's resources live at
-        // the classpath root alongside the {@code fabric.mod.json}
-        // we just created; using the classloader of
-        // {@link FabricAdapter} picks them up because every class
-        // in the mod jar shares the same class loader.
+        // doesn't exist on disk).
+        //
+        // IMPORTANT: do NOT use {@code getClass().getClassLoader()
+        // .getResourceAsStream(resourcePath)} here. On Forge /
+        // NeoForge every mod is loaded into a single shared
+        // ClassLoader (the game's LaunchClassLoader), so the
+        // classloader lookup walks the entire game classpath and
+        // returns whichever mod's resource happens to appear first.
+        // If another mod on the classpath ships its own
+        // {@code config.yml} (very common), MinerTrack would copy
+        // / parse that other mod's config.yml into its own data
+        // folder on first startup. {@link ModResourceLoader}
+        // bypasses the shared classloader entirely by going
+        // through this class's protection domain, so the lookup
+        // is anchored to MinerTrack's own JAR regardless of what
+        // other mods are installed.
         File target = new File(dataFolder, resourcePath);
         if (target.exists() && !replace) return;
         File parent = target.getParentFile();
@@ -121,7 +133,7 @@ public class FabricAdapter implements PluginAdapter {
             //noinspection ResultOfMethodCallIgnored
             parent.mkdirs();
         }
-        try (InputStream in = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
+        try (InputStream in = ModResourceLoader.open(getClass(), resourcePath)) {
             if (in == null) {
                 // Resource not packaged with the mod — fall through
                 // silently so the config merger can create a
@@ -145,7 +157,12 @@ public class FabricAdapter implements PluginAdapter {
 
     @Override
     public InputStream getResource(String resourcePath) {
-        return getClass().getClassLoader().getResourceAsStream(resourcePath);
+        // See {@link #saveResource} for why we go through
+        // {@link ModResourceLoader} instead of the classloader —
+        // the shared Forge / NeoForge classloader can shadow
+        // this method's lookup with another mod's resource of
+        // the same name.
+        return ModResourceLoader.open(getClass(), resourcePath);
     }
 
     @Override
