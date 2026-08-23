@@ -1,3 +1,5 @@
+[![Banner](https://at87668.github.io/MinerTrack/Images/Banner.png)](https://url-shortener.curseforge.com/UXFDL)
+
 ![MinerTrack Anti-XRay](https://at87668.github.io/MinerTrack/Images/MinerTrack.png)
 
 ## MinerTrack Anti-XRay
