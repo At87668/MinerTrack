@@ -9,7 +9,7 @@ license = "GPLv3"
 
 [[mods]]
 modId = "minertrack"
-version = "2.1.1.1"
+version = "2.1.1.2"
 displayName = "MinerTrack"
 # logoFile is optional — omit for now
 description = '''
