@@ -548,10 +548,14 @@ public class FabricCommandBridge implements CommandBridge {
         Object player = resolvePlayerEntity(source);
         if (player == null) return true; // not a player → console → allowed
 
-        // Try hasPermission(int) on the source (works for CSS).
-        // M_HAS_PERMISSION has correct hardcoded interFallback method_9259.
-        Object r = FabricReflection.callAny(source, "hasPermission",
-            new Class<?>[]{int.class}, new Object[]{minLevel});
+        // Player → operator check. NOTE: MC 26.x CommandSourceStack no longer
+        // has hasPermission(int) (it uses PermissionSet), so if the signature
+        // lookup fails we go straight to the operator check.
+        // callBySig (not callAny) — requires an exact (int) -> boolean match
+        // and never falls back to the first method that happens to take an
+        // int parameter, which would silently return a non-Boolean.
+        Object r = FabricReflection.callBySig(source,
+            new Class<?>[]{int.class}, new Object[]{minLevel}, boolean.class);
         if (r instanceof Boolean) return (Boolean) r;
 
         // Not a CSS, or hasPermission(int) was not found — use operator check.
@@ -573,37 +577,32 @@ public class FabricCommandBridge implements CommandBridge {
     /**
      * Extract the ServerPlayer entity from a CommandSourceStack, or return
      * {@code source} itself if it already is a player entity.
+     *
+     * <p>Uses {@code ServerPlayer.isInstance()} rather than probing
+     * {@code getGameProfile()} on the source — CommandSourceStack has no
+     * getGameProfile(), so a blind parameter-scan would match an unrelated
+     * no-arg method and falsely identify the source as a player (breaking
+     * the console detection in checkVanillaOpLevel: the console would then
+     * fail the operator check and be denied every command).
      */
     private static Object resolvePlayerEntity(Object source) {
         if (source == null) return null;
-        // Direct entity probe: if source itself has getGameProfile(),
-        // it is already a player entity (used by DetectionBridge path).
-        Object gp = FabricReflection.callAny(source, "getGameProfile",
-            FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-        if (gp != null) return source;
+        Class<?> serverPlayerCls = FabricReflection.forName(
+            FabricReflectionConstants.CLS_SERVER_PLAYER);
 
-        // Not a direct entity — extract from CommandSourceStack.
-        // Prefer getPlayer (returns ServerPlayer on 1.19.1+). Avoid on
-        // 1.18.2 CSS where getPlayer doesn't exist → blind scan matches
-        // getDisplayName(). getEntity works on every version.
+        // 1. Source itself is already a ServerPlayer (DetectionBridge path).
+        if (serverPlayerCls != null && serverPlayerCls.isInstance(source)) return source;
+
+        // 2. Extract entity from CommandSourceStack via getEntity() (all versions).
         Object entity = FabricReflection.callAny(source, "getEntity",
             FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-        if (entity != null) {
-            gp = FabricReflection.callAny(entity, "getGameProfile",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (gp != null) return entity;
-        }
-        // 1.19.1+ CSS: getPlayer() returns ServerPlayer directly.
-        // Safe on 1.21.1 because it exists; on 1.18.2 CSS it blind-scans
-        // getDisplayName() — that returns a Component not a player entity
-        // so the next getGameProfile call will return null.
+        if (entity != null && serverPlayerCls != null && serverPlayerCls.isInstance(entity)) return entity;
+
+        // 3. getPlayer() on 1.19.1+ (exists on 26.x; blind-scans getDisplayName
+        //    on 1.18.2 but that is not a ServerPlayer so it is rejected).
         Object sp = FabricReflection.callAny(source, "getPlayer",
             FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-        if (sp != null) {
-            gp = FabricReflection.callAny(sp, "getGameProfile",
-                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
-            if (gp != null) return sp;
-        }
+        if (sp != null && serverPlayerCls != null && serverPlayerCls.isInstance(sp)) return sp;
         return null;
     }
 
