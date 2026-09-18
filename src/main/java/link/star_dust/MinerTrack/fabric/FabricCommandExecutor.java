@@ -163,6 +163,11 @@ public class FabricCommandExecutor {
         @Override
         public UUID getPlayerUUID(String name) {
             try {
+                // Offline-aware: consult the violation manager's name↔UUID
+                // history first so `/mt check` and `/mt reset` still work
+                // after the target disconnects.
+                UUID known = vlBridge.resolvePlayerId(name);
+                if (known != null) return known;
                 // Use the command source's server for player lookup, which is
                 // more reliable than the static server() accessor across MC versions.
                 Object player = playerByName(commandSource, name);
@@ -178,13 +183,13 @@ public class FabricCommandExecutor {
         public String getPlayerName(UUID uuid) {
             try {
                 Object player = playerByUuid(commandSource, uuid);
-                if (player == null) return uuid.toString();
+                if (player == null) return vlBridge.getPlayerName(uuid);
                 // MC 26.1+: getName() returns Component; use readString() to unwrap.
                 Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
                 String s = FabricReflection.readString(name);
-                return s == null ? uuid.toString() : s;
+                return s == null ? vlBridge.getPlayerName(uuid) : s;
             } catch (Throwable t) {
-                return uuid.toString();
+                return vlBridge.getPlayerName(uuid);
             }
         }
 
