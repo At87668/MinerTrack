@@ -69,8 +69,8 @@ public class ForgeCommandExecutor {
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
         private final Object commandSource;
         PlayerLookupImpl(Object cs) { this.commandSource = cs; }
-        @Override public UUID getPlayerUUID(String name) { try { Object p = playerByName(commandSource, name); if (p == null) return null; Object u = ForgeReflection.callUuid(p); return u instanceof UUID ? (UUID) u : null; } catch (Throwable t) { return null; } }
-        @Override public String getPlayerName(UUID uuid) { try { Object p = playerByUuid(commandSource, uuid); if (p == null) return uuid.toString(); Object n = ForgeReflection.callAny(p, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(n); return s == null ? uuid.toString() : s; } catch (Throwable t) { return uuid.toString(); } }
+        @Override public UUID getPlayerUUID(String name) { try { UUID known = vlBridge.resolvePlayerId(name); if (known != null) return known; Object p = playerByName(commandSource, name); if (p == null) return null; Object u = ForgeReflection.callUuid(p); return u instanceof UUID ? (UUID) u : null; } catch (Throwable t) { return null; } }
+        @Override public String getPlayerName(UUID uuid) { try { Object p = playerByUuid(commandSource, uuid); if (p == null) return vlBridge.getPlayerName(uuid); Object n = ForgeReflection.callAny(p, "getName", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS); String s = ForgeReflection.readString(n); return s == null ? vlBridge.getPlayerName(uuid) : s; } catch (Throwable t) { return vlBridge.getPlayerName(uuid); } }
         @Override public boolean isOnline(UUID uuid) { return playerByUuid(commandSource, uuid) != null; }
         @Override public List<String> getOnlinePlayerNames() {
             List<String> names = new ArrayList<>();
