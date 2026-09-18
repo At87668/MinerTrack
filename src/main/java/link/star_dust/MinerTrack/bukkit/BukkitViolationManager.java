@@ -563,6 +563,10 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         BukkitDetectionBridge bridge = BukkitDetectionBridge.getActive();
         if (bridge != null) {
             bridge.clearPlayerPath(playerId);
+            // Also drop the placed-block / artificial-air tracking maps, so a
+            // reset really returns the player to a "fresh session" state
+            // rather than leaving half of the detection history behind.
+            bridge.clearPlayerTracking(playerId);
         }
         resetViolation(playerId);
     }
@@ -573,7 +577,56 @@ public class BukkitViolationManager implements ViolationManagerBridge {
         if (obj instanceof org.bukkit.entity.Player) {
             return ((org.bukkit.entity.Player) obj).getName();
         }
+        // Offline: fall back to the engine's name history (populated on every
+        // violation), then to Bukkit's offline profile, then to the raw UUID.
+        String known = engine.findPlayerName(playerId);
+        if (known != null) return known;
+        try {
+            org.bukkit.OfflinePlayer off = org.bukkit.Bukkit.getOfflinePlayer(playerId);
+            if (off != null && off.getName() != null) return off.getName();
+        } catch (Throwable ignored) { /* offline lookup unavailable */ }
         return playerId.toString();
+    }
+
+    /**
+     * Resolve a player name to a UUID even when the player is offline.
+     *
+     * <p>Tries, in order:
+     * <ol>
+     *   <li>the engine's known-player history (populated on every violation —
+     *       the authoritative source for players this plugin has flagged);</li>
+     *   <li>an online lookup;</li>
+     *   <li>Bukkit's offline-player profile cache.</li>
+     * </ol>
+     * This is what makes {@code /mt check <player>} and
+     * {@code /mt reset <player>} work for disconnected players.
+     */
+    @Override
+    public UUID resolvePlayerId(String name) {
+        if (name == null || name.isEmpty()) return null;
+        // 1) Engine history (works offline).
+        UUID known = engine.findPlayerIdByName(name);
+        if (known != null) return known;
+        // 2) Online player.
+        try {
+            org.bukkit.entity.Player online = org.bukkit.Bukkit.getPlayerExact(name);
+            if (online != null) return online.getUniqueId();
+        } catch (Throwable ignored) { /* server not ready */ }
+        // 3) Offline profile cache (only returns a match for names the
+        //    server has actually seen, and returns null/offline-mode-UUID
+        //    otherwise; guarded so a name we've never seen stays unresolved).
+        try {
+            org.bukkit.OfflinePlayer off = org.bukkit.Bukkit.getOfflinePlayer(name);
+            if (off != null && (off.hasPlayedBefore() || off.isOnline())) {
+                return off.getUniqueId();
+            }
+        } catch (Throwable ignored) { /* offline lookup unavailable */ }
+        return null;
+    }
+
+    @Override
+    public java.util.Set<String> getKnownPlayerNames() {
+        return engine.getKnownPlayerNames();
     }
 
     /**
