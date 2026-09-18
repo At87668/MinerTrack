@@ -70,6 +70,38 @@ public interface ViolationManagerBridge {
     void appendCommandLog(String command);
     String getPlayerName(UUID playerId);
 
+    /**
+     * Resolve a player name to a UUID <b>without</b> requiring the player
+     * to be online.
+     *
+     * <p>The platform player-lookup APIs ({@code Bukkit.getPlayer(name)},
+     * {@code PlayerList.getPlayerByName(name)}) only see online players, so
+     * {@code /mt check <player>} and {@code /mt reset <player>} used to fail
+     * with "player not found" as soon as the target logged off — even though
+     * their VL and mining state were still in memory. Platforms that keep a
+     * name↔UUID history (populated whenever a violation is raised) override
+     * this to consult it.
+     *
+     * <p>Implementations should also accept a raw UUID string so admins can
+     * address a player whose name they don't know.
+     *
+     * @param name player name or UUID string
+     * @return the UUID, or {@code null} when the player is unknown
+     */
+    default UUID resolvePlayerId(String name) {
+        return null;
+    }
+
+    /**
+     * Names of every player known to the platform's violation history,
+     * including offline players. Used by {@code /mt check} and
+     * {@code /mt reset} tab completion so admins can complete offline
+     * targets. Defaults to an empty set for platforms without history.
+     */
+    default Set<String> getKnownPlayerNames() {
+        return java.util.Collections.emptySet();
+    }
+
     // Typed config accessors
     int getConfigInt(String path, int def);
     boolean getConfigBoolean(String path, boolean def);
