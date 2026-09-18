@@ -315,6 +315,9 @@ public class FabricViolationManager implements ViolationManagerBridge {
         FabricDetectionBridge bridge = FabricDetectionBridge.getActive();
         if (bridge != null) {
             bridge.clearPlayerPath(playerId);
+            // Also drop the placed-block / artificial-air tracking maps so a
+            // reset returns the player to a fresh-session state.
+            bridge.clearPlayerTracking(playerId);
         }
         // Clear VL state via resetViolation (which uses recursion guard)
         resetViolation(playerId);
@@ -340,15 +343,57 @@ public class FabricViolationManager implements ViolationManagerBridge {
                 new Class<?>[0], new Object[0]);
             if (pm == null) return playerId.toString();
             Object player = FabricReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{playerId});
-            if (player == null) return playerId.toString();
+            if (player == null) {
+                // Offline: fall back to the engine's name history.
+                String known = engine.findPlayerName(playerId);
+                return known != null ? known : playerId.toString();
+            }
             // MC 26.1+: Entity.getName() returns Component; use readString to unwrap.
             Object name = FabricReflection.callAny(player, "getName", new Class<?>[0], new Object[0]);
             String s = FabricReflection.readString(name);
             if (s == null) return playerId.toString();
             return s;
         } catch (Throwable t) {
-            return playerId.toString();
+            String known = engine.findPlayerName(playerId);
+            return known != null ? known : playerId.toString();
         }
+    }
+
+    /**
+     * Resolve a player name to a UUID even when the player is offline.
+     *
+     * <p>The vanilla {@code PlayerList.getPlayerByName} only sees online
+     * players, so this consults the engine's known-player history first
+     * (populated on every violation). This is what makes
+     * {@code /mt check <player>} and {@code /mt reset <player>} work for
+     * disconnected players.
+     */
+    @Override
+    public UUID resolvePlayerId(String name) {
+        if (name == null || name.isEmpty()) return null;
+        // 1) Engine history (works offline).
+        UUID known = engine.findPlayerIdByName(name);
+        if (known != null) return known;
+        // 2) Online player via the vanilla PlayerList lookup.
+        try {
+            Object server = FabricReflection.getServer();
+            if (server == null) return null;
+            Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+                new Class<?>[0], new Object[0]);
+            if (pm == null) return null;
+            Object player = FabricReflection.call(pm, "getPlayerByName",
+                new Class<?>[]{String.class}, new Object[]{name});
+            if (player == null) return null;
+            Object uuid = FabricReflection.callUuid(player);
+            return uuid instanceof UUID ? (UUID) uuid : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @Override
+    public java.util.Set<String> getKnownPlayerNames() {
+        return engine.getKnownPlayerNames();
     }
 
     @Override
