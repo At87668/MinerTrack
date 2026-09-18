@@ -117,6 +117,11 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
     private class PlayerLookupImpl implements MinerTrackCommandCore.PlayerLookup {
         @Override
         public UUID getPlayerUUID(String name) {
+            // Offline-aware: the violation manager keeps a name↔UUID history
+            // populated on every violation, so `/mt check` and `/mt reset`
+            // still work after the target disconnects.
+            UUID known = vlBridge.resolvePlayerId(name);
+            if (known != null) return known;
             Player p = Bukkit.getPlayer(name);
             return p != null ? p.getUniqueId() : null;
         }
@@ -124,7 +129,8 @@ public class MinerTrackCommandExecutor implements CommandExecutor, TabCompleter 
         @Override
         public String getPlayerName(UUID uuid) {
             Player p = Bukkit.getPlayer(uuid);
-            return p != null ? p.getName() : uuid.toString();
+            if (p != null) return p.getName();
+            return vlBridge.getPlayerName(uuid);
         }
 
         @Override
