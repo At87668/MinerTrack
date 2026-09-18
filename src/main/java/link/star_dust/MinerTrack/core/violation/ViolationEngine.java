@@ -35,6 +35,32 @@ public class ViolationEngine {
     private final Map<UUID, Integer> violationLevels = new HashMap<>();
     private final Map<UUID, Long> vlChangedTimestamp = new HashMap<>();
     private final Map<UUID, Long> vlZeroTimestamp = new HashMap<>();
+
+    /**
+     * Known-player registry: last-seen name for every UUID that has ever
+     * triggered a detection.
+     *
+     * <p>Kept here (rather than only on the platform) because the platform
+     * player lookup APIs ({@code Bukkit.getPlayer(name)},
+     * {@code PlayerList.getPlayerByName(name)}) only resolve ONLINE players.
+     * Without a persisted name↔UUID mapping, {@code /mt check <player>} and
+     * {@code /mt reset <player>} report "player not found" as soon as the
+     * target logs off — even though their VL / mining state is still held in
+     * memory. {@link #findPlayerIdByName(String)} is the offline lookup used
+     * by the command layer via
+     * {@link link.star_dust.MinerTrack.common.ViolationManagerBridge#resolvePlayerId(String)}.
+     *
+     * <p>Keys are lower-cased player names; values are UUIDs.
+     */
+    private final Map<String, UUID> knownPlayerIds = new HashMap<>();
+
+    /**
+     * UUID → last-seen display name (original casing). Kept alongside
+     * {@link #knownPlayerIds} because that map is keyed by lower-cased name
+     * and would otherwise lose the capitalisation players actually use, which
+     * matters for chat output and tab completion.
+     */
+    private final Map<UUID, String> knownPlayerNames = new HashMap<>();
     /**
      * Optional webhook engine injected by the platform during
      * {@code onEnable}. When non-null, the engine is queried with the
@@ -67,6 +93,13 @@ public class ViolationEngine {
         long now = System.currentTimeMillis();
         vlZeroTimestamp.remove(playerId);
         vlChangedTimestamp.put(playerId, now);
+
+        // Remember the name↔UUID pair so the command layer can still
+        // resolve this player by name after they disconnect.
+        if (playerName != null && !playerName.isEmpty()) {
+            knownPlayerIds.put(playerName.toLowerCase(java.util.Locale.ROOT), playerId);
+            knownPlayerNames.put(playerId, playerName);
+        }
 
         int oldLevel = getViolationLevel(playerId);
         int newLevel = oldLevel + increment;
@@ -234,6 +267,56 @@ public class ViolationEngine {
         violationLevels.remove(playerId);
         vlChangedTimestamp.remove(playerId);
         vlZeroTimestamp.remove(playerId);
+        // NOTE: knownPlayerIds is intentionally NOT cleared here. The
+        // name↔UUID mapping is a lookup index (not violation state), and
+        // keeping it means an admin can still `/mt check <player>` and
+        // `/mt reset <player>` a player who was reset while offline.
         bridge.resetViolation(playerId);
+    }
+
+    /**
+     * Resolve a player name to a UUID from the in-memory known-player
+     * registry, without requiring the player to be online.
+     *
+     * <p>Matches case-insensitively and also accepts an exact UUID string,
+     * so admins can use either form in {@code /mt check} and
+     * {@code /mt reset}.
+     *
+     * @param name player name (or UUID string) to resolve
+     * @return the UUID, or {@code null} when the player is unknown
+     */
+    public UUID findPlayerIdByName(String name) {
+        if (name == null || name.isEmpty()) return null;
+        UUID byName = knownPlayerIds.get(name.toLowerCase(java.util.Locale.ROOT));
+        if (byName != null) return byName;
+        // Accept a raw UUID string as well.
+        try {
+            return UUID.fromString(name);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Reverse lookup for {@link #findPlayerIdByName(String)}: return the
+     * last-seen name recorded for {@code playerId}. Used by the command
+     * layer to display a readable name for an offline target.
+     *
+     * @return the last-seen name, or {@code null} when unknown
+     */
+    public String findPlayerName(UUID playerId) {
+        if (playerId == null) return null;
+        return knownPlayerNames.get(playerId);
+    }
+
+    /**
+     * Every player name the engine has ever seen a violation from, whether
+     * or not the player is currently online. Backs the offline branch of
+     * tab completion for {@code /mt check} and {@code /mt reset}.
+     *
+     * @return a defensive copy of the known player names, original casing
+     */
+    public Set<String> getKnownPlayerNames() {
+        return new HashSet<>(knownPlayerNames.values());
     }
 }
