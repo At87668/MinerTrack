@@ -175,11 +175,53 @@ public class NeoForgeViolationManager implements ViolationManagerBridge {
     @Override public void resetViolation(UUID pid) { if (!resetViolationRecursionGuard.add(pid)) return; try { engine.resetViolation(pid); } finally { resetViolationRecursionGuard.remove(pid); } }
     @Override public void clearPlayerState(UUID pid) {
         cancelVLDecayTask(pid); verbosePlayers.remove(pid);
-        NeoForgeDetectionBridge bridge = NeoForgeDetectionBridge.getActive(); if (bridge != null) bridge.clearPlayerPath(pid);
+        NeoForgeDetectionBridge bridge = NeoForgeDetectionBridge.getActive();
+        if (bridge != null) {
+            bridge.clearPlayerPath(pid);
+            // Also drop the placed-block / artificial-air tracking maps so a
+            // reset returns the player to a fresh-session state.
+            bridge.clearPlayerTracking(pid);
+        }
         resetViolation(pid); playerNameCache.remove(pid);
     }
     @Override public void appendCommandLog(String cmd) { appendLogLine(cmd); }
-    @Override public String getPlayerName(UUID pid) { String n = playerNameCache.get(pid); if (n != null) return n; try { Object server = NeoForgeReflection.getServer(); if (server != null) { Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm != null) { Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player != null) { Object name = NeoForgeReflection.callAny(player, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); String s = NeoForgeReflection.readString(name); if (s != null) { playerNameCache.put(pid, s); return s; } } } } } catch (Throwable t) {} return pid.toString(); }
+    @Override public String getPlayerName(UUID pid) { String n = playerNameCache.get(pid); if (n != null) return n; String known = engine.findPlayerName(pid); if (known != null) { playerNameCache.put(pid, known); return known; } try { Object server = NeoForgeReflection.getServer(); if (server != null) { Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); if (pm != null) { Object player = NeoForgeReflection.call(pm, "getPlayerByUUID", new Class<?>[]{UUID.class}, new Object[]{pid}); if (player != null) { Object name = NeoForgeReflection.callAny(player, "getName", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS); String s = NeoForgeReflection.readString(name); if (s != null) { playerNameCache.put(pid, s); return s; } } } } } catch (Throwable t) {} return pid.toString(); }
+
+    /**
+     * Resolve a player name to a UUID even when the player is offline.
+     *
+     * <p>{@code PlayerList.getPlayerByName} only sees online players, so this
+     * consults the engine's known-player history first (populated on every
+     * violation) and then the manager's own {@code playerNameCache}. This is
+     * what makes {@code /mt check <player>} and {@code /mt reset <player>}
+     * work for disconnected players.
+     */
+    @Override public UUID resolvePlayerId(String name) {
+        if (name == null || name.isEmpty()) return null;
+        // 1) Engine history (works offline).
+        UUID known = engine.findPlayerIdByName(name);
+        if (known != null) return known;
+        // 2) Manager-side name cache (populated on every VL increase).
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        for (java.util.Map.Entry<UUID, String> e : playerNameCache.entrySet()) {
+            if (e.getValue() != null && e.getValue().toLowerCase(java.util.Locale.ROOT).equals(lower)) {
+                return e.getKey();
+            }
+        }
+        // 3) Online player.
+        try {
+            Object server = NeoForgeReflection.getServer();
+            if (server == null) return null;
+            Object pm = NeoForgeReflection.callMigrated(server, "getPlayerList", "getPlayerManager", NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+            if (pm == null) return null;
+            Object player = NeoForgeReflection.call(pm, "getPlayerByName", new Class<?>[]{String.class}, new Object[]{name});
+            if (player == null) return null;
+            Object uuid = NeoForgeReflection.callUuid(player);
+            return uuid instanceof UUID ? (UUID) uuid : null;
+        } catch (Throwable t) { return null; }
+    }
+
+    @Override public java.util.Set<String> getKnownPlayerNames() { return engine.getKnownPlayerNames(); }
     @Override public int getConfigInt(String p, int d) { return config.getInt(p, d); }
     @Override public boolean getConfigBoolean(String p, boolean d) { return config.getBoolean(p, d); }
     @Override public double getConfigDouble(String p, double d) { return config.getDouble(p, d); }
