@@ -144,11 +144,11 @@ public class MinerTrackCommandCore {
             case "check": {
                 if (!hasPermission("minertrack.check")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 if (args.length < 2) { cmd.sendFailure(lang.getPrefixedMessage("usage-check")); return true; }
-                UUID target = playerLookup.getPlayerUUID(args[1]);
+                UUID target = resolveTarget(args[1]);
                 if (target != null) {
                     int level = vl.getViolationLevel(target);
                     cmd.sendSuccess(lang.getPrefixedMessage("violation-level")
-                        .replace("{player}", args[1])
+                        .replace("{player}", displayName(target, args[1]))
                         .replace("{level}", String.valueOf(level)));
                 } else {
                     cmd.sendFailure(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
@@ -159,10 +159,16 @@ public class MinerTrackCommandCore {
             case "reset": {
                 if (!hasPermission("minertrack.reset")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 if (args.length < 2) { cmd.sendFailure(lang.getPrefixedMessage("usage-reset")); return true; }
-                UUID target = playerLookup.getPlayerUUID(args[1]);
+                UUID target = resolveTarget(args[1]);
                 if (target != null) {
-                    vl.resetViolation(target);
-                    cmd.sendSuccess(lang.getPrefixedMessage("reset-success").replace("{player}", args[1]));
+                    // clearPlayerState (not resetViolation) so the admin reset
+                    // wipes the mining-behaviour counters too — the per-world
+                    // mining path, vein count, vein clusters and air-exposure
+                    // history — and not just the VL counter. Without this the
+                    // next rare-ore break re-evaluated the long accumulated
+                    // path and pushed VL straight back up.
+                    vl.clearPlayerState(target);
+                    cmd.sendSuccess(lang.getPrefixedMessage("reset-success").replace("{player}", displayName(target, args[1])));
                 } else {
                     cmd.sendFailure(lang.getPrefixedMessage("player-not-found").replace("{player}", args[1]));
                 }
@@ -173,7 +179,13 @@ public class MinerTrackCommandCore {
                 if (!hasPermission("minertrack.kick")) { cmd.sendFailure(lang.getPrefixedMessage("no-permission")); return true; }
                 if (args.length < 3) { cmd.sendFailure(lang.getPrefixedMessage("usage-kick")); return true; }
                 UUID target = playerLookup.getPlayerUUID(args[1]);
-                if (target != null) {
+                // kick requires an ONLINE target — you cannot kick a player who
+                // has already left. getPlayerUUID is deliberately offline-aware
+                // (so check/reset work for disconnected players), so guard here:
+                // without it, /mt kick on a logged-off player would broadcast
+                // the kick message and spawn the lightning effect for nothing,
+                // then silently fail to actually kick anyone.
+                if (target != null && playerLookup.isOnline(target)) {
                     String reason = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
                     if (kickBridge.isKickStrikeLightning()) {
                         kickBridge.strikeLightningEffect(target);
@@ -259,7 +271,14 @@ public class MinerTrackCommandCore {
         if (args.length == 1) {
             completions.addAll(Arrays.asList("help", "notify", "verbose", "check", "reset", "kick", "reload", "update", "logs"));
         } else if (args.length == 2) {
-            if (args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("reset") || args[0].equalsIgnoreCase("kick")) {
+            if (args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("reset")) {
+                // check/reset accept offline players too, so offer the union
+                // of online players and the plugin's known-player history.
+                // kick stays online-only (you can't kick someone who left).
+                java.util.LinkedHashSet<String> targets = new java.util.LinkedHashSet<>(playerLookup.getOnlinePlayerNames());
+                targets.addAll(vl.getKnownPlayerNames());
+                completions.addAll(targets);
+            } else if (args[0].equalsIgnoreCase("kick")) {
                 completions.addAll(playerLookup.getOnlinePlayerNames());
             } else if (args[0].equalsIgnoreCase("logs")) {
                 completions.addAll(logViewer.getLogFileNames(10));
@@ -284,5 +303,40 @@ public class MinerTrackCommandCore {
 
     private boolean hasPermissionForPlayer(UUID playerId, String node) {
         return cmd.hasPermissionForPlayer(playerId, node);
+    }
+
+    /**
+     * Resolve a command argument to a player UUID, online or offline.
+     *
+     * <p>Order matters: the violation manager's
+     * {@link ViolationManagerBridge#resolvePlayerId(String)} consults the
+     * plugin's own name↔UUID history first, so a player who was flagged and
+     * has since logged off is still addressable. Only when that fails do we
+     * fall back to the platform's online-player lookup.
+     *
+     * @param name player name (or UUID string) from the command line
+     * @return the UUID, or {@code null} when the player is unknown
+     */
+    private UUID resolveTarget(String name) {
+        UUID known = vl.resolvePlayerId(name);
+        if (known != null) return known;
+        return playerLookup.getPlayerUUID(name);
+    }
+
+    /**
+     * Human-readable name for a resolved target.
+     *
+     * <p>Prefers the plugin's own name history (which survives logout) over
+     * the raw command argument, so {@code /mt check <uuid>} and a reset of an
+     * offline player both report the player's actual name instead of echoing
+     * the UUID the admin typed.
+     *
+     * @param target   resolved player UUID
+     * @param fallback the raw argument supplied on the command line
+     * @return the player's name, or {@code fallback} when no name is known
+     */
+    private String displayName(UUID target, String fallback) {
+        String name = playerLookup.getPlayerName(target);
+        return (name != null && !name.isEmpty()) ? name : fallback;
     }
 }
