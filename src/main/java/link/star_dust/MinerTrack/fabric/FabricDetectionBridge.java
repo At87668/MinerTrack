@@ -372,18 +372,13 @@ public class FabricDetectionBridge implements DetectionBridge {
             //    used by FabricCommandBridge; it iterates the registered
             //    permission providers and returns true on first match.
             if (FabricCommandBridge.checkLPPermission(player, node, 2)) return true;
-            // 2) PlayerList.isOp() — proven reliable across all MC versions.
-            //    Avoid checkVanillaOpLevel() which routes through
-            //    isSourceOperator() → getProfilePermissions(MinecraftServer)
-            //    that is NOT in the METHOD_REDIRECT table.
-            return isPlayerOp(pm, player);
+            // 2) Vanilla op check — PermissionSet on MC 26.1+ (an OP player's
+            //    ServerPlayer.permissions() carries LevelBasedPermissionSet),
+            //    PlayerList.isOp() on 1.18–1.21.
+            return FabricCommandBridge.checkPlayerOpLevel(player, 2);
         } catch (Throwable t) {
             return false;
         }
-    }
-
-    private static boolean isPlayerOp(Object pm, Object player) {
-        return FabricCommandBridge.isPlayerOperator(player);
     }
 
     @Override
