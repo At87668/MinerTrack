@@ -49,6 +49,18 @@ final class FabricReflectionConstants {
     /** True when the runtime namespace is named/mojang (MC 26+),
      *  false when it's intermediary (MC 1.18–1.21). */
     private static final boolean IS_NAMED_RUNTIME;
+
+    /**
+     * True when the MC 26.1+ permission model is present
+     * ({@code PermissionSet} / {@code PermissionLevel} / {@code Permission}).
+     *
+     * <p>MC 26.1 replaced {@code CommandSourceStack.hasPermission(int)} with
+     * {@code permissions()} returning a {@link #CLS_PERMISSION_SET}. On
+     * 1.18–1.21 this flag is {@code false} and the legacy op-level
+     * {@code hasPermission(int)} path must be used instead.
+     */
+    static final boolean HAS_PERMISSION_MODEL;
+
     static {
         FabricLoader fl = FabricLoader.getInstance();
         MR = fl.getMappingResolver();
@@ -61,6 +73,15 @@ final class FabricReflectionConstants {
             namedRt = true;
         } catch (ClassNotFoundException ignored) {}
         IS_NAMED_RUNTIME = namedRt;
+
+        boolean hasPermModel = false;
+        try {
+            // Literal name (not CLS_PERMISSION_SET): this static block runs
+            // before the field initializers further down the class body.
+            Class.forName("net.minecraft.server.permissions.PermissionSet");
+            hasPermModel = true;
+        } catch (ClassNotFoundException ignored) {}
+        HAS_PERMISSION_MODEL = hasPermModel;
     }
 
     // ==================================================================
@@ -135,6 +156,11 @@ final class FabricReflectionConstants {
     static final String CLS_INTERACTION_RESULT        = "net.minecraft.world.InteractionResult";
     static final String CLS_VEC3                      = "net.minecraft.world.phys.Vec3";
     static final String CLS_SERVER_GAME_PACKET_LISTENER = "net.minecraft.server.network.ServerGamePacketListenerImpl";
+
+    // -- MC 26.1+ permission model (absent on 1.18–1.21) ------------------
+    static final String CLS_PERMISSION                = "net.minecraft.server.permissions.Permission";
+    static final String CLS_PERMISSION_SET            = "net.minecraft.server.permissions.PermissionSet";
+    static final String CLS_PERMISSIONS               = "net.minecraft.server.permissions.Permissions";
 
     // ==================================================================
     // METHOD NAMES
