@@ -521,21 +521,49 @@ public class FabricCommandBridge implements CommandBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (checkLPPermission(player, node, 2)) return true;
-            // 2) Vanilla operator check via getProfilePermissions(GameProfile)→int
-            return isPlayerOperator(player);
+            // 2) Vanilla op-level check (PermissionSet on 26.1+, isOp before)
+            return checkPlayerOpLevel(player, 2);
         } catch (Throwable t) {
             return false;
         }
     }
 
     /**
+     * Vanilla op-level check for a known player entity.
+     *
+     * <p>Uses the MC 26.1+ {@code PermissionSet} model when available and
+     * falls back to {@link #isPlayerOperator} (the {@code PlayerList} op-list
+     * check) otherwise.
+     *
+     * <p>Package-private so that {@link FabricDetectionBridge} and
+     * {@link FabricViolationManager} reuse the exact same decision logic —
+     * a player who passes a command permission check must also pass the
+     * {@code minertrack.bypass} / {@code minertrack.verbose} checks.
+     */
+    static boolean checkPlayerOpLevel(Object player, int minLevel) {
+        if (player == null) return false;
+        // OR the two models: a FALSE from the 26.1+ PermissionSet must not
+        // short-circuit denial, because an op entry carrying an unexpected
+        // permission level would otherwise lock out a genuine operator.
+        if (Boolean.TRUE.equals(checkPermissionSetOpLevel(player, minLevel))) return true;
+        return isPlayerOperator(player);
+    }
+
+    /**
      * Vanilla op-level / operator check — the catch-all fallback.
      *
-     * <p>Tries {@code hasPermission(int)} via METHOD_REDIRECT first on every
-     * source — works for CommandSourceStack (all MC versions).  If that
-     * doesn't produce a Boolean (not a CSS), falls back to
-     * {@link #isPlayerOperator} using
-     * {@code MinecraftServer.getProfilePermissions(GameProfile)→int}.
+     * <p>Resolution order:
+     * <ol>
+     *   <li>A source not backed by a player entity (console / command block /
+     *       RCON) is always allowed.</li>
+     *   <li>MC 26.1+: {@code permissions()} returns a {@code PermissionSet},
+     *       queried with a {@code Permission.HasCommandLevel}.</li>
+     *   <li>MC 1.18–1.21: {@code hasPermission(int)} on the
+     *       {@code CommandSourceStack}, matched by the exact
+     *       {@code (int) -> boolean} signature.</li>
+     *   <li>Fallback: {@link #isPlayerOperator} via
+     *       {@code PlayerList.isOp(NameAndId|GameProfile)}.</li>
+     * </ol>
      *
      * <p>Package-private so that {@link FabricDetectionBridge} can reuse it.
      */
@@ -548,18 +576,132 @@ public class FabricCommandBridge implements CommandBridge {
         Object player = resolvePlayerEntity(source);
         if (player == null) return true; // not a player → console → allowed
 
-        // Player → operator check. NOTE: MC 26.x CommandSourceStack no longer
-        // has hasPermission(int) (it uses PermissionSet), so if the signature
-        // lookup fails we go straight to the operator check.
-        // callBySig (not callAny) — requires an exact (int) -> boolean match
-        // and never falls back to the first method that happens to take an
-        // int parameter, which would silently return a non-Boolean.
+        // 1) MC 26.1+ PermissionSet model. CommandSourceStack no longer has
+        //    hasPermission(int) on 26.x, so this is the authoritative check
+        //    there; on 1.18–1.21 it reports "unavailable" (null) and the
+        //    legacy path below runs instead.
+        //    A FALSE result is NOT returned directly: fall through to the
+        //    op-list check so a genuine operator is never locked out.
+        if (Boolean.TRUE.equals(checkPermissionSetOpLevel(source, minLevel))) return true;
+
+        // 2) MC 1.18–1.21: hasPermission(int). callBySig (not callAny)
+        //    requires an exact (int) -> boolean match and never falls back to
+        //    the first method that happens to take an int parameter, which
+        //    would silently return a non-Boolean.
         Object r = FabricReflection.callBySig(source,
             new Class<?>[]{int.class}, new Object[]{minLevel}, boolean.class);
         if (r instanceof Boolean) return (Boolean) r;
 
-        // Not a CSS, or hasPermission(int) was not found — use operator check.
+        // 3) Not a CSS, or hasPermission(int) was not found — operator check.
         return isPlayerOperator(player);
+    }
+
+    /**
+     * MC 26.1+ op-level check via the {@code PermissionSet} model.
+     *
+     * <p>Two independent routes, so a rename in a later 26.x release cannot
+     * silently reintroduce the "OP denied" bug:
+     * <ol>
+     *   <li>Read the set's {@code PermissionLevel} id directly
+     *       ({@code LevelBasedPermissionSet.level().id() >= minLevel}).</li>
+     *   <li>Query {@code PermissionSet.hasPermission(Permission)} with the
+     *       {@code Permissions.COMMANDS_*} constant.</li>
+     * </ol>
+     *
+     * <p>This is the model vanilla itself uses on 26.1+ (for example
+     * {@code DedicatedServer.sendLowDiskSpaceWarning} filters players with
+     * {@code player.permissions().hasPermission(new Permission.HasCommandLevel(ADMINS))}).
+     * A {@code CommandSourceStack} carries the permission set captured when
+     * it was created ({@code ServerPlayer.createCommandSourceStack()} passes
+     * {@code this.permissions()}), so an OP player's source reports
+     * {@code GAMEMASTER} or higher.
+     *
+     * @return {@code TRUE}/{@code FALSE} when a route ran, or {@code null}
+     *         when the runtime predates 26.1 or every lookup failed — the
+     *         caller then falls back to the legacy op-level path.
+     */
+    private static Boolean checkPermissionSetOpLevel(Object source, int minLevel) {
+        if (!FabricReflectionConstants.HAS_PERMISSION_MODEL) return null;
+        Object permSet;
+        try {
+            permSet = FabricReflection.call(source, "permissions",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+        } catch (Throwable ignored) {
+            return null;
+        }
+        if (permSet == null) return null;
+
+        // Route 1 — read the permission level id directly. Independent of the
+        // Permissions constant names, so it keeps working if they are renamed.
+        Boolean byLevel = opLevelFromPermissionLevel(permSet, minLevel);
+        if (byLevel != null) return byLevel;
+
+        // Route 2 — PermissionSet.hasPermission(Permissions.COMMANDS_*).
+        try {
+            Class<?> permissionCls = FabricReflection.forName(
+                FabricReflectionConstants.CLS_PERMISSION);
+            if (permissionCls == null) return null;
+            Object permission = commandLevelPermission(minLevel);
+            if (permission == null) return null;
+            Object granted = FabricReflection.call(permSet, "hasPermission",
+                new Class<?>[]{permissionCls}, new Object[]{permission});
+            if (granted instanceof Boolean) return (Boolean) granted;
+        } catch (Throwable ignored) {
+            // Fall through to the legacy path rather than denying outright.
+        }
+        return null;
+    }
+
+    /**
+     * Compare a {@code LevelBasedPermissionSet}'s {@code PermissionLevel} id
+     * against {@code minLevel}.
+     *
+     * <p>{@code PermissionSet.NO_PERMISSIONS} (the non-op default on 26.1+)
+     * is a lambda without a {@code level()} method, so it reports
+     * {@code null} and the caller tries the {@code hasPermission} route.
+     *
+     * @return the comparison result, or {@code null} when the set does not
+     *         expose a permission level
+     */
+    private static Boolean opLevelFromPermissionLevel(Object permSet, int minLevel) {
+        try {
+            Object level = FabricReflection.call(permSet, "level",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            // Guard against a blind no-arg scan matching something unrelated
+            // (e.g. hashCode()) on a set that has no permission level.
+            if (level == null || !isPermissionLevel(level)) return null;
+            Object id = FabricReflection.call(level, "id",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            if (id instanceof Number) return ((Number) id).intValue() >= minLevel;
+        } catch (Throwable ignored) {
+            // Not a level-based set — let the caller try the next route.
+        }
+        return null;
+    }
+
+    /** True when {@code obj} is the MC 26.1+ {@code PermissionLevel} enum constant. */
+    private static boolean isPermissionLevel(Object obj) {
+        Class<?> c = obj.getClass();
+        return c.isEnum() && "PermissionLevel".equals(c.getSimpleName());
+    }
+
+    /**
+     * Build the {@code Permissions.COMMANDS_*} constant corresponding to an
+     * op level ({@code 2} = {@code COMMANDS_GAMEMASTER}) on MC 26.1+.
+     *
+     * @return the {@code Permission} instance, or {@code null} when the
+     *         26.1+ permission classes are absent
+     */
+    private static Object commandLevelPermission(int minLevel) {
+        String fieldName;
+        if (minLevel <= 1)       fieldName = "COMMANDS_MODERATOR";
+        else if (minLevel == 2)  fieldName = "COMMANDS_GAMEMASTER";
+        else if (minLevel == 3)  fieldName = "COMMANDS_ADMIN";
+        else                     fieldName = "COMMANDS_OWNER";
+
+        Class<?> cls = FabricReflection.forName(FabricReflectionConstants.CLS_PERMISSIONS);
+        if (cls == null) return null;
+        return FabricReflection.getField(cls, fieldName);
     }
 
     /** Check if the command source is a player (not console / command block). */
@@ -607,21 +749,63 @@ public class FabricCommandBridge implements CommandBridge {
     }
 
     /**
-     * Operator check via {@code MinecraftServer.getProfilePermissions(GameProfile)}.
-     * Matched by signature {@code (GameProfile) -> int} because hardcoded
-     * intermediary names differ between 1.18.2 and 1.21.1 yarn.
+     * Operator check via {@code PlayerList}.
+     *
+     * <p>MC 26.1+ renamed the lookup argument: {@code Player.nameAndId()}
+     * feeds {@code PlayerList.isOp(NameAndId)}, and
+     * {@code MinecraftServer.getProfilePermissions} now takes a
+     * {@code NameAndId} and returns a {@code LevelBasedPermissionSet} instead
+     * of an {@code int}. MC 1.18–1.21 use
+     * {@code PlayerList.isOp(GameProfile)} /
+     * {@code getProfilePermissions(GameProfile) -> int}.
+     *
+     * <p>Both are tried; the 26.1+ path is attempted first because a
+     * signature-blind scan for the legacy {@code (GameProfile) -> int} form
+     * cannot match anything on 26.1+ and would silently report "not op".
      */
     static boolean isPlayerOperator(Object player) {
         if (player == null) return false;
+        Object server = FabricReflection.getServer();
+        if (server == null) return false;
+        Object pm = FabricReflection.callMigrated(server, "getPlayerList", "getPlayerManager",
+            FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+        if (pm == null) return false;
+
+        // 1) MC 26.1+: PlayerList.isOp(NameAndId). Gated on the permission
+        //    model so the 1.18–1.21 path never runs a blind no-arg scan for
+        //    the (non-existent) nameAndId() method.
+        if (FabricReflectionConstants.HAS_PERMISSION_MODEL) {
+            Object nameAndId = FabricReflection.call(player, "nameAndId",
+                FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
+            if (nameAndId != null && isNameAndId(nameAndId)) {
+                Object isOp = FabricReflection.call(pm, "isOp",
+                    new Class<?>[]{nameAndId.getClass()}, new Object[]{nameAndId});
+                if (isOp instanceof Boolean) return (Boolean) isOp;
+            }
+        }
+
+        // 2) MC 1.18–1.21: MinecraftServer.getProfilePermissions(GameProfile) -> int
         Object gameProfile = FabricReflection.callAny(player, "getGameProfile",
             FabricReflection.NO_PARAMS, FabricReflection.NO_ARGS);
         if (gameProfile == null) return false;
-        Object server = FabricReflection.getServer();
-        if (server == null) return false;
         Object permLevel = FabricReflection.callBySig(server,
             new Class<?>[]{gameProfile.getClass()}, new Object[]{gameProfile},
             int.class);
         return permLevel instanceof Number && ((Number) permLevel).intValue() >= 2;
+    }
+
+    /**
+     * True when {@code obj} is the MC 26.1+ {@code NameAndId} record.
+     *
+     * <p>Guards the {@code PlayerList.isOp(NameAndId)} call: without it a
+     * failed {@code nameAndId()} lookup could hand an unrelated object to a
+     * signature-blind {@code isOp} scan.
+     */
+    private static boolean isNameAndId(Object obj) {
+        for (Class<?> c = obj.getClass(); c != null; c = c.getSuperclass()) {
+            if ("NameAndId".equals(c.getSimpleName())) return true;
+        }
+        return false;
     }
 
     // ── Text/Component class resolution ─────────────────────────────
