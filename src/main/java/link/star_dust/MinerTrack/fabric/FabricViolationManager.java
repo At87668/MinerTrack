@@ -224,16 +224,12 @@ public class FabricViolationManager implements ViolationManagerBridge {
             if (player == null) return false;
             // 1) Try LP via fabric-permissions-api
             if (FabricCommandBridge.checkLPPermission(player, node, 2)) return true;
-            // 2) PlayerList.isOp() — proven reliable across all MC versions
-            //    (isOp is in the METHOD_REDIRECT table)
-            return isPlayerOp(pm, player);
+            // 2) Vanilla op check — PermissionSet on MC 26.1+, PlayerList.isOp
+            //    on 1.18–1.21.
+            return FabricCommandBridge.checkPlayerOpLevel(player, 2);
         } catch (Throwable t) {
             return false;
         }
-    }
-
-    private static boolean isPlayerOp(Object pm, Object player) {
-        return FabricCommandBridge.isPlayerOperator(player);
     }
 
     @Override
