@@ -20,7 +20,6 @@
 
 package link.star_dust.MinerTrack.forge;
 
-import link.star_dust.MinerTrack.common.ModResourceLoader;
 import link.star_dust.MinerTrack.common.PluginAdapter;
 import link.star_dust.MinerTrack.common.CommonYaml;
 import link.star_dust.MinerTrack.common.YamlLoader;
@@ -97,11 +96,11 @@ public class ForgeAdapter implements PluginAdapter {
         // on the classpath ships its own {@code config.yml}
         // (very common), MinerTrack would copy / parse that
         // other mod's config.yml into its own data folder on
-        // first startup. {@link ModResourceLoader} bypasses the
-        // shared classloader entirely by going through this
-        // class's protection domain, so the lookup is anchored
-        // to MinerTrack's own JAR regardless of what other mods
-        // are installed.
+        // first startup. {@link ForgeResourceLoader} bypasses the
+        // shared classloader entirely by going through Forge's
+        // mod-file API (and the protection domain as a fallback),
+        // so the lookup is anchored to MinerTrack's own JAR
+        // regardless of what other mods are installed.
         File target = new File(dataFolder, resourcePath);
         if (target.exists() && !replace) return;
         File parent = target.getParentFile();
@@ -109,8 +108,12 @@ public class ForgeAdapter implements PluginAdapter {
             //noinspection ResultOfMethodCallIgnored
             parent.mkdirs();
         }
-        try (InputStream in = ModResourceLoader.open(getClass(), resourcePath)) {
-            if (in == null) return;
+        try (InputStream in = ForgeResourceLoader.open(resourcePath)) {
+            if (in == null) {
+                warning("Resource " + resourcePath + " not found in the mod file; "
+                        + "cannot create " + target.getPath());
+                return;
+            }
             try (java.io.FileOutputStream out = new java.io.FileOutputStream(target)) {
                 byte[] buf = new byte[8192];
                 int n;
@@ -124,8 +127,8 @@ public class ForgeAdapter implements PluginAdapter {
     @Override
     public InputStream getResource(String resourcePath) {
         // See {@link #saveResource} for why we go through
-        // {@link ModResourceLoader} instead of the classloader.
-        return ModResourceLoader.open(getClass(), resourcePath);
+        // {@link ForgeResourceLoader} instead of the classloader.
+        return ForgeResourceLoader.open(resourcePath);
     }
 
     @Override
