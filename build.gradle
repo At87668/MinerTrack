@@ -147,6 +147,14 @@ tasks.withType(JavaCompile) {
 }
 
 processResources {
+    // Force UTF-8 for both reading the source resource and writing the
+    // expanded output. Without this, Gradle's resource filtering uses the
+    // platform default charset (windows-1252 on Windows), which corrupts any
+    // non-ASCII byte in the filtered files. That is exactly what produced the
+    // invalid `META-INF/mods.toml` in the published Forge JAR: the em-dash in
+    // the `# logoFile is optional ...` comment was re-encoded as `e2 80 3f`,
+    // and Forge's TOML parser rejects the whole file (it must be valid UTF-8).
+    filteringCharset = 'UTF-8'
     // Expand ${version} in BOTH the Bukkit plugin.yml and the
     // Fabric mod metadata file. Without the second entry the
     // fabric.mod.json shipped to a Fabric server would still
@@ -221,8 +229,11 @@ platforms.each { platform ->
             switch (platform) {
                 case 'bukkit':   include 'plugin.yml'; break
                 case 'fabric':   include 'fabric.mod.json'; break
-                case 'forge':    include 'META-INF/mods.toml'; break
-                case 'neoforge': include 'META-INF/neoforge.mods.toml', 'META-INF/mods.toml'; break
+                // pack.mcmeta declares the mod JAR as a (data) resource pack so
+                // Forge/NeoForge do not log "Missing metadata in pack
+                // mod:minertrack" / "Missing data pack mod:minertrack" at boot.
+                case 'forge':    include 'META-INF/mods.toml', 'pack.mcmeta'; break
+                case 'neoforge': include 'META-INF/neoforge.mods.toml', 'META-INF/mods.toml', 'pack.mcmeta'; break
             }
         }
 
