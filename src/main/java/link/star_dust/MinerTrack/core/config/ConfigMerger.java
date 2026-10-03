@@ -122,7 +122,29 @@ public class ConfigMerger {
         // Create from JAR if the file doesn't exist yet
         if (!userFile.exists()) {
             adapter.saveResource(resourcePath, false);
-            adapter.info("[Merger] Created " + userFile.getName() + " from default");
+            if (userFile.exists()) {
+                adapter.info("[Merger] Created " + userFile.getName() + " from default");
+            }
+        }
+        // Defensive: if the bundled resource could not be extracted (e.g. the
+        // mod-file lookup failed on a platform whose classloader hides the
+        // code source), create an empty file so the merge can still run and
+        // the server does not crash on a missing config. The merge step below
+        // will then fill in every key from the JAR defaults.
+        if (!userFile.exists()) {
+            try {
+                File parent = userFile.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    //noinspection ResultOfMethodCallIgnored
+                    parent.mkdirs();
+                }
+                //noinspection ResultOfMethodCallIgnored
+                userFile.createNewFile();
+                adapter.warning("[Merger] " + userFile.getName() + " was not created from the "
+                        + "bundled default; starting from an empty file and filling in defaults.");
+            } catch (Exception e) {
+                adapter.warning("[Merger] Could not create " + userFile.getName() + ": " + e.getMessage());
+            }
         }
         CommonYaml defaultsConfig;
         try (InputStream defaultStream = adapter.getResource(resourcePath)) {
@@ -206,8 +228,15 @@ public class ConfigMerger {
         // round-trip and so any future v2 caller that wanted
         // to inspect the on-disk state after the save sees a
         // fresh, normalised view.
+        //
+        // Guard: only reload when the file actually has content. If the
+        // bundled default could not be extracted and the on-disk file is
+        // empty, reloading would discard the fully-merged in-memory config
+        // and leave the caller with an empty config.
         try {
-            userConfig = loader.loadFile(userFile);
+            if (userFile.length() > 0) {
+                userConfig = loader.loadFile(userFile);
+            }
         } catch (Exception e) {
             adapter.info("Failed to reload " + userFile.getName()
                     + " after merge; using the in-memory copy instead: " + e.getMessage());
