@@ -40,29 +40,34 @@ public class ForgeMod {
         // Register on the Forge main event bus (server-side lifecycle).
         // The Forge @Mod constructor runs before the server starts, so we
         // must defer server-specific init to ServerStartingEvent.
+        //
+        // On Forge 65.x / MC 26.2 the legacy MinecraftForge.EVENT_BUS is only a
+        // migration helper; events are registered on their own static BUS
+        // fields (EventBus 7). ForgeReflection.registerEventListener handles
+        // both APIs, so we no longer gate registration on the legacy bus being
+        // non-null.
         Object eventBus = ForgeReflection.getMainEventBus();
-        if (eventBus != null) {
-            // PermissionGatherEvent.Nodes also fires during MinecraftServer
-            // construction (PermissionAPI.initializePermissionAPI), BEFORE
-            // ServerStartingEvent — register its listener now so the native
-            // minertrack.* PermissionNodes exist before the permission handler
-            // is built.
-            ForgePermissionRegistry.registerGatherListener();
 
-            // RegisterCommandsEvent fires during MinecraftServer construction,
-            // which happens BEFORE ServerStartingEvent. Register its listener
-            // now (in the mod constructor) so commands are registered in time.
-            platform.registerCommandsEarly();
+        // PermissionGatherEvent.Nodes also fires during MinecraftServer
+        // construction (PermissionAPI.initializePermissionAPI), BEFORE
+        // ServerStartingEvent — register its listener now so the native
+        // minertrack.* PermissionNodes exist before the permission handler
+        // is built.
+        ForgePermissionRegistry.registerGatherListener();
 
-            // ServerStartingEvent -> call platform.onServerStarting()
-            ForgeReflection.registerEventListener(eventBus,
-                ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStartingEvent"),
-                platform::onServerStarting);
+        // RegisterCommandsEvent fires during MinecraftServer construction,
+        // which happens BEFORE ServerStartingEvent. Register its listener
+        // now (in the mod constructor) so commands are registered in time.
+        platform.registerCommandsEarly();
 
-            // ServerStoppingEvent -> call platform.onServerStopping()
-            ForgeReflection.registerEventListener(eventBus,
-                ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStoppingEvent"),
-                event -> platform.onServerStopping());
-        }
+        // ServerStartingEvent -> call platform.onServerStarting()
+        ForgeReflection.registerEventListener(eventBus,
+            ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStartingEvent"),
+            platform::onServerStarting);
+
+        // ServerStoppingEvent -> call platform.onServerStopping()
+        ForgeReflection.registerEventListener(eventBus,
+            ForgeReflection.forgeClass("net.minecraftforge.event.server.ServerStoppingEvent"),
+            event -> platform.onServerStopping());
     }
 }
