@@ -1,0 +1,9 @@
+{
+  "pack": {
+    "description": "MinerTrack",
+    "pack_format": 15,
+    "min_format": [15, 0],
+    "max_format": [9999, 0],
+    "supported_formats": [15, 9999]
+  }
+}
