@@ -181,8 +181,66 @@ final class NeoForgeReflection {
     // NeoForge-specific
     // ==================================================================
 
-    static java.nio.file.Path getConfigDir() { try { Class<?> fmlPaths = neoClass("net.neoforged.fml.loading.FMLPaths"); if (fmlPaths == null) return java.nio.file.Path.of("config"); Field f = fmlPaths.getField("CONFIGDIR"); Object v = f.get(null); return v instanceof java.nio.file.Path ? (java.nio.file.Path) v : java.nio.file.Path.of("config"); } catch (Throwable t) { return java.nio.file.Path.of("config"); } }
-    static String getModVersion(String modId) { try { Class<?> modListCls = neoClass("net.neoforged.fml.ModList"); if (modListCls == null) return "unknown"; Method get = modListCls.getMethod("get"); Object ml = get.invoke(null); Method gc = modListCls.getMethod("getModContainerById", String.class); Object co = gc.invoke(ml, modId); if (co == null) return "unknown"; Method og = co.getClass().getMethod("get"); Object ac = og.invoke(co); Method gmi = ac.getClass().getMethod("getModInfo"); Object mi = gmi.invoke(ac); Method gv = mi.getClass().getMethod("getVersion"); Object v = gv.invoke(mi); return v != null ? v.toString() : "unknown"; } catch (Throwable t) { return "unknown"; } }
+    static java.nio.file.Path getConfigDir() {
+        try {
+            Class<?> fmlPaths = neoClass("net.neoforged.fml.loading.FMLPaths");
+            if (fmlPaths == null) return java.nio.file.Path.of("config");
+            // FMLPaths is an ENUM: CONFIGDIR is an enum constant, not a Path
+            // field. Read the constant, then call its get() accessor to obtain
+            // the absolute config directory. (Reading the field directly and
+            // casting to Path silently failed and fell back to the relative
+            // "config" path, which only works when the process CWD happens to
+            // be the game directory.)
+            Field f = fmlPaths.getField("CONFIGDIR");
+            Object constant = f.get(null);
+            if (constant instanceof java.nio.file.Path) return (java.nio.file.Path) constant;
+            if (constant != null) {
+                Object v = call(constant, "get", NO_PARAMS, NO_ARGS);
+                if (v instanceof java.nio.file.Path) return (java.nio.file.Path) v;
+            }
+            return java.nio.file.Path.of("config");
+        } catch (Throwable t) {
+            return java.nio.file.Path.of("config");
+        }
+    }
+    static String getModVersion(String modId) {
+        try {
+            Class<?> modListCls = neoClass("net.neoforged.fml.ModList");
+            if (modListCls == null) return "unknown";
+
+            // NeoForge 26.x: ModList methods are STATIC (ModList.get() was
+            // removed). IModFileInfo.versionString() is the simplest source of
+            // the version.
+            try {
+                Class<?> modFileInfoCls = neoClass("net.neoforged.neoforgespi.language.IModFileInfo");
+                if (modFileInfoCls != null) {
+                    Object info = modListCls.getMethod("getModFileById", String.class)
+                            .invoke(null, modId);
+                    if (info != null) {
+                        Object v = modFileInfoCls.getMethod("versionString").invoke(info);
+                        if (v != null) return v.toString();
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            // Fallback: ModContainer -> IModInfo -> getVersion().
+            Object container = null;
+            try {
+                Object opt = modListCls.getMethod("getModContainerById", String.class)
+                        .invoke(null, modId);
+                if (opt instanceof java.util.Optional) {
+                    container = ((java.util.Optional<?>) opt).orElse(null);
+                }
+            } catch (Throwable ignored) {}
+            if (container == null) return "unknown";
+            Object modInfo = call(container, "getModInfo", NO_PARAMS, NO_ARGS);
+            if (modInfo == null) return "unknown";
+            Object v = call(modInfo, "getVersion", NO_PARAMS, NO_ARGS);
+            return v != null ? v.toString() : "unknown";
+        } catch (Throwable t) {
+            return "unknown";
+        }
+    }
 
     static Object getMainEventBus() { try { Class<?> neoForge = neoClass("net.neoforged.neoforge.common.NeoForge"); if (neoForge == null) return null; Field eb = neoForge.getField("EVENT_BUS"); return eb.get(null); } catch (Throwable t) { return null; } }
 
