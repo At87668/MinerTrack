@@ -36,6 +36,12 @@ public class ForgeYamlLoader implements YamlLoader {
 
     @Override
     public CommonYaml loadFile(File file) {
+        // A missing file is not an error: callers (ConfigMerger) treat an
+        // empty config as "no user overrides" and fill in the JAR defaults.
+        // Throwing here would abort server startup on a fresh install.
+        if (file == null || !file.isFile()) {
+            return new ForgeCommonYaml(new java.util.LinkedHashMap<>());
+        }
         Yaml yaml = new Yaml();
         try (FileInputStream in = new FileInputStream(file)) {
             @SuppressWarnings("unchecked")
