@@ -71,17 +71,28 @@ public class ForgeViolationManager implements ViolationManagerBridge {
 
     public void scheduleGlobalDecayTask(long decayIntervalTicks) {
         this.globalDecayIntervalTicks = decayIntervalTicks;
+        // Forge 26.2+ (EventBus 7) makes TickEvent.ServerTickEvent an abstract
+        // sealed interface whose concrete Pre/Post records own the BUS. Register
+        // the $Post subclass (fires at the END phase) first; fall back to the
+        // legacy concrete TickEvent$ServerTickEvent for Forge <= 1.21.5.
+        Class<?> serverTickCls = ForgeReflection.forgeClass("net.minecraftforge.event.TickEvent$ServerTickEvent$Post");
+        if (serverTickCls == null) {
+            serverTickCls = ForgeReflection.forgeClass("net.minecraftforge.event.TickEvent$ServerTickEvent");
+        }
+        if (serverTickCls == null) return;
         ForgeReflection.registerEventListener(
             ForgeReflection.getMainEventBus(),
-            ForgeReflection.forgeClass("net.minecraftforge.event.TickEvent$ServerTickEvent"),
+            serverTickCls,
             rawEvent -> {
                 try {
                     // The tick phase is exposed as a public final FIELD `phase`
                     // (TickEvent.Phase) on Forge 1.20.4 (no getPhase() method),
                     // and as getPhase() on older versions. Reading the `phase`
                     // field works on both and avoids the getPhase() M-MISS.
+                    // On 26.2+ ServerTickEvent$Post there is no phase field, so
+                    // getField returns null and we always run (END).
                     Object phase = ForgeReflection.getField(rawEvent, "phase");
-                    if (phase == null || !phase.toString().contains("END")) return;
+                    if (phase != null && !phase.toString().contains("END")) return;
                     Object server = ForgeReflection.getServer(); if (server == null) return;
                     Object tickObj = ForgeReflection.callMigrated(server, "getTickCount", "getTicks", ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
                     long tick = tickObj instanceof Number ? ((Number) tickObj).longValue() : 0L;
