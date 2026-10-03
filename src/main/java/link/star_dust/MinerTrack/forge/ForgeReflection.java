@@ -258,11 +258,21 @@ final class ForgeReflection {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void registerEventListener(Object eventBus, Class<?> eventClass, java.util.function.Consumer<Object> handler) {
-        if (eventBus == null) return;
         // If the event class could not be resolved, there is nothing to
         // register. Callers that probe multiple candidate class names will
         // only pass a non-null class here.
         if (eventClass == null) return;
+
+        // --- Forge EventBus 7 (MC 1.21.6+ / Forge 65.x) ---
+        // The legacy IEventBus (net.minecraftforge.eventbus.api.IEventBus) and
+        // its EventPriority were removed. Every event now owns a static
+        // EventBus field (e.g. ServerStartingEvent.BUS) and listeners are added
+        // directly to that bus. The bus already knows its event type, so no
+        // TypeResolver / generic signature is needed — a plain Consumer works.
+        if (registerOnEventBus7(eventClass, handler)) return;
+
+        // --- Legacy IEventBus (Forge <= 1.21.5) ---
+        if (eventBus == null) return;
         try {
             // Forge's IEventBus.addListener(Consumer<T>) resolves the event type
             // from the Consumer's generic signature via TypeResolver. A dynamic
@@ -290,6 +300,38 @@ final class ForgeReflection {
             Method al2 = eventBus.getClass().getMethod("addListener", consumerCls);
             al2.invoke(eventBus, typed);
         } catch (Throwable t) { log("Failed to register listener: " + t); }
+    }
+
+    /**
+     * Register a listener on the Forge EventBus 7 API (MC 1.21.6+ / Forge 65.x).
+     *
+     * <p>Each event class exposes a {@code public static final EventBus<T> BUS}
+     * field. The bus is typed, so {@code addListener(Consumer<T>)} needs no
+     * generic-signature resolution. Returns {@code true} when the event has a
+     * {@code BUS} field and the listener was registered; {@code false} for
+     * legacy events (no {@code BUS} field), so the caller can fall back to the
+     * old {@code IEventBus} path.
+     */
+    private static boolean registerOnEventBus7(Class<?> eventClass, java.util.function.Consumer<Object> handler) {
+        Object bus;
+        try {
+            Field busField = eventClass.getField("BUS");
+            bus = busField.get(null);
+        } catch (NoSuchFieldException e) {
+            return false; // legacy event without a BUS field
+        } catch (Throwable t) {
+            if (DEBUG_REFLECTION) log("EventBus7 BUS field lookup failed for " + eventClass.getName() + ": " + t);
+            return false;
+        }
+        if (bus == null) return false;
+        try {
+            Method add = bus.getClass().getMethod("addListener", java.util.function.Consumer.class);
+            add.invoke(bus, handler);
+            return true;
+        } catch (Throwable t) {
+            log("EventBus7 registration failed for " + eventClass.getName() + ": " + t);
+            return false;
+        }
     }
 
     /**
