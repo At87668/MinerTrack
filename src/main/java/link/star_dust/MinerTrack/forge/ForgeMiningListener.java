@@ -48,9 +48,12 @@ public class ForgeMiningListener {
     }
 
     public void register() {
-        // Register on the Forge main event bus
+        // Register on the Forge main event bus. On Forge 65.x / MC 26.2 the
+        // legacy MinecraftForge.EVENT_BUS is only a migration helper; the
+        // listeners are registered on each event's own static BUS field
+        // (EventBus 7). ForgeReflection.registerEventListener handles both, so
+        // we do not bail out when the legacy bus is null.
         Object eventBus = ForgeReflection.getMainEventBus();
-        if (eventBus == null) return;
 
         // BlockEvent.BreakEvent: fires after a block is broken by a player.
         // Event is not cancellable for mining listeners (addListener without priority).
