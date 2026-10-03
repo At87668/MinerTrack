@@ -11,7 +11,7 @@ license = "GPLv3"
 modId = "minertrack"
 version = "2.1.2.0"
 displayName = "MinerTrack"
-# logoFile is optional — omit for now
+# logoFile is optional - omit for now
 description = '''
 The Advanced Anti-Xray that you need.
 Have you ever dreamed of a powerful anti-xray?
