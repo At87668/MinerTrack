@@ -98,6 +98,8 @@ public class ForgeMiningListener {
                 } catch (Throwable t) {}
             });
         }
+
+        ForgeExplosionCapture.register(eventBus, miningCore);
     }
 
     /**
@@ -113,7 +115,7 @@ public class ForgeMiningListener {
      * and return the player object as the "world", which then yields a null
      * dimension id and breaks detection.
      */
-    private static Object getEventWorld(Object rawEvent) {
+    static Object getEventWorld(Object rawEvent) {
         if (rawEvent == null) return null;
         Class<?> levelCls = ForgeReflection.forName("net.minecraft.world.level.Level");
         for (String name : new String[]{"getLevel", "getWorld"}) {
@@ -135,7 +137,7 @@ public class ForgeMiningListener {
         return null;
     }
 
-    private boolean isClientWorld(Object world) {
+    static boolean isClientWorld(Object world) {
         // isClientSide is a METHOD on 1.18.2 (Searge m_5776_) and a FIELD on
         // 1.20.6+ (Mojang). Try method call first, then field access.
         try {
@@ -149,7 +151,7 @@ public class ForgeMiningListener {
         } catch (Throwable t) { return false; }
     }
 
-    private boolean isServerPlayer(Object player) {
+    static boolean isServerPlayer(Object player) {
         if (player == null) return false;
         Class<?> serverPlayer = ForgeReflection.forName("net.minecraft.server.level.ServerPlayer");
         return serverPlayer != null && serverPlayer.isInstance(player);
@@ -183,14 +185,14 @@ public class ForgeMiningListener {
         } catch (Throwable t) {}
     }
 
-    private static UUID readUuid(Object player) {
+    static UUID readUuid(Object player) {
         try {
             Object uuid = ForgeReflection.callUuid(player);
             return uuid instanceof UUID ? (UUID) uuid : null;
         } catch (Throwable t) { return null; }
     }
 
-    private static String readPlayerName(Object player) {
+    static String readPlayerName(Object player) {
         try {
             Object profile = ForgeReflection.callAny(player, "getGameProfile",
                 ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);
@@ -208,7 +210,7 @@ public class ForgeMiningListener {
         return "";
     }
 
-    private static String readDimensionId(Object world) {
+    static String readDimensionId(Object world) {
         try {
             Object registryKey = ForgeReflection.callDimension(world);
             if (registryKey == null) return null;
@@ -227,7 +229,7 @@ public class ForgeMiningListener {
         } catch (Throwable t) { return null; }
     }
 
-    private static int readInt(Object target, String method) {
+    static int readInt(Object target, String method) {
         try {
             Class<?> c = target.getClass();
             while (c != null) {
@@ -255,7 +257,7 @@ public class ForgeMiningListener {
         } catch (Throwable t) { return 0; }
     }
 
-    private static String blockIdForState(Object state) {
+    static String blockIdForState(Object state) {
         try {
             Object block = ForgeReflection.callAny(state, "getBlock",
                 ForgeReflection.NO_PARAMS, ForgeReflection.NO_ARGS);

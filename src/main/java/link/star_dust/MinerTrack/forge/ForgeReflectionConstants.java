@@ -118,6 +118,7 @@ final class ForgeReflectionConstants {
     static final String CLS_ENTITY_TYPE               = "net.minecraft.world.entity.EntityType";
     static final String CLS_ENTITY                    = "net.minecraft.world.entity.Entity";
     static final String CLS_PLAYER                    = "net.minecraft.world.entity.player.Player";
+    static final String CLS_PRIMED_TNT                = "net.minecraft.world.entity.item.PrimedTnt";
     static final String CLS_LEVEL                     = "net.minecraft.world.level.Level";
     static final String CLS_BLOCK                     = "net.minecraft.world.level.block.Block";
     static final String CLS_BLOCKS                    = "net.minecraft.world.level.block.Blocks";
@@ -163,6 +164,9 @@ final class ForgeReflectionConstants {
     // -- Level -----------------------------------------------------------
     static final String M_GET_BLOCK_STATE             = im("net.minecraft.world.level.Level",        "getBlockState",        "(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", "m_8055_");
     static final String M_DIMENSION                   = im("net.minecraft.world.level.Level",        "dimension",            "()Lnet/minecraft/resources/ResourceKey;",                                           "m_46472_");
+    static final String M_GET_AFFECTED_BLOCKS         = im("net.minecraft.world.level.Explosion",   "getToBlow",            "()Ljava/util/List;",                                                          "m_46081_");
+    static final String M_GET_INDIRECT_SOURCE         = im("net.minecraft.world.level.Explosion",   "getIndirectSourceEntity", "()Lnet/minecraft/world/entity/LivingEntity;",                                  "m_252906_");
+    static final String M_GET_DIRECT_SOURCE           = im("net.minecraft.world.level.Explosion",   "getDirectSourceEntity", "()Lnet/minecraft/world/entity/Entity;",                                         "m_253049_");
 
     // -- PlayerList ------------------------------------------------------
     static final String M_GET_PLAYER_UUID             = im("net.minecraft.server.players.PlayerList","getPlayer",            "(Ljava/util/UUID;)Lnet/minecraft/server/level/ServerPlayer;",   "m_11259_");
@@ -231,6 +235,10 @@ final class ForgeReflectionConstants {
         // Level
         putM("dimension",           M_DIMENSION);
         putM("getBlockState",       M_GET_BLOCK_STATE);
+        putM("getToBlow",           M_GET_AFFECTED_BLOCKS);
+        putM("getAffectedBlocks",   M_GET_AFFECTED_BLOCKS);
+        putM("getIndirectSourceEntity", M_GET_INDIRECT_SOURCE);
+        putM("getDirectSourceEntity", M_GET_DIRECT_SOURCE);
         putM("getRegistryKey",      M_DIMENSION);
 
         // MinecraftServer
@@ -366,6 +374,7 @@ final class ForgeReflectionConstants {
         NAMED_TO_RUNTIME.put("net.minecraft.world.entity.LightningBolt",          "net.minecraft.src.C_1538_");
         NAMED_TO_RUNTIME.put("net.minecraft.world.entity.EntityType",             "net.minecraft.src.C_1299_");
         NAMED_TO_RUNTIME.put("net.minecraft.world.entity.Entity",                 "net.minecraft.src.C_507_");
+        NAMED_TO_RUNTIME.put("net.minecraft.world.entity.item.PrimedTnt",        "net.minecraft.src.C_977_");
         NAMED_TO_RUNTIME.put("net.minecraft.world.entity.player.Player",          "net.minecraft.src.C_1141_");
         NAMED_TO_RUNTIME.put("net.minecraft.world.level.Level",                   "net.minecraft.src.C_318_");
         NAMED_TO_RUNTIME.put("net.minecraft.world.level.block.Block",             "net.minecraft.src.C_2063_");
