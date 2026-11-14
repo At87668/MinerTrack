@@ -24,7 +24,7 @@ import java.util.UUID;
  * callback compares the bounded capture with the live world after the blast.
  */
 final class FabricExplosionListener {
-    private static final int TNT_RADIUS = 3;
+    private static final int TNT_RADIUS = 6;
 
     private final MiningCore miningCore;
     private final FabricDetectionBridge detectionBridge;
@@ -61,9 +61,9 @@ final class FabricExplosionListener {
         String dimensionId = FabricMiningListener.readDimensionId(world);
         if (playerId == null || playerName == null || playerName.isBlank() || dimensionId == null) return;
 
-        int x = FabricMiningListener.readInt(entity, "getX");
-        int y = FabricMiningListener.readInt(entity, "getY");
-        int z = FabricMiningListener.readInt(entity, "getZ");
+        int x = readEntityCoordinate(entity, "getX", "method_23317");
+        int y = readEntityCoordinate(entity, "getY", "method_23318");
+        int z = readEntityCoordinate(entity, "getZ", "method_23321");
         List<PreExplosionBlock> blocks = capture(dimensionId, x, y, z);
         pending.put(entity, new PendingTnt(world, dimensionId, x, y, z,
             playerId, playerName, ExplosionSource.TNT, blocks));
@@ -156,6 +156,24 @@ final class FabricExplosionListener {
             source = invokeExact(entity, FabricReflectionConstants.M_TNT_GET_CAUSING_ENTITY);
         }
         return source;
+    }
+
+    /**
+     * Read an entity coordinate. Unlike block positions, entity accessors
+     * return {@code double} and are not backed by {@code Vec3i int} fields, so
+     * the block-position reader would silently fall through to {@code 0}.
+     */
+    private static int readEntityCoordinate(Object entity, String namedMethod, String intermediaryMethod) {
+        for (String methodName : new String[] { namedMethod, intermediaryMethod }) {
+            try {
+                java.lang.reflect.Method method = entity.getClass().getMethod(methodName);
+                Object value = method.invoke(entity);
+                if (value instanceof Number) return (int) Math.floor(((Number) value).doubleValue());
+            } catch (Throwable ignored) {
+                // fall through to the next candidate
+            }
+        }
+        return FabricMiningListener.readInt(entity, namedMethod);
     }
 
     private Object invokeExact(Object target, String methodName) {
