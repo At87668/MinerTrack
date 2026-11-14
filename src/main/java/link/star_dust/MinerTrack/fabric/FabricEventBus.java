@@ -68,6 +68,13 @@ final class FabricEventBus {
             fromConsumer(handler));
     }
 
+    static void registerEntityUnload(java.util.function.Consumer<Object[]> handler) {
+        register("net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents",
+            "ENTITY_UNLOAD",
+            "net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents$Unload",
+            fromArrayConsumer(handler));
+    }
+
     static void registerBlockBreakAfter(java.util.function.Consumer<Object[]> handler) {
         // PlayerBlockBreakEvents.AFTER uses After interface:
         //   void afterBlockBreak(World, PlayerEntity, BlockPos, BlockState, BlockEntity?)

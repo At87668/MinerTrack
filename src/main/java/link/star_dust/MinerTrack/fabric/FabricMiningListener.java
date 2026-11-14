@@ -37,6 +37,7 @@ public class FabricMiningListener {
     private final DetectionBridge detectionBridge;
     private final ViolationManagerBridge vlBridge;
     private final FabricDetectionBridge fabricBridge;
+    private final FabricExplosionListener explosionListener;
 
     public FabricMiningListener(MiningCore miningCore,
             DetectionBridge detectionBridge,
@@ -46,6 +47,7 @@ public class FabricMiningListener {
         this.detectionBridge = detectionBridge;
         this.vlBridge = vlBridge;
         this.fabricBridge = fabricBridge;
+        this.explosionListener = new FabricExplosionListener(miningCore, fabricBridge);
     }
 
     public void register() {
@@ -76,6 +78,7 @@ public class FabricMiningListener {
                 /* silent */ }
             return false; // PASS
         });
+        explosionListener.register();
     }
 
     private boolean isClientWorld(Object world) {
@@ -179,7 +182,7 @@ public class FabricMiningListener {
         return id != null && !id.isEmpty() ? id : BlockId.AIR;
     }
 
-    private static UUID readUuid(Object player) {
+    static UUID readUuid(Object player) {
         try {
             // MC 26.1+: Entity.getUUID() (uppercase); 1.18-1.21: getUuid()
             Object uuid = FabricReflection.callUuid(player);
@@ -200,7 +203,7 @@ public class FabricMiningListener {
      * GameProfile is a Mojang authlib class (not obfuscated), so
      * {@code getName()} works directly without intermediary redirect.</p>
      */
-    private static String readPlayerName(Object player) {
+    static String readPlayerName(Object player) {
         try {
             // ServerPlayer.getGameProfile() → GameProfile.getName()
             Object profile = FabricReflection.callAny(player, "getGameProfile",
@@ -221,7 +224,7 @@ public class FabricMiningListener {
 
     }
 
-    private static String readDimensionId(Object world) {
+    static String readDimensionId(Object world) {
         try {
             // MC 26.1+: Level.dimension(); 1.18-1.21: Level.getRegistryKey()
             Object registryKey = FabricReflection.callDimension(world);
@@ -255,7 +258,7 @@ public class FabricMiningListener {
     // OR try Vec3i by name, then read the int fields in declaration order.
     // Fallback: direct getX/getY/getZ method call bypassing redirect.
 
-    private static int readInt(Object target, String method) {
+    static int readInt(Object target, String method) {
         try {
             // Walk to Vec3i superclass (intermediary name: class_2382)
             Class<?> c = target.getClass();

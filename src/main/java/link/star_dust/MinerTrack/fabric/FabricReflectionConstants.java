@@ -131,6 +131,7 @@ final class FabricReflectionConstants {
     static final String CLS_MINECRAFT_SERVER         = "net.minecraft.server.MinecraftServer";
     static final String CLS_SERVER_PLAYER             = "net.minecraft.server.level.ServerPlayer";
     static final String CLS_SERVER_LEVEL              = "net.minecraft.server.level.ServerLevel";
+    static final String CLS_PRIMED_TNT                = "net.minecraft.world.entity.item.PrimedTnt";
     static final String CLS_PLAYER_LIST               = "net.minecraft.server.players.PlayerList";
     static final String CLS_COMMAND_SOURCE_STACK      = "net.minecraft.commands.CommandSourceStack";
     static final String CLS_LIGHTNING_BOLT            = "net.minecraft.world.entity.LightningBolt";
@@ -206,6 +207,8 @@ final class FabricReflectionConstants {
 
     // -- Entity ----------------------------------------------------------
     static final String M_SET_POS              = im("net.minecraft.world.entity.Entity",       "setPosRaw",               "(DDD)V",                                                       "method_23327");
+    static final String M_TNT_GET_OWNER        = im("net.minecraft.world.entity.item.PrimedTnt", "getOwner", "()Lnet/minecraft/world/entity/LivingEntity;", "method_6970");
+    static final String M_TNT_GET_CAUSING_ENTITY = im("net.minecraft.world.entity.item.PrimedTnt", "getCausingEntity", "()Lnet/minecraft/world/entity/LivingEntity;", "method_6970");
 
     // -- BlockState ------------------------------------------------------
     static final String M_GET_BLOCK            = im("net.minecraft.world.level.block.state.BlockState", "getBlock",    "()Lnet/minecraft/world/level/block/Block;",                    "method_26204");
@@ -314,6 +317,8 @@ final class FabricReflectionConstants {
         // Entity
         putM("setPos",              M_SET_POS);
         putM("refreshPositionAfterTeleport", M_SET_POS);   // MC 26 alias
+        putM("getOwner",            M_TNT_GET_OWNER);
+        putM("getCausingEntity",    M_TNT_GET_CAUSING_ENTITY);
         // BlockState
         putM("getBlock",            M_GET_BLOCK);
         putM("getFluidState",       M_GET_FLUID_STATE);
@@ -402,6 +407,7 @@ final class FabricReflectionConstants {
         NAMED_TO_INTER.put("net.minecraft.world.entity.LightningBolt",          "net.minecraft.class_1538");
         NAMED_TO_INTER.put("net.minecraft.world.entity.EntityType",             "net.minecraft.class_1299");
         NAMED_TO_INTER.put("net.minecraft.world.entity.Entity",                 "net.minecraft.class_1297");
+        NAMED_TO_INTER.put("net.minecraft.world.entity.item.PrimedTnt",       "net.minecraft.class_1541");
         NAMED_TO_INTER.put("net.minecraft.world.entity.player.Player",          "net.minecraft.class_1657");
         NAMED_TO_INTER.put("net.minecraft.world.level.Level",                   "net.minecraft.class_1937");
         NAMED_TO_INTER.put("net.minecraft.world.level.block.Block",             "net.minecraft.class_2248");
