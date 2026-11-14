@@ -131,13 +131,28 @@ public class MiningState {
 
     public boolean isNewVein(UUID playerId, String worldName, CommonLocation location, String oreType) {
         int maxDistance = bridge.getConfigForWorld(worldName, "xray.max_vein_distance", 5);
-        int smallVeinThreshold = bridge.getConfigForWorld(worldName, "xray.small_vein_detection_size", 4);
-
         Set<CommonLocation> currentCluster = new HashSet<>();
         DetectionEngine engine = new DetectionEngine(bridge);
         for (CommonLocation loc : engine.getVeinLocations(location, oreType, maxDistance)) {
             currentCluster.add(loc);
         }
+        if (currentCluster.isEmpty()) {
+            currentCluster.add(location);
+        }
+
+        return isNewVein(playerId, worldName, location, oreType, currentCluster, maxDistance);
+    }
+
+    public boolean isNewVein(UUID playerId, String worldName, CommonLocation location,
+                             String oreType, Set<CommonLocation> currentCluster) {
+        int maxDistance = bridge.getConfigForWorld(worldName, "xray.max_vein_distance", 5);
+        return isNewVein(playerId, worldName, location, oreType, currentCluster, maxDistance);
+    }
+
+    private boolean isNewVein(UUID playerId, String worldName, CommonLocation location,
+                              String oreType, Set<CommonLocation> currentCluster,
+                              int maxDistance) {
+        int smallVeinThreshold = bridge.getConfigForWorld(worldName, "xray.small_vein_detection_size", 4);
 
         lastVeinClusters.putIfAbsent(playerId, new ConcurrentHashMap<>());
         Map<String, Set<CommonLocation>> playerClusters = lastVeinClusters.get(playerId);
@@ -154,6 +169,11 @@ public class MiningState {
             + " smallVeinThreshold=" + smallVeinThreshold
             + " currentClusterSize=" + currentCluster.size()
             + " lastClusterSize=" + (lastCluster == null ? 0 : lastCluster.size()));
+
+        if (currentCluster.isEmpty()) {
+            CoreLogger.debug("    -> newVein=false (live block is already air; empty cluster ignored)");
+            return false;
+        }
 
         if (lastCluster == null || lastCluster.isEmpty()) {
             playerClusters.put(worldName, new HashSet<>(currentCluster));
@@ -334,6 +354,14 @@ public class MiningState {
 
     public boolean isWorldDetectionEnabled(String worldName) {
         return bridge.isWorldDetectionEnabled(worldName);
+    }
+
+    public boolean isExplosionDetectionEnabled(String worldName) {
+        return bridge.getConfigForWorldBoolean(worldName, "xray.explosion-detection.enable", true);
+    }
+
+    public boolean isTrackExplosionCraterAir(String worldName) {
+        return bridge.getConfigForWorldBoolean(worldName, "xray.explosion-detection.track-crater-air", true);
     }
 
     public int getWorldMaxHeight(String worldName) {

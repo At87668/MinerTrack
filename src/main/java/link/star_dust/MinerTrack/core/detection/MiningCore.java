@@ -22,10 +22,17 @@ package link.star_dust.MinerTrack.core.detection;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
+import link.star_dust.MinerTrack.common.ExplosionAttribution;
+import link.star_dust.MinerTrack.common.ExplosionSnapshot;
+import link.star_dust.MinerTrack.common.PreExplosionBlock;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.CoreLogger;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -153,6 +160,100 @@ public class MiningCore {
         }
 
         return true;
+    }
+
+    public boolean onExplosion(ExplosionSnapshot snapshot) {
+        String worldName = snapshot.origin().world;
+        if (worldName == null || worldName.isBlank()) return false;
+        if (!state.isExplosionDetectionEnabled(worldName)) return false;
+
+        ExplosionAttribution attribution = snapshot.attribution();
+        if (!state.isWorldDetectionEnabled(worldName)) return false;
+        if (attribution == null || !snapshot.source().canScore()) {
+            CoreLogger.debug("MiningCore.onExplosion: skip scoring source=" + snapshot.source().marker()
+                + " attributed=" + (attribution != null));
+            return false;
+        }
+
+        UUID playerId = attribution.playerId();
+        if (!state.isBypassDisabled(worldName) && bridge.hasPermission(playerId, "minertrack.bypass")) {
+            return false;
+        }
+
+        if (state.isTrackExplosionCraterAir(worldName)) {
+            for (PreExplosionBlock block : snapshot.blocks()) {
+                if (worldName.equals(block.location().world)) {
+                    bridge.trackBrokenAir(playerId, block.location());
+                }
+            }
+        }
+
+        int maxHeight = state.getWorldMaxHeight(worldName);
+        List<String> rareOres = state.getRareOres(worldName);
+        List<PreExplosionBlock> rareBlocks = new ArrayList<>();
+        for (PreExplosionBlock block : snapshot.blocks()) {
+            CommonLocation location = block.location();
+            if (!worldName.equals(location.world) || (maxHeight != -1 && location.y > maxHeight)) continue;
+            if (block.playerPlaced() || bridge.isPlayerPlacedBlock(playerId, location)) continue;
+            if (rareOres.contains(block.blockType())) rareBlocks.add(block);
+        }
+
+        List<ExplosionClusterer.OreCluster> clusters = ExplosionClusterer.group(
+            rareBlocks, state.getMaxVeinDistance(worldName));
+        List<CommonLocation> locations = new ArrayList<>();
+        Set<String> blockTypes = new HashSet<>();
+        for (ExplosionClusterer.OreCluster cluster : clusters) {
+            locations.addAll(cluster.locations());
+            blockTypes.add(cluster.blockType());
+        }
+        if (locations.isEmpty()) return true;
+
+        locations.sort(Comparator
+            .comparing((CommonLocation location) -> location.world)
+            .thenComparingInt(location -> location.x)
+            .thenComparingInt(location -> location.y)
+            .thenComparingInt(location -> location.z));
+        String blockType = blockTypes.size() == 1
+            ? blockTypes.iterator().next()
+            : "minecraft:multiple_rare_ores";
+        processExplosionCluster(snapshot, attribution,
+            new ExplosionClusterer.OreCluster(blockType, locations));
+        return true;
+    }
+
+    private void processExplosionCluster(ExplosionSnapshot snapshot,
+                                         ExplosionAttribution attribution,
+                                         ExplosionClusterer.OreCluster cluster) {
+        String worldName = snapshot.origin().world;
+        CommonLocation location = cluster.representative();
+        boolean exposedToAir = state.isExposedToAir(location);
+        state.appendToPath(worldName, attribution.playerId(), location, exposedToAir);
+
+        List<CommonLocation> path = state.getPath(worldName, attribution.playerId());
+        if (vlBridge.getViolationLevel(attribution.playerId()) == 0) {
+            state.recordVLZero(attribution.playerId());
+        }
+        boolean smooth = isSmoothPath(attribution.playerId(), worldName, path);
+        boolean natural = envAnalyzer.isInNaturalEnvironment(
+            worldName, attribution.playerId(), location, path);
+        boolean simpleLinear = pathAnalyzer.isSimpleLinearTunnel(path);
+        CoreLogger.debug("MiningCore.onExplosion: source=" + snapshot.sourceMarker()
+            + " ore=" + cluster.blockType() + " size=" + cluster.locations().size()
+            + " smooth=" + smooth + " natural=" + natural + " simpleLinear=" + simpleLinear);
+
+        if (natural || smooth || simpleLinear) return;
+
+        Set<CommonLocation> clusterLocations = new HashSet<>(cluster.locations());
+        if (!state.isNewVein(attribution.playerId(), worldName, location,
+                cluster.blockType(), clusterLocations)) return;
+
+        state.incrementVeinCount(attribution.playerId());
+        state.setLastVeinLocation(attribution.playerId(), worldName, location);
+        int veinCount = state.getMinedVeinCount(attribution.playerId());
+        if (veinCount >= state.getVeinCountThreshold(worldName)) {
+            analyzeAndIncreaseVL(attribution.playerId(), attribution.playerName(), worldName,
+                cluster.blockType() + "|" + snapshot.sourceMarker(), cluster.locations().size(), location);
+        }
     }
 
     // ─── Path analysis ─────────────────────────────────────────────────────
