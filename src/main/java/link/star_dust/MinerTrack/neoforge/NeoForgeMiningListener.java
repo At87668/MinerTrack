@@ -23,9 +23,14 @@ package link.star_dust.MinerTrack.neoforge;
 import link.star_dust.MinerTrack.common.BlockId;
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
+import link.star_dust.MinerTrack.common.ExplosionSnapshot;
+import link.star_dust.MinerTrack.common.ExplosionSource;
+import link.star_dust.MinerTrack.common.PreExplosionBlock;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -87,6 +92,26 @@ public class NeoForgeMiningListener {
                     } catch (Throwable t) {}
                 });
         }
+
+        Class<?> explosionEventCls = firstLoadable(
+            "net.neoforged.neoforge.event.level.ExplosionEvent$Detonate",
+            "net.neoforged.neoforge.event.world.ExplosionEvent$Detonate");
+        if (explosionEventCls != null) {
+            NeoForgeReflection.registerEventListener(eventBus, explosionEventCls,
+                rawEvent -> {
+                    try {
+                        handleExplosion(rawEvent);
+                    } catch (Throwable t) {}
+                });
+        }
+    }
+
+    private static Class<?> firstLoadable(String... names) {
+        for (String name : names) {
+            Class<?> cls = NeoForgeReflection.neoClass(name);
+            if (cls != null) return cls;
+        }
+        return null;
     }
 
     /**
@@ -113,7 +138,7 @@ public class NeoForgeMiningListener {
         catch (Throwable t) { return false; }
     }
 
-    private boolean isServerPlayer(Object player) {
+    private static boolean isServerPlayer(Object player) {
         if (player == null) return false;
         Class<?> serverPlayer = NeoForgeReflection.forName("net.minecraft.server.level.ServerPlayer");
         return serverPlayer != null && serverPlayer.isInstance(player);
@@ -141,6 +166,148 @@ public class NeoForgeMiningListener {
                 neoForgeBridge.trackPlacedBlock(playerId, loc);
             }
         } catch (Throwable t) {}
+    }
+
+    private void handleExplosion(Object rawEvent) {
+        Object world = getEventWorld(rawEvent);
+        if (world == null || isClientWorld(world)) return;
+
+        Object explosion = NeoForgeReflection.callAny(rawEvent, "getExplosion",
+            NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+        if (explosion == null) return;
+
+        String dimensionId = readDimensionId(world);
+        if (dimensionId == null || dimensionId.isEmpty()) return;
+
+        Object originObject = firstNonNull(
+            callNoArg(explosion, "getPosition"),
+            callNoArg(explosion, "getCenter"),
+            callNoArg(explosion, "position"),
+            callNoArg(explosion, "center"),
+            callNoArg(rawEvent, "getPosition"),
+            callNoArg(rawEvent, "getCenter"));
+        CommonLocation origin = readExplosionOrigin(dimensionId, originObject);
+        if (origin == null) return;
+
+        Object affected = firstNonNull(
+            callNoArg(rawEvent, "getAffectedBlocks"),
+            callNoArg(explosion, "getToBlow"),
+            callNoArg(explosion, "getAffectedBlocks"));
+        if (!(affected instanceof Iterable<?>)) return;
+
+        ExplosionEvidence evidence = resolveExplosionEvidence(rawEvent, explosion);
+        UUID playerId = evidence.player == null ? null : readUuid(evidence.player);
+        String playerName = playerId == null ? "" : readPlayerName(evidence.player);
+
+        List<PreExplosionBlock> blocks = new ArrayList<>();
+        for (Object pos : (Iterable<?>) affected) {
+            if (pos == null) return;
+            Object state = NeoForgeReflection.call(world, "getBlockState",
+                new Class<?>[]{pos.getClass()}, new Object[]{pos});
+            if (state == null) return;
+
+            int x = readInt(pos, "getX");
+            int y = readInt(pos, "getY");
+            int z = readInt(pos, "getZ");
+            CommonLocation location = new CommonLocation(dimensionId, x, y, z);
+            boolean playerPlaced = playerId != null
+                && neoForgeBridge.isPlayerPlacedBlock(playerId, location);
+            blocks.add(new PreExplosionBlock(location, blockIdForState(state), playerPlaced));
+        }
+
+        ExplosionSource source = evidence.tnt ? ExplosionSource.TNT : ExplosionSource.OTHER;
+        miningCore.onExplosion(new ExplosionSnapshot(origin, source, playerId, playerName, blocks));
+    }
+
+    private static CommonLocation readExplosionOrigin(String dimensionId, Object position) {
+        if (position == null) return null;
+        Double x = readDouble(position, "x");
+        Double y = readDouble(position, "y");
+        Double z = readDouble(position, "z");
+        if (x == null || y == null || z == null) return null;
+        return new CommonLocation(dimensionId, (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z));
+    }
+
+    private static Double readDouble(Object target, String coordinate) {
+        for (String method : new String[]{coordinate, "get" + Character.toUpperCase(coordinate.charAt(0)) + coordinate.substring(1)}) {
+            Object value = callNoArg(target, method);
+            if (value instanceof Number) return ((Number) value).doubleValue();
+        }
+        for (String field : new String[]{coordinate, coordinate + "Coord"}) {
+            Object value = NeoForgeReflection.getField(target, field);
+            if (value instanceof Number) return ((Number) value).doubleValue();
+        }
+        return null;
+    }
+
+    private static ExplosionEvidence resolveExplosionEvidence(Object rawEvent, Object explosion) {
+        Object direct = firstNonNull(
+            callNoArg(explosion, "getDirectSourceEntity"),
+            callNoArg(explosion, "getExploder"),
+            callNoArg(rawEvent, "getExploder"));
+        Object indirect = firstNonNull(
+            callNoArg(explosion, "getIndirectSourceEntity"),
+            callNoArg(explosion, "getSourceMob"),
+            callNoArg(explosion, "getExploder"),
+            callNoArg(rawEvent, "getExploder"));
+        Object eventSource = firstNonNull(callNoArg(rawEvent, "getSource"), callNoArg(rawEvent, "getExploder"));
+
+        boolean tnt = isTntSource(direct) || isTntSource(indirect) || isTntSource(eventSource);
+        if (!tnt) return new ExplosionEvidence(null, false);
+
+        Object player = firstServerPlayer(
+            indirect,
+            direct,
+            callNoArg(direct, "getOwner"),
+            callNoArg(indirect, "getOwner"),
+            callNoArg(eventSource, "getOwner"),
+            eventSource,
+            callNoArg(eventSource, "getDirectEntity"),
+            callNoArg(eventSource, "getEntity"));
+        return new ExplosionEvidence(player, true);
+    }
+
+    private static boolean isTntSource(Object source) {
+        if (source == null) return false;
+        if (isPrimedTnt(source)) return true;
+        for (String method : new String[]{"getDirectEntity", "getEntity", "getExploder"}) {
+            if (isPrimedTnt(callNoArg(source, method))) return true;
+        }
+        return false;
+    }
+
+    private static boolean isPrimedTnt(Object source) {
+        Class<?> primedTnt = NeoForgeReflection.forName("net.minecraft.world.entity.item.PrimedTnt");
+        return primedTnt != null && source != null && primedTnt.isInstance(source);
+    }
+
+    private static Object firstServerPlayer(Object... candidates) {
+        for (Object candidate : candidates) {
+            if (isServerPlayer(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private static Object callNoArg(Object target, String method) {
+        return NeoForgeReflection.callAny(target, method,
+            NeoForgeReflection.NO_PARAMS, NeoForgeReflection.NO_ARGS);
+    }
+
+    private static Object firstNonNull(Object... values) {
+        for (Object value : values) {
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    private static final class ExplosionEvidence {
+        private final Object player;
+        private final boolean tnt;
+
+        private ExplosionEvidence(Object player, boolean tnt) {
+            this.player = player;
+            this.tnt = tnt;
+        }
     }
 
     private static UUID readUuid(Object player) { try { Object uuid = NeoForgeReflection.callUuid(player); return uuid instanceof UUID ? (UUID) uuid : null; } catch (Throwable t) { return null; } }
