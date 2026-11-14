@@ -34,6 +34,11 @@ _config-version: 3
 xray:
   enable: true  # Enable X-ray detection
 
+  explosion-detection:
+    enable: true
+    track-crater-air: true
+    proximity-fallback: false
+
   max-height: 32  # Only detect operations below this height
   
   # The type of ore a player has to mine before being able to be checked

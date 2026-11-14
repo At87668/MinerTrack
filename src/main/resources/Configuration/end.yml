@@ -3,3 +3,8 @@ _config-version: 3
 
 xray:
   enable: false
+
+  explosion-detection:
+    enable: true
+    track-crater-air: true
+    proximity-fallback: false
