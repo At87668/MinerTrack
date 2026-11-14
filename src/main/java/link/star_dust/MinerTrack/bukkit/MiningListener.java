@@ -22,14 +22,26 @@ package link.star_dust.MinerTrack.bukkit;
 
 import link.star_dust.MinerTrack.common.CommonLocation;
 import link.star_dust.MinerTrack.common.DetectionBridge;
+import link.star_dust.MinerTrack.common.ExplosionSnapshot;
+import link.star_dust.MinerTrack.common.ExplosionSource;
+import link.star_dust.MinerTrack.common.MaterialMapper;
+import link.star_dust.MinerTrack.common.PreExplosionBlock;
 import link.star_dust.MinerTrack.common.ViolationManagerBridge;
 import link.star_dust.MinerTrack.core.detection.MiningCore;
+import org.bukkit.Location;
+import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.TNTPrimed;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -120,6 +132,34 @@ public class MiningListener implements Listener {
             CommonLocation loc = new CommonLocation(dimensionId, e.getBlock().getX(), e.getBlock().getY(), e.getBlock().getZ());
             bukkitBridge.trackPlacedBlock(playerId, loc);
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent e) {
+        if (!(e.getEntity() instanceof TNTPrimed tnt)) return;
+        Entity source = tnt.getSource();
+        if (!(source instanceof Player player)) return;
+
+        Location origin = e.getLocation();
+        String dimensionId = bridge.resolveDimensionId(origin.getWorld().getName());
+        CommonLocation commonOrigin = new CommonLocation(
+            dimensionId, origin.getBlockX(), origin.getBlockY(), origin.getBlockZ());
+        UUID playerId = player.getUniqueId();
+        String playerName = player.getName();
+        if (playerName == null) playerName = "";
+
+        List<PreExplosionBlock> blocks = new ArrayList<>(e.blockList().size());
+        for (Block block : e.blockList()) {
+            String blockDimensionId = bridge.resolveDimensionId(block.getWorld().getName());
+            CommonLocation location = new CommonLocation(
+                blockDimensionId, block.getX(), block.getY(), block.getZ());
+            String blockType = MaterialMapper.bukkitToMinecraft(block.getType().name());
+            boolean playerPlaced = bridge.isPlayerPlacedBlock(playerId, location);
+            blocks.add(new PreExplosionBlock(location, blockType, playerPlaced));
+        }
+
+        miningCore.onExplosion(new ExplosionSnapshot(
+            commonOrigin, ExplosionSource.TNT, playerId, playerName, blocks));
     }
 }
 
