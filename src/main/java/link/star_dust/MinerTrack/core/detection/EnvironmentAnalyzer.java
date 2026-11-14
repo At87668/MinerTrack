@@ -36,7 +36,7 @@ public class EnvironmentAnalyzer {
     }
 
     public boolean isInNaturalEnvironment(String worldName, UUID playerId, CommonLocation location, List<CommonLocation> path) {
-        if (!bridge.getConfigBoolean("xray.natural-detection.enable", true)) return false;
+        if (!bridge.getConfigForWorldBoolean(worldName, "xray.natural-detection.enable", true)) return false;
 
         int caveAirMultiplier = bridge.getConfigForWorld(worldName, "xray.natural-detection.cave.CaveAirMultiplier", 5);
         int airThreshold = bridge.getConfigForWorld(worldName, "xray.natural-detection.cave.air-threshold", 14);
