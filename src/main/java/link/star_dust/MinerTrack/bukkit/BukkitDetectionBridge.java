@@ -38,6 +38,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Bukkit implementation of DetectionBridge.
@@ -669,7 +670,9 @@ public class BukkitDetectionBridge implements DetectionBridge {
 
     private CommonYaml configCache;
     private long configCacheTime;
-    private CoreConfig coreConfig;
+    private record WorldConfig(CoreConfig config, Map<String, Boolean> detectionEnabled) {}
+
+    private volatile WorldConfig worldConfig;
 
     // Static reference so the PluginAdapter can call back into the active bridge
     // during reloadConfig() without depending on ServicesManager ceremony.
@@ -697,19 +700,16 @@ public class BukkitDetectionBridge implements DetectionBridge {
         link.star_dust.MinerTrack.core.config.GroupConfigLoader loader =
                 new link.star_dust.MinerTrack.core.config.GroupConfigLoader(adapter, loadConfig(), this.loader);
         link.star_dust.MinerTrack.core.config.GroupConfigLoader.GroupLoadResult r = loader.load();
-        coreConfig = new CoreConfig();
-        coreConfig.setMainConfig(loadConfig());
-        coreConfig.setGroupConfigs(r.groupConfigs);
-        coreConfig.setWorldToGroup(r.worldToGroup);
-        coreConfig.setGroupWorldPatterns(r.groupWorldPatterns);
-        coreConfig.setDefaultUnnamedGroupKey(r.defaultUnnamedGroupKey);
-        return coreConfig;
+        CoreConfig reloaded = new CoreConfig(loadConfig(), r.groupConfigs, r.worldToGroup,
+                r.groupWorldPatterns, r.defaultUnnamedGroupKey);
+        worldConfig = new WorldConfig(reloaded, new ConcurrentHashMap<>());
+        return reloaded;
     }
 
     @Override
     public CoreConfig getCoreConfig() {
-        if (coreConfig == null) loadGroupConfigs();
-        return coreConfig;
+        WorldConfig current = worldConfig;
+        return current != null ? current.config() : loadGroupConfigs();
     }
 
     @Override
@@ -740,13 +740,18 @@ public class BukkitDetectionBridge implements DetectionBridge {
 
     @Override
     public boolean isWorldDetectionEnabled(String worldName) {
-        // Per-world enable flag lives in the resolved group config
-        // (overworld.yml / nether.yml / end.yml), not in the main
-        // xray.worlds mapping. Fall back to the main config's xray.enable
-        // for legacy files that still surface the flag there.
-        CoreConfig cc = getCoreConfig();
-        if (cc != null) return cc.getBooleanForWorld(worldName, "xray.enable", false);
-        return loadConfig().getBoolean("xray.enable", false);
+        WorldConfig current = worldConfig;
+        if (current == null || worldName == null) {
+            return getConfigForWorldBoolean(worldName, "xray.enable", false);
+        }
+        Boolean cached = current.detectionEnabled().get(worldName);
+        if (cached != null) return cached;
+
+        boolean enabled = current.config().getBooleanForWorld(worldName, "xray.enable", false);
+        if (current.detectionEnabled().size() < 256) {
+            current.detectionEnabled().putIfAbsent(worldName, enabled);
+        }
+        return enabled;
     }
 
     @Override
